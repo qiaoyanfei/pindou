@@ -1,0 +1,51 @@
+.index-page {
+  min-height: 100vh;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.index-page__hero {
+  margin-bottom: 32px;
+}
+
+.index-page__title {
+  display: block;
+  font-size: 44px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.index-page__subtitle {
+  display: block;
+  font-size: 26px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.index-page__defaults {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 16px;
+  font-size: 24px;
+  line-height: 1.5;
+}
+
+.index-page__submit {
+  margin-top: 40px;
+  background: #4f46e5 !important;
+  border-radius: 20px;
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.index-page__hidden-canvas {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

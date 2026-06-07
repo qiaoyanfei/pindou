@@ -1,0 +1,308 @@
+import { getColorById } from '@/services/palette'
+import { isEmptyCell } from '@/services/patternStats'
+import type { PatternResult, RenderOptions } from '@/types'
+
+type CanvasNode = {
+  getContext: (type: '2d') => CanvasRenderingContext2D | null
+  width: number
+  height: number
+}
+
+const GRID_LINE_COLOR = '#d0d0d0'
+const EMPTY_CELL_FILL = '#f3f4f6'
+const AXIS_TEXT_COLOR = '#666666'
+const HEADER_TEXT_COLOR = '#333333'
+const LEGEND_TEXT_COLOR = '#444444'
+
+function getLabelColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.62 ? '#1a1a1a' : '#ffffff'
+}
+
+function drawGridCell(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cellPx: number,
+  colorId: string,
+  showGrid: boolean,
+  showColorCode: boolean,
+  minCellPxForLabel: number,
+): void {
+  if (isEmptyCell(colorId)) {
+    ctx.fillStyle = EMPTY_CELL_FILL
+    ctx.fillRect(x, y, cellPx, cellPx)
+    if (showGrid) {
+      ctx.strokeStyle = GRID_LINE_COLOR
+      ctx.lineWidth = 1
+      ctx.strokeRect(x + 0.5, y + 0.5, cellPx - 1, cellPx - 1)
+    }
+    return
+  }
+
+  const color = getColorById(colorId)
+  const hex = color?.hex ?? '#cccccc'
+
+  ctx.fillStyle = hex
+  ctx.fillRect(x, y, cellPx, cellPx)
+
+  if (showGrid) {
+    ctx.strokeStyle = GRID_LINE_COLOR
+    ctx.lineWidth = 1
+    ctx.strokeRect(x + 0.5, y + 0.5, cellPx - 1, cellPx - 1)
+  }
+
+  if (showColorCode && cellPx >= minCellPxForLabel && color) {
+    const fontSize = Math.max(8, Math.floor(cellPx * 0.38))
+    ctx.fillStyle = getLabelColor(hex)
+    ctx.font = `bold ${fontSize}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(color.id, x + cellPx / 2, y + cellPx / 2)
+  }
+}
+
+export function renderPatternToCanvas(
+  canvas: CanvasNode,
+  pattern: PatternResult,
+  options: RenderOptions,
+): void {
+  const { width, height, grid } = pattern
+  const { cellPx, showGrid, showColorCode, minCellPxForLabel = 16 } = options
+  const canvasWidth = width * cellPx
+  const canvasHeight = height * cellPx
+
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('无法获取 Canvas 上下文')
+
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      drawGridCell(
+        ctx,
+        x * cellPx,
+        y * cellPx,
+        cellPx,
+        grid[y * width + x],
+        showGrid,
+        showColorCode,
+        minCellPxForLabel,
+      )
+    }
+  }
+}
+
+export interface SheetLayoutMetrics {
+  padding: number
+  headerHeight: number
+  axisWidth: number
+  axisHeight: number
+  gridWidth: number
+  gridHeight: number
+  legendItemWidth: number
+  legendItemHeight: number
+  legendGap: number
+  legendRows: number
+  legendHeight: number
+  width: number
+  height: number
+}
+
+export function getSheetLayoutMetrics(
+  pattern: PatternResult,
+  cellPx: number,
+): SheetLayoutMetrics {
+  const padding = Math.max(8, Math.round(cellPx * 0.6))
+  const headerHeight = Math.max(28, Math.round(cellPx * 1.4))
+  const axisWidth = Math.max(22, Math.round(cellPx * 0.9))
+  const axisHeight = Math.max(18, Math.round(cellPx * 0.75))
+  const gridWidth = pattern.width * cellPx
+  const gridHeight = pattern.height * cellPx
+  const legendItemWidth = Math.max(56, Math.round(cellPx * 3.2))
+  const legendItemHeight = Math.max(22, Math.round(cellPx * 1.1))
+  const legendGap = Math.max(6, Math.round(cellPx * 0.35))
+  const contentWidth = axisWidth + gridWidth
+  const colorCount = Object.keys(pattern.stats).length
+  const itemsPerRow = Math.max(1, Math.floor(contentWidth / legendItemWidth))
+  const legendRows = Math.ceil(colorCount / itemsPerRow)
+  const legendHeight =
+    legendRows > 0
+      ? legendRows * legendItemHeight + (legendRows - 1) * legendGap + padding
+      : 0
+
+  return {
+    padding,
+    headerHeight,
+    axisWidth,
+    axisHeight,
+    gridWidth,
+    gridHeight,
+    legendItemWidth,
+    legendItemHeight,
+    legendGap,
+    legendRows,
+    legendHeight,
+    width: padding * 2 + contentWidth,
+    height: padding * 2 + headerHeight + axisHeight + gridHeight + legendHeight,
+  }
+}
+
+export function renderPatternSheetToCanvas(
+  canvas: CanvasNode,
+  pattern: PatternResult,
+  options: RenderOptions,
+): void {
+  const { width, height, grid, stats, totalBeads } = pattern
+  const { cellPx, showGrid, showColorCode, minCellPxForLabel = 10 } = options
+  const layout = getSheetLayoutMetrics(pattern, cellPx)
+
+  canvas.width = layout.width
+  canvas.height = layout.height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('无法获取 Canvas 上下文')
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, layout.width, layout.height)
+
+  const gridOriginX = layout.padding + layout.axisWidth
+  const gridOriginY = layout.padding + layout.headerHeight + layout.axisHeight
+
+  ctx.fillStyle = HEADER_TEXT_COLOR
+  ctx.font = `600 ${Math.max(12, Math.round(cellPx * 0.65))}px sans-serif`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(
+    `豆画 / MARD(${totalBeads})`,
+    layout.padding,
+    layout.padding + layout.headerHeight / 2,
+  )
+
+  const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))
+  ctx.fillStyle = AXIS_TEXT_COLOR
+  ctx.font = `${axisFontSize}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  for (let x = 0; x < width; x += 1) {
+    ctx.fillText(
+      String(x + 1),
+      gridOriginX + x * cellPx + cellPx / 2,
+      layout.padding + layout.headerHeight + layout.axisHeight / 2,
+    )
+  }
+
+  ctx.textAlign = 'right'
+  for (let y = 0; y < height; y += 1) {
+    ctx.fillText(
+      String(y + 1),
+      gridOriginX - 6,
+      gridOriginY + y * cellPx + cellPx / 2,
+    )
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      drawGridCell(
+        ctx,
+        gridOriginX + x * cellPx,
+        gridOriginY + y * cellPx,
+        cellPx,
+        grid[y * width + x],
+        showGrid,
+        showColorCode,
+        minCellPxForLabel,
+      )
+    }
+  }
+
+  const legendTop = gridOriginY + layout.gridHeight + layout.padding / 2
+  const entries = Object.entries(stats).sort((a, b) => b[1] - a[1])
+  const itemsPerRow = Math.max(1, Math.floor((layout.axisWidth + layout.gridWidth) / layout.legendItemWidth))
+  const swatchSize = Math.max(14, Math.round(cellPx * 0.7))
+  const legendFontSize = Math.max(9, Math.round(cellPx * 0.42))
+
+  entries.forEach(([id, count], index) => {
+    const row = Math.floor(index / itemsPerRow)
+    const col = index % itemsPerRow
+    const itemX = layout.padding + col * layout.legendItemWidth
+    const itemY = legendTop + row * (layout.legendItemHeight + layout.legendGap)
+    const color = getColorById(id)
+    const hex = color?.hex ?? '#cccccc'
+
+    ctx.fillStyle = hex
+    ctx.fillRect(itemX, itemY + (layout.legendItemHeight - swatchSize) / 2, swatchSize, swatchSize)
+    ctx.strokeStyle = GRID_LINE_COLOR
+    ctx.lineWidth = 1
+    ctx.strokeRect(
+      itemX + 0.5,
+      itemY + (layout.legendItemHeight - swatchSize) / 2 + 0.5,
+      swatchSize - 1,
+      swatchSize - 1,
+    )
+
+    ctx.fillStyle = LEGEND_TEXT_COLOR
+    ctx.font = `${legendFontSize}px sans-serif`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`${id} (${count})`, itemX + swatchSize + 6, itemY + layout.legendItemHeight / 2)
+  })
+}
+
+export function buildStatsTsv(stats: Record<string, number>): string {
+  const rows = Object.entries(stats)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, count]) => `${id}\t${count}`)
+
+  return ['色号\t数量', ...rows].join('\n')
+}
+
+export function getPreviewCellPx(
+  pattern: PatternResult,
+  maxCanvasPx = 600,
+): number {
+  const longEdge = Math.max(pattern.width, pattern.height)
+  return Math.max(6, Math.min(12, Math.floor(maxCanvasPx / longEdge)))
+}
+
+/** 根据预览区域尺寸计算 cellPx，保证整张图纸在 scale=1 时完整显示 */
+export function getPreviewCellPxForArea(
+  pattern: PatternResult,
+  maxWidth: number,
+  maxHeight: number,
+  padding = 32,
+): number {
+  const availableW = maxWidth - padding * 2
+  const availableH = maxHeight - padding * 2
+  const cellPx = Math.min(
+    Math.floor(availableW / pattern.width),
+    Math.floor(availableH / pattern.height),
+    14,
+  )
+  return Math.max(4, cellPx)
+}
+
+export function getPatternPixelSize(
+  pattern: PatternResult,
+  cellPx: number,
+): { width: number; height: number } {
+  return {
+    width: pattern.width * cellPx,
+    height: pattern.height * cellPx,
+  }
+}
+
+export function getExportSheetPixelSize(
+  pattern: PatternResult,
+  cellPx: number,
+): { width: number; height: number } {
+  const layout = getSheetLayoutMetrics(pattern, cellPx)
+  return { width: layout.width, height: layout.height }
+}
