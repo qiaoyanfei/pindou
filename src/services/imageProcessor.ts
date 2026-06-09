@@ -181,7 +181,7 @@ export async function extractBlockDominantColors(
   canvas.width = sampleWidth
   canvas.height = sampleHeight
   ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.imageSmoothingEnabled = false
+  ctx.imageSmoothingEnabled = styleMode !== 'portrait'
 
   const image = canvas.createImage()
   await new Promise<void>((resolve, reject) => {

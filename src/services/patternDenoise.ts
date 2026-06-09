@@ -1,4 +1,5 @@
 import type { PatternResult } from '@/types'
+import type { StyleMode } from '@/types'
 import { isDarkBeadId } from '@/utils/constants'
 import { finalizePattern, isEmptyCell } from '@/services/patternStats'
 
@@ -49,15 +50,20 @@ function pickReplacementColor(neighbors: string[], current: string): string | nu
   return bestId
 }
 
-/** 将全图出现次数极少的色号替换为邻域主色，清除孤立杂点（描边色不参与） */
+/** 将全图出现次数极少的色号替换为邻域主色，清除孤立杂点 */
 export function removeIsolatedSpeckles(
   pattern: PatternResult,
   maxCount = 3,
+  styleMode: StyleMode = 'portrait',
 ): PatternResult {
   const { width, height, grid } = pattern
   const speckleIds = new Set(
     Object.entries(pattern.stats)
-      .filter(([id, count]) => count <= maxCount && !isDarkBeadId(id))
+      .filter(([id, count]) => {
+        if (count > maxCount) return false
+        if (styleMode === 'portrait' && isDarkBeadId(id)) return false
+        return true
+      })
       .map(([id]) => id),
   )
 

@@ -120,7 +120,6 @@ function downsampleExteriorBlock(
   return result
 }
 
-/** 2× 中间网格下采样背景标记（与 downsamplePatternMajority 同尺度） */
 export function downsampleExteriorBackground(
   exteriorBackground: boolean[],
   width: number,

@@ -1,4 +1,5 @@
 import type { PatternResult } from '@/types'
+import type { StyleMode } from '@/types'
 import { PATTERN_EMPTY_CELL, isLightNeutralId } from '@/utils/constants'
 import { finalizePattern, isEmptyCell } from '@/services/patternStats'
 
@@ -88,7 +89,10 @@ function getNeighborIds(
 }
 
 /** 合并 H7 等次级深灰到 H16，强化描边 */
-export function consolidateDarkOutlines(pattern: PatternResult): PatternResult {
+export function consolidateDarkOutlines(
+  pattern: PatternResult,
+  styleMode: StyleMode = 'portrait',
+): PatternResult {
   const { width, height, grid } = pattern
   const newGrid = [...grid]
 
@@ -100,10 +104,17 @@ export function consolidateDarkOutlines(pattern: PatternResult): PatternResult {
 
       const neighbors = getNeighborIds(newGrid, width, height, x, y)
       const hasPrimaryDark = neighbors.includes(PRIMARY_DARK)
-      const lightNeighborCount = neighbors.filter((id) => isLightNeutralId(id)).length
 
-      if (hasPrimaryDark && lightNeighborCount < 2) {
-        newGrid[index] = PRIMARY_DARK
+      if (styleMode === 'portrait') {
+        const lightNeighborCount = neighbors.filter((neighbor) => isLightNeutralId(neighbor)).length
+        if (hasPrimaryDark && lightNeighborCount < 2) {
+          newGrid[index] = PRIMARY_DARK
+        }
+      } else {
+        const darkNeighborCount = neighbors.filter((neighbor) => isDarkId(neighbor)).length
+        if (hasPrimaryDark || darkNeighborCount >= 2) {
+          newGrid[index] = PRIMARY_DARK
+        }
       }
     }
   }
