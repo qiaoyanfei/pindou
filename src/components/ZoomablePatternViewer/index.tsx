@@ -1,5 +1,5 @@
 import { View, Text, Image, MovableArea, MovableView } from '@tarojs/components'
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import Taro from '@tarojs/taro'
 import PatternCanvas from '@/components/PatternCanvas'
 import {
@@ -12,21 +12,22 @@ import './index.scss'
 interface ZoomablePatternViewerProps {
   pattern: PatternResult
   config: PatternConfig
-  exportReady?: boolean
+  onFullscreen?: () => void
 }
 
 const PAGE_PADDING = 64
 const TOOLBAR_HEIGHT = 72
 
-export default function ZoomablePatternViewer({
+function ZoomablePatternViewer({
   pattern,
   config,
-  exportReady = false,
+  onFullscreen,
 }: ZoomablePatternViewerProps) {
   const sys = Taro.getSystemInfoSync()
   const [imageSrc, setImageSrc] = useState('')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [loading, setLoading] = useState(true)
+  const [needsPreviewCanvas, setNeedsPreviewCanvas] = useState(true)
 
   const areaWidth = sys.windowWidth - PAGE_PADDING
   const areaHeight = Math.floor(sys.windowHeight * 0.38)
@@ -62,6 +63,7 @@ export default function ZoomablePatternViewer({
       const info = await Taro.getImageInfo({ src: tempFilePath })
       setImageSrc(tempFilePath)
       setImageSize({ width: info.width, height: info.height })
+      setNeedsPreviewCanvas(false)
     } catch {
       Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
     } finally {
@@ -73,26 +75,11 @@ export default function ZoomablePatternViewer({
     setLoading(true)
     setImageSrc('')
     setImageSize({ width: 0, height: 0 })
+    setNeedsPreviewCanvas(true)
   }, [pattern, config, previewCellPx])
 
-  const handleFullscreen = async () => {
-    if (!exportReady) {
-      Taro.showToast({ title: '高清图准备中，请稍候', icon: 'none' })
-      return
-    }
-
-    try {
-      Taro.showLoading({ title: '加载预览...' })
-      const tempFilePath = await canvasToTempFile('export-canvas')
-      Taro.hideLoading()
-      await Taro.previewImage({
-        urls: [tempFilePath],
-        current: tempFilePath,
-      })
-    } catch {
-      Taro.hideLoading()
-      Taro.showToast({ title: '预览失败', icon: 'none' })
-    }
+  const handleFullscreen = () => {
+    onFullscreen?.()
   }
 
   return (
@@ -152,16 +139,22 @@ export default function ZoomablePatternViewer({
         )}
       </View>
 
-      {/* 离屏 Canvas 渲染，避免原生层遮挡其他 UI */}
-      <PatternCanvas
-        canvasId='preview-canvas'
-        pattern={pattern}
-        config={config}
-        mode='preview'
-        hidden
-        cellPx={previewCellPx}
-        onReady={handleCanvasReady}
-      />
+      {needsPreviewCanvas && (
+        <PatternCanvas
+          canvasId='preview-canvas'
+          pattern={pattern}
+          config={config}
+          mode='preview'
+          hidden
+          cellPx={previewCellPx}
+          onReady={handleCanvasReady}
+        />
+      )}
     </View>
   )
 }
+
+export default memo(
+  ZoomablePatternViewer,
+  (prev, next) => prev.pattern === next.pattern && prev.config === next.config,
+)

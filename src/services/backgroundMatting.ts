@@ -1,11 +1,13 @@
 import type { Rgb } from '@/services/imageProcessor'
 import type { CanvasNode } from '@/services/imageProcessor'
 import { getImageDimensions } from '@/services/imageProcessor'
+import { findBestSymmetryAxis } from '@/services/patternSymmetryAnalysis'
 import {
   BACKGROUND_ANALYSIS_MAX_EDGE,
   BACKGROUND_LIGHT_CHROMA,
   BACKGROUND_LIGHT_LUMA,
   BACKGROUND_RGB_TOLERANCE,
+  SYMMETRY_AXIS_ALIGN_MIN_SCORE,
 } from '@/utils/constants'
 
 export interface CropRect {
@@ -145,6 +147,140 @@ export function buildExteriorBackgroundMask(
   return mask
 }
 
+const NEIGHBOR8: ReadonlyArray<readonly [number, number]> = [
+  [-1, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, -1],
+  [0, 1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+]
+
+const PORTRAIT_SUBJECT_DILATE_RATIO = 0.012
+const PORTRAIT_SUBJECT_DILATE_MIN = 4
+const PORTRAIT_SUBJECT_DILATE_MAX = 10
+
+function computePortraitDilateIterations(width: number, height: number): number {
+  return Math.min(
+    PORTRAIT_SUBJECT_DILATE_MAX,
+    Math.max(
+      PORTRAIT_SUBJECT_DILATE_MIN,
+      Math.round(Math.min(width, height) * PORTRAIT_SUBJECT_DILATE_RATIO),
+    ),
+  )
+}
+
+function dilateBinaryMask(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  iterations: number,
+): Uint8Array {
+  let current = mask
+  for (let pass = 0; pass < iterations; pass += 1) {
+    const next = new Uint8Array(current)
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const index = y * width + x
+        if (current[index] === 1) continue
+        for (const [dx, dy] of NEIGHBOR8) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+          if (current[ny * width + nx] === 1) {
+            next[index] = 1
+            break
+          }
+        }
+      }
+    }
+    current = next
+  }
+  return current
+}
+
+/** 将不与画布边缘连通的背景孔洞并入主体（胸口等内白区） */
+function fillBinaryMaskHoles(interiorMask: Uint8Array, width: number, height: number): Uint8Array {
+  const outside = new Uint8Array(width * height)
+  const queue: number[] = []
+
+  const seedOutside = (x: number, y: number) => {
+    const index = y * width + x
+    if (outside[index] || interiorMask[index] === 1) return
+    outside[index] = 1
+    queue.push(index)
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    seedOutside(x, 0)
+    seedOutside(x, height - 1)
+  }
+  for (let y = 0; y < height; y += 1) {
+    seedOutside(0, y)
+    seedOutside(width - 1, y)
+  }
+
+  let head = 0
+  while (head < queue.length) {
+    const index = queue[head]
+    head += 1
+    const x = index % width
+    const y = Math.floor(index / width)
+
+    for (const [dx, dy] of NEIGHBOR8) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      const ni = ny * width + nx
+      if (outside[ni] || interiorMask[ni] === 1) continue
+      outside[ni] = 1
+      queue.push(ni)
+    }
+  }
+
+  const filled = new Uint8Array(interiorMask)
+  for (let i = 0; i < filled.length; i += 1) {
+    if (interiorMask[i] === 1 || outside[i] === 1) continue
+    filled[i] = 1
+  }
+  return filled
+}
+
+/**
+ * 人物模式主体 mask：非外部背景种子 → 轻膨胀闭合领口 → 孔洞填充。
+ * 1 = 应拼豆区域（含胸口等封闭内白区）。
+ */
+export function buildPortraitSubjectMask(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Uint8Array {
+  const exterior = buildExteriorBackgroundMask(data, width, height)
+  const seed = new Uint8Array(width * height)
+  for (let i = 0; i < seed.length; i += 1) {
+    seed[i] = exterior[i] === 1 ? 0 : 1
+  }
+
+  const dilated = dilateBinaryMask(
+    seed,
+    width,
+    height,
+    computePortraitDilateIterations(width, height),
+  )
+  return fillBinaryMaskHoles(dilated, width, height)
+}
+
+export function isPortraitSubjectPixel(
+  subjectMask: Uint8Array,
+  width: number,
+  x: number,
+  y: number,
+): boolean {
+  return subjectMask[y * width + x] === 1
+}
+
 function findContentBoundsFromMask(mask: Uint8Array, width: number, height: number): CropRect {
   let minX = width
   let minY = height
@@ -170,6 +306,81 @@ function findContentBoundsFromMask(mask: Uint8Array, width: number, height: numb
     y: minY,
     width: maxX - minX + 1,
     height: maxY - minY + 1,
+  }
+}
+
+/**
+ * 以给定水平中心扩展裁剪框，使左右留白对称。
+ * 优先用面部对称轴（眼鼻中线），蝴蝶结等单侧装饰不会拉偏中心。
+ */
+function expandCropHorizontallyAround(
+  crop: CropRect,
+  centerX: number,
+  canvasWidth: number,
+): CropRect {
+  const left = crop.x
+  const right = crop.x + crop.width - 1
+  const halfWidth = Math.max(centerX - left, right - centerX)
+
+  let newX = Math.floor(centerX - halfWidth)
+  let newWidth = Math.ceil(halfWidth * 2) + 1
+
+  if (newX < 0) {
+    newWidth -= -newX
+    newX = 0
+  }
+  if (newX + newWidth > canvasWidth) {
+    newWidth = canvasWidth - newX
+  }
+  newWidth = Math.max(1, newWidth)
+
+  return { x: newX, y: crop.y, width: newWidth, height: crop.height }
+}
+
+function computeContentCentroidX(
+  crop: CropRect,
+  mask: Uint8Array,
+  canvasWidth: number,
+): number {
+  let sumX = 0
+  let count = 0
+
+  for (let y = crop.y; y < crop.y + crop.height; y += 1) {
+    for (let x = crop.x; x < crop.x + crop.width; x += 1) {
+      if (mask[y * canvasWidth + x] === 1) continue
+      sumX += x
+      count += 1
+    }
+  }
+
+  return count > 0 ? sumX / count : crop.x + crop.width / 2
+}
+
+function analysisCropToSourceCrop(
+  crop: CropRect,
+  scale: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): CropRect {
+  const toSourceCoord = (value: number, max: number) =>
+    Math.max(0, Math.min(Math.round(value / scale), max))
+
+  const x = toSourceCoord(crop.x, sourceWidth - 1)
+  const y = toSourceCoord(crop.y, sourceHeight - 1)
+  const right = Math.min(
+    sourceWidth,
+    Math.max(x + 1, toSourceCoord(crop.x + crop.width - 1, sourceWidth - 1) + 1),
+  )
+  const bottom = Math.min(
+    sourceHeight,
+    Math.max(y + 1, toSourceCoord(crop.y + crop.height - 1, sourceHeight - 1) + 1),
+  )
+
+  return {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y),
   }
 }
 
@@ -211,30 +422,38 @@ export async function analyzeContentCrop(
   const { data } = ctx.getImageData(0, 0, analysisWidth, analysisHeight)
   const backgroundRgb = detectBackgroundRgb(data, analysisWidth, analysisHeight)
   const exteriorMask = buildExteriorBackgroundMask(data, analysisWidth, analysisHeight)
-  const analysisCrop = findContentBoundsFromMask(exteriorMask, analysisWidth, analysisHeight)
+  const tightCrop = findContentBoundsFromMask(exteriorMask, analysisWidth, analysisHeight)
+  const { axisX, score } = findBestSymmetryAxis(
+    data,
+    analysisWidth,
+    analysisHeight,
+    exteriorMask,
+  )
+  const centerX =
+    score >= SYMMETRY_AXIS_ALIGN_MIN_SCORE
+      ? axisX
+      : computeContentCentroidX(tightCrop, exteriorMask, analysisWidth)
+  const analysisCrop = expandCropHorizontallyAround(tightCrop, centerX, analysisWidth)
 
-  const toSourceCoord = (value: number, max: number) =>
-    Math.max(0, Math.min(Math.round(value / scale), max))
-
-  const x = toSourceCoord(analysisCrop.x, source.width - 1)
-  const y = toSourceCoord(analysisCrop.y, source.height - 1)
-  const right = Math.min(
+  let crop = analysisCropToSourceCrop(
+    analysisCrop,
+    scale,
     source.width,
-    Math.max(x + 1, toSourceCoord(analysisCrop.x + analysisCrop.width - 1, source.width - 1) + 1),
-  )
-  const bottom = Math.min(
     source.height,
-    Math.max(y + 1, toSourceCoord(analysisCrop.y + analysisCrop.height - 1, source.height - 1) + 1),
   )
+
+  if (score >= SYMMETRY_AXIS_ALIGN_MIN_SCORE) {
+    const axisFraction = (axisX - analysisCrop.x) / analysisCrop.width
+    const shift = (0.5 - axisFraction) * crop.width
+    crop = {
+      ...crop,
+      x: Math.max(0, Math.min(Math.round(crop.x + shift), source.width - crop.width)),
+    }
+  }
 
   return {
     backgroundRgb,
-    crop: {
-      x,
-      y,
-      width: Math.max(1, right - x),
-      height: Math.max(1, bottom - y),
-    },
+    crop,
   }
 }
 

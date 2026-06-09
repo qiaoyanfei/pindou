@@ -1,5 +1,5 @@
 import type { PatternResult } from '@/types'
-import { PATTERN_EMPTY_CELL } from '@/utils/constants'
+import { PATTERN_EMPTY_CELL, isLightNeutralId } from '@/utils/constants'
 import { finalizePattern, isEmptyCell } from '@/services/patternStats'
 
 const PRIMARY_DARK = 'H16'
@@ -100,9 +100,9 @@ export function consolidateDarkOutlines(pattern: PatternResult): PatternResult {
 
       const neighbors = getNeighborIds(newGrid, width, height, x, y)
       const hasPrimaryDark = neighbors.includes(PRIMARY_DARK)
-      const darkNeighborCount = neighbors.filter((neighbor) => isDarkId(neighbor)).length
+      const lightNeighborCount = neighbors.filter((id) => isLightNeutralId(id)).length
 
-      if (hasPrimaryDark || darkNeighborCount >= 2) {
+      if (hasPrimaryDark && lightNeighborCount < 2) {
         newGrid[index] = PRIMARY_DARK
       }
     }

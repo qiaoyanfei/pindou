@@ -1,5 +1,5 @@
 import { View, Text, Switch, Slider } from '@tarojs/components'
-import { EXPORT_LIMITS, GRID_LIMITS } from '@/utils/constants'
+import { EXPORT_LIMITS, getLongEdgeLimits } from '@/utils/constants'
 import type { PatternConfig } from '@/types'
 import './index.scss'
 
@@ -16,6 +16,8 @@ export default function AdvancedSettings({
   onToggle,
   onChange,
 }: AdvancedSettingsProps) {
+  const longEdgeLimits = getLongEdgeLimits(config.styleMode)
+
   return (
     <View className='advanced-settings'>
       <View className='advanced-settings__header' onClick={onToggle}>
@@ -29,8 +31,8 @@ export default function AdvancedSettings({
             <Text className='advanced-settings__label'>长边格数：{config.longEdge}</Text>
             <Slider
               className='advanced-settings__slider'
-              min={GRID_LIMITS.minEdge}
-              max={GRID_LIMITS.maxEdge}
+              min={longEdgeLimits.min}
+              max={longEdgeLimits.max}
               step={1}
               value={config.longEdge}
               activeColor='#4f46e5'
@@ -46,8 +48,8 @@ export default function AdvancedSettings({
               }
             />
             <View className='advanced-settings__slider-scale'>
-              <Text>{GRID_LIMITS.minEdge}</Text>
-              <Text>{GRID_LIMITS.maxEdge}</Text>
+              <Text>{longEdgeLimits.min}</Text>
+              <Text>{longEdgeLimits.max}</Text>
             </View>
           </View>
 

@@ -7,6 +7,7 @@ import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import {
   DEFAULT_CONFIG,
+  STYLE_MODE_DEFAULT_EXPORT_CELL_PX,
   STYLE_MODE_DEFAULT_LONG_EDGE,
   STYLE_MODE_LABELS,
 } from '@/utils/constants'
@@ -24,6 +25,7 @@ export default function IndexPage() {
       ...prev,
       styleMode,
       longEdge: STYLE_MODE_DEFAULT_LONG_EDGE[styleMode],
+      exportCellPx: STYLE_MODE_DEFAULT_EXPORT_CELL_PX[styleMode],
     }))
   }
 

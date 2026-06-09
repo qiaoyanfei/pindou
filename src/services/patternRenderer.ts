@@ -1,5 +1,7 @@
 import { getColorById } from '@/services/palette'
 import { isEmptyCell } from '@/services/patternStats'
+import { drawCornerGridWatermarks } from '@/services/patternWatermark'
+import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import type { PatternResult, RenderOptions } from '@/types'
 
 type CanvasNode = {
@@ -22,47 +24,85 @@ function getLabelColor(hex: string): string {
   return luminance > 0.62 ? '#1a1a1a' : '#ffffff'
 }
 
+function drawGridCellFill(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cellPx: number,
+  colorId: string,
+): void {
+  if (isEmptyCell(colorId)) {
+    ctx.fillStyle = EMPTY_CELL_FILL
+  } else {
+    ctx.fillStyle = getColorById(colorId)?.hex ?? '#cccccc'
+  }
+  ctx.fillRect(Math.round(x), Math.round(y), cellPx, cellPx)
+}
+
+function drawGridLines(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  cols: number,
+  rows: number,
+  cellPx: number,
+): void {
+  const ox = Math.round(originX)
+  const oy = Math.round(originY)
+  const w = cols * cellPx
+  const h = rows * cellPx
+
+  ctx.save()
+  ctx.strokeStyle = GRID_LINE_COLOR
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let i = 0; i <= cols; i += 1) {
+    const x = ox + i * cellPx + 0.5
+    ctx.moveTo(x, oy)
+    ctx.lineTo(x, oy + h)
+  }
+  for (let j = 0; j <= rows; j += 1) {
+    const y = oy + j * cellPx + 0.5
+    ctx.moveTo(ox, y)
+    ctx.lineTo(ox + w, y)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawGridCellOverlay(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cellPx: number,
+  colorId: string,
+  showColorCode: boolean,
+  minCellPxForLabel: number,
+): void {
+  if (isEmptyCell(colorId) || !showColorCode || cellPx < minCellPxForLabel) return
+
+  const color = getColorById(colorId)
+  if (!color) return
+
+  const fontSize = Math.max(8, Math.floor(cellPx * 0.38))
+  ctx.fillStyle = getLabelColor(color.hex)
+  ctx.font = `bold ${fontSize}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(color.id, x + cellPx / 2, y + cellPx / 2)
+}
+
 function drawGridCell(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   cellPx: number,
   colorId: string,
-  showGrid: boolean,
   showColorCode: boolean,
   minCellPxForLabel: number,
 ): void {
-  if (isEmptyCell(colorId)) {
-    ctx.fillStyle = EMPTY_CELL_FILL
-    ctx.fillRect(x, y, cellPx, cellPx)
-    if (showGrid) {
-      ctx.strokeStyle = GRID_LINE_COLOR
-      ctx.lineWidth = 1
-      ctx.strokeRect(x + 0.5, y + 0.5, cellPx - 1, cellPx - 1)
-    }
-    return
-  }
-
-  const color = getColorById(colorId)
-  const hex = color?.hex ?? '#cccccc'
-
-  ctx.fillStyle = hex
-  ctx.fillRect(x, y, cellPx, cellPx)
-
-  if (showGrid) {
-    ctx.strokeStyle = GRID_LINE_COLOR
-    ctx.lineWidth = 1
-    ctx.strokeRect(x + 0.5, y + 0.5, cellPx - 1, cellPx - 1)
-  }
-
-  if (showColorCode && cellPx >= minCellPxForLabel && color) {
-    const fontSize = Math.max(8, Math.floor(cellPx * 0.38))
-    ctx.fillStyle = getLabelColor(hex)
-    ctx.font = `bold ${fontSize}px sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(color.id, x + cellPx / 2, y + cellPx / 2)
-  }
+  drawGridCellFill(ctx, x, y, cellPx, colorId)
+  drawGridCellOverlay(ctx, x, y, cellPx, colorId, showColorCode, minCellPxForLabel)
 }
 
 export function renderPatternToCanvas(
@@ -81,6 +121,8 @@ export function renderPatternToCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('无法获取 Canvas 上下文')
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
   for (let y = 0; y < height; y += 1) {
@@ -91,11 +133,14 @@ export function renderPatternToCanvas(
         y * cellPx,
         cellPx,
         grid[y * width + x],
-        showGrid,
         showColorCode,
         minCellPxForLabel,
       )
     }
+  }
+
+  if (showGrid) {
+    drawGridLines(ctx, 0, 0, width, height, cellPx)
   }
 }
 
@@ -160,7 +205,14 @@ export function renderPatternSheetToCanvas(
   options: RenderOptions,
 ): void {
   const { width, height, grid, stats, totalBeads } = pattern
-  const { cellPx, showGrid, showColorCode, minCellPxForLabel = 10 } = options
+  const {
+    cellPx,
+    showGrid,
+    showColorCode,
+    minCellPxForLabel = 10,
+    creatorNickname,
+    appName = MINI_PROGRAM_NAME,
+  } = options
   const layout = getSheetLayoutMetrics(pattern, cellPx)
 
   canvas.width = layout.width
@@ -169,6 +221,8 @@ export function renderPatternSheetToCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('无法获取 Canvas 上下文')
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, layout.width, layout.height)
 
@@ -210,13 +264,39 @@ export function renderPatternSheetToCanvas(
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      drawGridCell(
+      drawGridCellFill(
         ctx,
         gridOriginX + x * cellPx,
         gridOriginY + y * cellPx,
         cellPx,
         grid[y * width + x],
-        showGrid,
+      )
+    }
+  }
+
+  drawCornerGridWatermarks(
+    ctx,
+    gridOriginX,
+    gridOriginY,
+    layout.gridWidth,
+    layout.gridHeight,
+    cellPx,
+    appName,
+    creatorNickname ?? '',
+  )
+
+  if (showGrid) {
+    drawGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx)
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      drawGridCellOverlay(
+        ctx,
+        gridOriginX + x * cellPx,
+        gridOriginY + y * cellPx,
+        cellPx,
+        grid[y * width + x],
         showColorCode,
         minCellPxForLabel,
       )
@@ -238,12 +318,17 @@ export function renderPatternSheetToCanvas(
     const hex = color?.hex ?? '#cccccc'
 
     ctx.fillStyle = hex
-    ctx.fillRect(itemX, itemY + (layout.legendItemHeight - swatchSize) / 2, swatchSize, swatchSize)
+    ctx.fillRect(
+      Math.round(itemX),
+      Math.round(itemY + (layout.legendItemHeight - swatchSize) / 2),
+      swatchSize,
+      swatchSize,
+    )
     ctx.strokeStyle = GRID_LINE_COLOR
     ctx.lineWidth = 1
     ctx.strokeRect(
-      itemX + 0.5,
-      itemY + (layout.legendItemHeight - swatchSize) / 2 + 0.5,
+      Math.round(itemX) + 0.5,
+      Math.round(itemY + (layout.legendItemHeight - swatchSize) / 2) + 0.5,
       swatchSize - 1,
       swatchSize - 1,
     )
@@ -272,7 +357,6 @@ export function getPreviewCellPx(
   return Math.max(6, Math.min(12, Math.floor(maxCanvasPx / longEdge)))
 }
 
-/** 根据预览区域尺寸计算 cellPx，保证整张图纸在 scale=1 时完整显示 */
 export function getPreviewCellPxForArea(
   pattern: PatternResult,
   maxWidth: number,

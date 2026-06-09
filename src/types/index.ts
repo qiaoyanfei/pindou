@@ -30,6 +30,10 @@ export interface RenderOptions {
   showGrid: boolean
   showColorCode: boolean
   minCellPxForLabel?: number
+  /** 导出图水印署名 */
+  creatorNickname?: string
+  /** 导出图水印小程序名 */
+  appName?: string
 }
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'

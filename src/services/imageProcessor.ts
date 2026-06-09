@@ -1,8 +1,14 @@
 import Taro from '@tarojs/taro'
-import { GRID_LIMITS } from '@/utils/constants'
+import { clampLongEdge } from '@/utils/constants'
 import type { CropRect } from '@/services/backgroundMatting'
-import { buildExteriorBackgroundMask, isExteriorBackgroundPixel } from '@/services/backgroundMatting'
-import { BACKGROUND_CELL_EXTERIOR_RATIO } from '@/utils/constants'
+import {
+  buildExteriorBackgroundMask,
+  buildPortraitSubjectMask,
+  isExteriorBackgroundPixel,
+  isPortraitSubjectPixel,
+} from '@/services/backgroundMatting'
+import { BACKGROUND_LIGHT_LUMA, isExteriorBackgroundCell, PATTERN_MIXED_LIGHT_RATIO } from '@/utils/constants'
+import type { StyleMode } from '@/types'
 
 export interface GridSize {
   width: number
@@ -15,11 +21,9 @@ export function computeGridSize(
   imageWidth: number,
   imageHeight: number,
   longEdge: number,
+  styleMode: StyleMode = 'portrait',
 ): GridSize {
-  const clampedEdge = Math.max(
-    GRID_LIMITS.minEdge,
-    Math.min(GRID_LIMITS.maxEdge, longEdge),
-  )
+  const clampedEdge = clampLongEdge(longEdge, styleMode)
 
   if (imageWidth >= imageHeight) {
     const width = clampedEdge
@@ -67,20 +71,8 @@ function getLuma(rgb: Rgb): number {
   return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
 }
 
-function dominantRgbFromBlock(
-  pixels: Rgb[],
-  darkLumaThreshold: number,
-  darkRatioThreshold: number,
-): Rgb {
+function dominantRgbFromPixels(pixels: Rgb[]): Rgb {
   if (pixels.length === 0) return [255, 255, 255]
-
-  let darkCount = 0
-  for (const rgb of pixels) {
-    if (getLuma(rgb) < darkLumaThreshold) darkCount += 1
-  }
-  if (darkCount / pixels.length >= darkRatioThreshold) {
-    return [18, 18, 18]
-  }
 
   const buckets = new Map<number, { count: number; r: number; g: number; b: number }>()
   for (const [r, g, b] of pixels) {
@@ -116,6 +108,47 @@ function dominantRgbFromBlock(
   ]
 }
 
+function dominantRgbFromBlock(
+  pixels: Rgb[],
+  darkLumaThreshold: number,
+  darkRatioThreshold: number,
+  styleMode: StyleMode = 'portrait',
+): Rgb {
+  if (pixels.length === 0) return [255, 255, 255]
+
+  let darkCount = 0
+  let lightCount = 0
+  for (const rgb of pixels) {
+    const luma = getLuma(rgb)
+    if (luma < darkLumaThreshold) darkCount += 1
+    if (luma >= BACKGROUND_LIGHT_LUMA) lightCount += 1
+  }
+
+  const darkRatio = darkCount / pixels.length
+
+  if (styleMode === 'manga') {
+    if (darkRatio >= darkRatioThreshold) return [18, 18, 18]
+    return dominantRgbFromPixels(pixels)
+  }
+
+  const lightRatio = lightCount / pixels.length
+  const isMixedLightOutline =
+    darkRatio >= darkRatioThreshold && lightRatio >= PATTERN_MIXED_LIGHT_RATIO
+
+  if (darkRatio >= darkRatioThreshold && !isMixedLightOutline) {
+    return [18, 18, 18]
+  }
+
+  if (isMixedLightOutline) {
+    const lightPixels = pixels.filter((rgb) => getLuma(rgb) >= BACKGROUND_LIGHT_LUMA)
+    if (lightPixels.length > 0) {
+      return dominantRgbFromPixels(lightPixels)
+    }
+  }
+
+  return dominantRgbFromPixels(pixels)
+}
+
 export interface BlockSampleResult {
   colors: Rgb[]
   exteriorBackground: boolean[]
@@ -132,10 +165,12 @@ export async function extractBlockDominantColors(
   options?: {
     darkLumaThreshold?: number
     darkRatioThreshold?: number
+    styleMode?: StyleMode
   },
 ): Promise<BlockSampleResult> {
   const darkLuma = options?.darkLumaThreshold ?? 48
   const darkRatio = options?.darkRatioThreshold ?? 0.22
+  const styleMode = options?.styleMode ?? 'portrait'
 
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('无法获取 Canvas 上下文')
@@ -146,7 +181,7 @@ export async function extractBlockDominantColors(
   canvas.width = sampleWidth
   canvas.height = sampleHeight
   ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingEnabled = false
 
   const image = canvas.createImage()
   await new Promise<void>((resolve, reject) => {
@@ -170,7 +205,13 @@ export async function extractBlockDominantColors(
 
   const imageData = ctx.getImageData(0, 0, sampleWidth, sampleHeight)
   const { data } = imageData
-  const exteriorMask = buildExteriorBackgroundMask(data, sampleWidth, sampleHeight)
+  const useSubjectMask = styleMode === 'portrait'
+  const exteriorMask = useSubjectMask
+    ? null
+    : buildExteriorBackgroundMask(data, sampleWidth, sampleHeight)
+  const subjectMask = useSubjectMask
+    ? buildPortraitSubjectMask(data, sampleWidth, sampleHeight)
+    : null
   const colors: Rgb[] = new Array(gridWidth * gridHeight)
   const exteriorBackground: boolean[] = new Array(gridWidth * gridHeight)
 
@@ -180,6 +221,7 @@ export async function extractBlockDominantColors(
       const x0 = gx * samplesPerCell
       const y0 = gy * samplesPerCell
       let exteriorCount = 0
+      let subjectCount = 0
       let blockPixels = 0
 
       for (let sy = 0; sy < samplesPerCell; sy += 1) {
@@ -189,16 +231,29 @@ export async function extractBlockDominantColors(
           const pi = (py * sampleWidth + px) * 4
           block.push([data[pi], data[pi + 1], data[pi + 2]])
           blockPixels += 1
-          if (isExteriorBackgroundPixel(exteriorMask, sampleWidth, px, py)) {
+          if (useSubjectMask && subjectMask) {
+            if (isPortraitSubjectPixel(subjectMask, sampleWidth, px, py)) {
+              subjectCount += 1
+            }
+          } else if (exteriorMask && isExteriorBackgroundPixel(exteriorMask, sampleWidth, px, py)) {
             exteriorCount += 1
           }
         }
       }
 
       const cellIndex = gy * gridWidth + gx
-      colors[cellIndex] = dominantRgbFromBlock(block, darkLuma, darkRatio)
-      exteriorBackground[cellIndex] =
-        exteriorCount / blockPixels >= BACKGROUND_CELL_EXTERIOR_RATIO
+      colors[cellIndex] = dominantRgbFromBlock(block, darkLuma, darkRatio, styleMode)
+      if (useSubjectMask) {
+        exteriorBackground[cellIndex] = subjectCount * 2 < blockPixels
+      } else {
+        const exteriorRatio = exteriorCount / blockPixels
+        const interiorRatio = 1 - exteriorRatio
+        exteriorBackground[cellIndex] = isExteriorBackgroundCell(
+          exteriorRatio,
+          interiorRatio,
+          styleMode,
+        )
+      }
     }
   }
 

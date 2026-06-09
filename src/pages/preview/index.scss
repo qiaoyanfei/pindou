@@ -19,17 +19,25 @@
   padding: 24px 32px 16px;
 }
 
+.preview-page__block + .preview-page__block {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid #e8eaed;
+}
+
 .preview-page__headline {
   display: block;
   font-size: 36px;
   font-weight: 700;
   margin-bottom: 8px;
+  color: #111827;
 }
 
 .preview-page__desc {
   display: block;
   font-size: 24px;
   color: #6b7280;
+  line-height: 1.4;
 }
 
 .preview-page__preview-slot {
@@ -70,4 +78,14 @@
 .preview-page__btn--primary {
   background: #4f46e5 !important;
   color: #fff !important;
+}
+
+.preview-page__export-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  background-color: #f5f6f8;
 }

@@ -13,7 +13,7 @@ export async function generatePatternFromImage(
 ): Promise<PatternResult> {
   const canvas = await loadCanvasNode(canvasId)
   const { crop } = await analyzeContentCrop(canvas, imagePath)
-  const gridSize = computeGridSize(crop.width, crop.height, config.longEdge)
+  const gridSize = computeGridSize(crop.width, crop.height, config.longEdge, config.styleMode)
 
   return processBlockPattern(
     canvas,
@@ -21,5 +21,6 @@ export async function generatePatternFromImage(
     crop,
     gridSize.width,
     gridSize.height,
+    config.styleMode,
   )
 }

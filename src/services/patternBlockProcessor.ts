@@ -1,4 +1,8 @@
-import { matchRgbGridWithExteriorBackground } from '@/services/colorMatcher'
+import {
+  applyExteriorBackgroundMask,
+  downsampleExteriorBackground,
+  matchRgbGridWithExteriorBackground,
+} from '@/services/colorMatcher'
 import { removeIsolatedSpeckles } from '@/services/patternDenoise'
 import {
   consolidateDarkOutlines,
@@ -15,6 +19,7 @@ import {
   PATTERN_SPECKLE_MAX_COUNT,
 } from '@/utils/constants'
 import type { PatternResult } from '@/types'
+import type { StyleMode } from '@/types'
 
 export async function processBlockPattern(
   canvas: CanvasNode,
@@ -22,6 +27,7 @@ export async function processBlockPattern(
   cropRect: CropRect,
   targetWidth: number,
   targetHeight: number,
+  styleMode: StyleMode = 'portrait',
 ): Promise<PatternResult> {
   const intermediateWidth = targetWidth * PATTERN_INTERMEDIATE_SCALE
   const intermediateHeight = targetHeight * PATTERN_INTERMEDIATE_SCALE
@@ -36,6 +42,7 @@ export async function processBlockPattern(
     {
       darkLumaThreshold: PATTERN_DARK_LUMA,
       darkRatioThreshold: PATTERN_DARK_RATIO,
+      styleMode,
     },
   )
 
@@ -46,6 +53,16 @@ export async function processBlockPattern(
     sample.exteriorBackground,
   )
   pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight)
+
+  const exteriorAtTarget = downsampleExteriorBackground(
+    sample.exteriorBackground,
+    intermediateWidth,
+    intermediateHeight,
+    targetWidth,
+    targetHeight,
+  )
+  pattern = applyExteriorBackgroundMask(pattern, exteriorAtTarget)
+
   pattern = consolidateDarkOutlines(pattern)
   pattern = removeIsolatedSpeckles(pattern, PATTERN_SPECKLE_MAX_COUNT)
   return pattern

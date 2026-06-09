@@ -17,6 +17,7 @@ interface PatternCanvasProps {
   mode?: 'preview' | 'export'
   hidden?: boolean
   cellPx?: number
+  creatorNickname?: string
   onReady?: () => void
 }
 
@@ -27,6 +28,7 @@ export default function PatternCanvas({
   mode = 'preview',
   hidden = false,
   cellPx: cellPxOverride,
+  creatorNickname,
   onReady,
 }: PatternCanvasProps) {
   const readyRef = useRef(false)
@@ -38,7 +40,7 @@ export default function PatternCanvas({
     }, 120)
 
     return () => clearTimeout(timer)
-  }, [pattern, config, mode, canvasId, cellPxOverride])
+  }, [pattern, config, mode, canvasId, cellPxOverride, creatorNickname])
 
   const drawPattern = () => {
     const query = Taro.createSelectorQuery()
@@ -66,7 +68,10 @@ export default function PatternCanvas({
         }
 
         if (mode === 'export') {
-          renderPatternSheetToCanvas(canvas, pattern, renderOptions)
+          renderPatternSheetToCanvas(canvas, pattern, {
+            ...renderOptions,
+            creatorNickname,
+          })
         } else {
           renderPatternToCanvas(canvas, pattern, renderOptions)
         }

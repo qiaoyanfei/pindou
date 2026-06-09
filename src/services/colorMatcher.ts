@@ -81,6 +81,75 @@ export function matchRgbGridWithExteriorBackground(
   return finalizePattern(width, height, grid)
 }
 
+function downsampleExteriorBlock(
+  exteriorBackground: boolean[],
+  width: number,
+  height: number,
+  targetWidth: number,
+  targetHeight: number,
+  pickExterior: (exteriorCount: number, blockCells: number) => boolean,
+): boolean[] {
+  if (width === targetWidth && height === targetHeight) {
+    return [...exteriorBackground]
+  }
+
+  const scaleX = width / targetWidth
+  const scaleY = height / targetHeight
+  if (!Number.isInteger(scaleX) || !Number.isInteger(scaleY) || scaleX !== scaleY) {
+    return [...exteriorBackground]
+  }
+
+  const scale = scaleX
+  const result: boolean[] = []
+
+  for (let ty = 0; ty < targetHeight; ty += 1) {
+    for (let tx = 0; tx < targetWidth; tx += 1) {
+      let exteriorCount = 0
+      let blockCells = 0
+      for (let dy = 0; dy < scale; dy += 1) {
+        for (let dx = 0; dx < scale; dx += 1) {
+          const index = (ty * scale + dy) * width + (tx * scale + dx)
+          blockCells += 1
+          if (exteriorBackground[index]) exteriorCount += 1
+        }
+      }
+      result.push(pickExterior(exteriorCount, blockCells))
+    }
+  }
+
+  return result
+}
+
+/** 2× 中间网格下采样背景标记（与 downsamplePatternMajority 同尺度） */
+export function downsampleExteriorBackground(
+  exteriorBackground: boolean[],
+  width: number,
+  height: number,
+  targetWidth: number,
+  targetHeight: number,
+): boolean[] {
+  return downsampleExteriorBlock(
+    exteriorBackground,
+    width,
+    height,
+    targetWidth,
+    targetHeight,
+    (exteriorCount, blockCells) => exteriorCount * 2 >= blockCells,
+  )
+}
+
+/** 按采样阶段背景标记强制为空，避免下采样/后处理把背景染成拼豆 */
+export function applyExteriorBackgroundMask(
+  pattern: PatternResult,
+  exteriorBackground: boolean[],
+): PatternResult {
+  const { width, height, grid } = pattern
+  const newGrid = grid.map((id, index) =>
+    exteriorBackground[index] ? PATTERN_EMPTY_CELL : id,
+  )
+  return finalizePattern(width, height, newGrid)
+}
+
 export function matchPixelsToPattern(
   pixels: Uint8ClampedArray,
   width: number,

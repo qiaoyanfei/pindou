@@ -1,8 +1,17 @@
 import type { LegacyStyleMode, PatternConfig, StyleMode } from '@/types'
 
-export const GRID_LIMITS = {
-  minEdge: 29,
-  maxEdge: 160,
+export const STYLE_MODE_LONG_EDGE_LIMITS: Record<StyleMode, { min: number; max: number }> = {
+  portrait: { min: 29, max: 300 },
+  manga: { min: 29, max: 160 },
+}
+
+export function getLongEdgeLimits(styleMode: StyleMode): { min: number; max: number } {
+  return STYLE_MODE_LONG_EDGE_LIMITS[styleMode]
+}
+
+export function clampLongEdge(longEdge: number, styleMode: StyleMode): number {
+  const { min, max } = getLongEdgeLimits(styleMode)
+  return Math.max(min, Math.min(max, longEdge))
 }
 
 export const EXPORT_LIMITS = {
@@ -15,12 +24,17 @@ export const STYLE_MODE_DEFAULT_LONG_EDGE: Record<StyleMode, number> = {
   manga: 52,
 }
 
+export const STYLE_MODE_DEFAULT_EXPORT_CELL_PX: Record<StyleMode, number> = {
+  portrait: 20,
+  manga: 28,
+}
+
 export const DEFAULT_CONFIG: PatternConfig = {
   paletteId: 'mard221',
   longEdge: STYLE_MODE_DEFAULT_LONG_EDGE.portrait,
   showGrid: true,
   showColorCode: true,
-  exportCellPx: 28,
+  exportCellPx: STYLE_MODE_DEFAULT_EXPORT_CELL_PX.portrait,
   styleMode: 'portrait',
 }
 
@@ -32,7 +46,7 @@ export const STYLE_MODE_LABELS: Record<StyleMode, string> = {
 }
 
 export const STYLE_MODE_HINTS: Record<StyleMode, string> = {
-  portrait: `适合人像照片，白色干净背景，默认长边 ${STYLE_MODE_DEFAULT_LONG_EDGE.portrait} 格`,
+  portrait: `适合人像照片，白色干净背景，长边 ${STYLE_MODE_LONG_EDGE_LIMITS.portrait.min}–${STYLE_MODE_LONG_EDGE_LIMITS.portrait.max} 格，默认 ${STYLE_MODE_DEFAULT_LONG_EDGE.portrait} 格`,
   manga: `适合插画 / 二次元，白色干净背景，默认长边 ${STYLE_MODE_DEFAULT_LONG_EDGE.manga} 格`,
 }
 
@@ -47,6 +61,21 @@ export const PATTERN_DARK_LUMA = 48
 
 /** 块内暗像素占比阈值（描边保护） */
 export const PATTERN_DARK_RATIO = 0.22
+
+/** 块内同时有足够亮像素时视为白+描边混合，不整格强制判黑 */
+export const PATTERN_MIXED_LIGHT_RATIO = 0.35
+
+export const PATTERN_LIGHT_NEUTRAL_IDS = new Set(['H2', 'H13'])
+
+const PATTERN_DARK_IDS = new Set(['H16', 'H7', 'H17', 'H3', 'H18', 'H9'])
+
+export function isLightNeutralId(id: string): boolean {
+  return PATTERN_LIGHT_NEUTRAL_IDS.has(id)
+}
+
+export function isDarkBeadId(id: string): boolean {
+  return PATTERN_DARK_IDS.has(id)
+}
 
 /** 全图出现次数 ≤ 该值的色号视为孤立杂点并剔除 */
 export const PATTERN_SPECKLE_MAX_COUNT = 3
@@ -66,8 +95,52 @@ export const BACKGROUND_LIGHT_CHROMA = 36
 /** 格块内超过该比例的边缘连通背景像素 → 该格不参与拼豆 */
 export const BACKGROUND_CELL_EXTERIOR_RATIO = 0.55
 
+/** 格块内非背景像素 ≥ 该比例时，视为跨边界轮廓格，仍参与拼豆（人物模式） */
+export const BACKGROUND_CELL_INTERIOR_MIN_RATIO_PORTRAIT = 0.28
+
+/** 漫画/插画纯色底：不放宽标空，避免主体外背景被当成内容 */
+export const BACKGROUND_CELL_INTERIOR_MIN_RATIO_MANGA = 0
+
+export function getBackgroundCellInteriorMinRatio(styleMode: StyleMode): number {
+  return styleMode === 'portrait'
+    ? BACKGROUND_CELL_INTERIOR_MIN_RATIO_PORTRAIT
+    : BACKGROUND_CELL_INTERIOR_MIN_RATIO_MANGA
+}
+
+/** 格块是否标为 crop 外背景（不参与拼豆） */
+export function isExteriorBackgroundCell(
+  exteriorRatio: number,
+  interiorRatio: number,
+  styleMode: StyleMode,
+): boolean {
+  if (exteriorRatio < BACKGROUND_CELL_EXTERIOR_RATIO) return false
+  const interiorMinRatio = getBackgroundCellInteriorMinRatio(styleMode)
+  if (interiorMinRatio <= 0) return true
+  return interiorRatio < interiorMinRatio
+}
+
 /** 背景分析时缩小原图的长边上限 */
 export const BACKGROUND_ANALYSIS_MAX_EDGE = 512
+
+/** 对称轴可信时用于裁剪居中（仅几何对齐，不合并色号） */
+export const SYMMETRY_AXIS_ALIGN_MIN_SCORE = 0.35
+
+/** 对称轴检测 / 裁剪对齐使用的面部纵向范围（占比） */
+export const SYMMETRY_FACE_BAND_TOP = 0.2
+export const SYMMETRY_FACE_BAND_BOTTOM = 0.58
+
+/** 对称轴搜索范围（占网格宽度比例） */
+export const SYMMETRY_AXIS_SEARCH_MIN = 0.42
+export const SYMMETRY_AXIS_SEARCH_MAX = 0.58
+
+/** 距对称轴最大成对偏移（格，用于轴检测采样） */
+export const SYMMETRY_MAX_PAIR_OFFSET = 12
+
+/** 原图像素镜像匹配的 RGB 容差 */
+export const SYMMETRY_RGB_MATCH_TOLERANCE = 36
+
+/** 导出图水印：小程序名称 */
+export const MINI_PROGRAM_NAME = '拼豆图纸'
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -84,13 +157,12 @@ export function normalizeConfig(config?: Partial<PatternConfig> & { styleMode?: 
     ...DEFAULT_CONFIG,
     ...config,
     styleMode,
-    longEdge: clamp(
+    longEdge: clampLongEdge(
       config?.longEdge ?? STYLE_MODE_DEFAULT_LONG_EDGE[styleMode],
-      GRID_LIMITS.minEdge,
-      GRID_LIMITS.maxEdge,
+      styleMode,
     ),
     exportCellPx: clamp(
-      config?.exportCellPx ?? DEFAULT_CONFIG.exportCellPx,
+      config?.exportCellPx ?? STYLE_MODE_DEFAULT_EXPORT_CELL_PX[styleMode],
       EXPORT_LIMITS.minCellPx,
       EXPORT_LIMITS.maxCellPx,
     ),
