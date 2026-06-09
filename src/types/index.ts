@@ -30,9 +30,9 @@ export interface RenderOptions {
   showGrid: boolean
   showColorCode: boolean
   minCellPxForLabel?: number
-  /** 导出图水印署名 */
+  /** 导出图顶部作者署名 */
   creatorNickname?: string
-  /** 导出图水印小程序名 */
+  /** 导出图顶部与全局水印小程序名 */
   appName?: string
 }
 

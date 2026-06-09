@@ -38,7 +38,7 @@ export default function CreatorSignatureInput({
           onBlur={(event) => handleBlur(event.detail.value)}
         />
       </View>
-      <Text className='creator-signature__hint'>保存图纸时将写入水印，保护作品署名</Text>
+      <Text className='creator-signature__hint'>保存图纸时将写入顶部信息，保护作品署名</Text>
     </View>
   )
 }

@@ -57,8 +57,8 @@ export default function IndexPage() {
   return (
     <View className='index-page'>
       <View className='index-page__hero'>
-        <Text className='index-page__title'>拼豆图纸生成器</Text>
-        <Text className='index-page__subtitle'>上传图片，一键生成 MARD 221 拼豆图纸</Text>
+        <Text className='index-page__title'>拼豆豆</Text>
+        <Text className='index-page__subtitle'>上传图片，一键生成 MARD 221 拼豆豆图纸</Text>
       </View>
 
       <ImageUploader imagePath={imagePath} onSelect={setImagePath} />

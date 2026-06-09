@@ -93,7 +93,7 @@ export default function PreviewPage() {
       if (job === 'save' && (message.includes('auth deny') || message.includes('authorize'))) {
         Taro.showModal({
           title: '需要相册权限',
-          content: '请在设置中允许保存图片到相册，以便保存拼豆图纸。',
+          content: '请在设置中允许保存图片到相册，以便保存拼豆豆图纸。',
           confirmText: '去设置',
           success: (res) => {
             if (res.confirm) Taro.openSetting()

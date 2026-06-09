@@ -3,12 +3,12 @@ export default defineAppConfig({
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#fff',
-    navigationBarTitleText: '拼豆图纸',
+    navigationBarTitleText: '拼豆豆',
     navigationBarTextStyle: 'black',
   },
   permission: {
     'scope.writePhotosAlbum': {
-      desc: '用于保存生成的拼豆图纸到相册',
+      desc: '用于保存生成的拼豆豆图纸到相册',
     },
   },
 })

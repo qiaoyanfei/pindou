@@ -1,6 +1,6 @@
 import { getColorById } from '@/services/palette'
 import { isEmptyCell } from '@/services/patternStats'
-import { drawCornerGridWatermarks } from '@/services/patternWatermark'
+import { drawGlobalWatermarks } from '@/services/patternWatermark'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import type { PatternResult, RenderOptions } from '@/types'
 
@@ -15,6 +15,33 @@ const EMPTY_CELL_FILL = '#f3f4f6'
 const AXIS_TEXT_COLOR = '#666666'
 const HEADER_TEXT_COLOR = '#333333'
 const LEGEND_TEXT_COLOR = '#444444'
+
+function buildSheetHeaderText(
+  appName: string,
+  creatorNickname: string | undefined,
+  gridWidth: number,
+  gridHeight: number,
+  totalBeads: number,
+  colorCount: number,
+): string {
+  const author = creatorNickname?.trim() ?? ''
+  return `由「${appName}」小程序生成｜作者：${author}｜规格：${gridWidth}×${gridHeight}｜总用豆数：${totalBeads}｜总色卡数：${colorCount}`
+}
+
+function resolveHeaderFontSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  baseFontSize: number,
+): number {
+  let fontSize = baseFontSize
+  while (fontSize >= 9) {
+    ctx.font = `600 ${fontSize}px sans-serif`
+    if (ctx.measureText(text).width <= maxWidth) return fontSize
+    fontSize -= 1
+  }
+  return 9
+}
 
 function getLabelColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16)
@@ -229,15 +256,25 @@ export function renderPatternSheetToCanvas(
   const gridOriginX = layout.padding + layout.axisWidth
   const gridOriginY = layout.padding + layout.headerHeight + layout.axisHeight
 
+  const headerText = buildSheetHeaderText(
+    appName,
+    creatorNickname,
+    width,
+    height,
+    totalBeads,
+    Object.keys(stats).length,
+  )
+  const headerFontSize = resolveHeaderFontSize(
+    ctx,
+    headerText,
+    layout.width - layout.padding * 2,
+    Math.max(11, Math.round(cellPx * 0.52)),
+  )
   ctx.fillStyle = HEADER_TEXT_COLOR
-  ctx.font = `600 ${Math.max(12, Math.round(cellPx * 0.65))}px sans-serif`
+  ctx.font = `600 ${headerFontSize}px sans-serif`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(
-    `豆画 / MARD(${totalBeads})`,
-    layout.padding,
-    layout.padding + layout.headerHeight / 2,
-  )
+  ctx.fillText(headerText, layout.padding, layout.padding + layout.headerHeight / 2)
 
   const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))
   ctx.fillStyle = AXIS_TEXT_COLOR
@@ -273,17 +310,6 @@ export function renderPatternSheetToCanvas(
       )
     }
   }
-
-  drawCornerGridWatermarks(
-    ctx,
-    gridOriginX,
-    gridOriginY,
-    layout.gridWidth,
-    layout.gridHeight,
-    cellPx,
-    appName,
-    creatorNickname ?? '',
-  )
 
   if (showGrid) {
     drawGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx)
@@ -339,6 +365,8 @@ export function renderPatternSheetToCanvas(
     ctx.textBaseline = 'middle'
     ctx.fillText(`${id} (${count})`, itemX + swatchSize + 6, itemY + layout.legendItemHeight / 2)
   })
+
+  drawGlobalWatermarks(ctx, layout.width, layout.height, cellPx, appName)
 }
 
 export function buildStatsTsv(stats: Record<string, number>): string {
