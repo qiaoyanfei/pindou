@@ -38,5 +38,17 @@ export interface RenderOptions {
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'
 
+export const GENERATE_CONFIG_STORAGE_KEY = 'pindou_generate_config'
+
+export const PUBLISH_STORAGE_KEY = 'pindou_publish_payload'
+
+export interface PublishStoragePayload {
+  pattern: PatternResult
+  config: PatternConfig
+  coverPath?: string
+  draftId?: string
+  title?: string
+}
+
 /** 兼容旧版缓存中的 original */
 export type LegacyStyleMode = StyleMode | 'original'

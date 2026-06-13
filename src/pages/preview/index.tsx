@@ -1,14 +1,23 @@
-import { View, Text, Button, ScrollView, CoverView } from '@tarojs/components'
+import { View, Text, Button, ScrollView, CoverView, Image } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useCallback, useRef, useState } from 'react'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
-import CreatorSignatureInput from '@/components/CreatorSignatureInput'
 import { canvasToTempFile } from '@/utils/canvas'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
-import { DEFAULT_CONFIG, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
-import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
+import { DEFAULT_CONFIG, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
+import { getCoverCellPx } from '@/services/patternRenderer'
+import { saveDraft } from '@/services/communityService'
+import saveIcon from '@/assets/icons/preview-save.svg'
+import publishIcon from '@/assets/icons/preview-publish.svg'
+import {
+  PATTERN_STORAGE_KEY,
+  PUBLISH_STORAGE_KEY,
+  type PatternConfig,
+  type PatternResult,
+  type PublishStoragePayload,
+} from '@/types'
 import './index.scss'
 
 interface StoredPayload {
@@ -16,15 +25,17 @@ interface StoredPayload {
   config: PatternConfig
 }
 
-type ExportJob = 'save' | 'fullscreen'
+type ExportJob = 'save' | 'fullscreen' | 'cover'
 
 export default function PreviewPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
   const [saving, setSaving] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportJob, setExportJob] = useState<ExportJob | null>(null)
   const [creatorNickname, setCreatorNickname] = useState('')
+  const [draftId, setDraftId] = useState<string>()
   const exportJobRef = useRef<ExportJob | null>(null)
   const exportBusyRef = useRef(false)
   exportBusyRef.current = exportBusy
@@ -33,9 +44,7 @@ export default function PreviewPage() {
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       Taro.showToast({ title: '请先生成图纸', icon: 'none' })
-      setTimeout(() => {
-        Taro.navigateBack()
-      }, 800)
+      setTimeout(() => Taro.navigateBack(), 800)
       return
     }
 
@@ -44,6 +53,7 @@ export default function PreviewPage() {
     setExportJob(null)
     setExportBusy(false)
     setCreatorNickname(resolveCreatorNickname())
+    setDraftId(Taro.getStorageSync('currentDraftId') as string | undefined)
   })
 
   const beginExportJob = (job: ExportJob) => {
@@ -59,11 +69,39 @@ export default function PreviewPage() {
     setExportBusy(false)
   }
 
+  const persistDraft = async (coverPath: string) => {
+    if (!pattern) return draftId
+    const nextDraftId = await saveDraft({
+      draftId,
+      title: '未命名图纸',
+      coverPath,
+      pattern,
+      config,
+    })
+    setDraftId(nextDraftId)
+    Taro.setStorageSync('currentDraftId', nextDraftId)
+    return nextDraftId
+  }
+
   const handleExportCanvasReady = async () => {
     const job = exportJobRef.current
-    if (!job) return
+    if (!job || !pattern) return
 
     try {
+      if (job === 'cover') {
+        setPublishing(true)
+        const coverPath = await canvasToTempFile('cover-canvas')
+        const payload: PublishStoragePayload = {
+          pattern,
+          config,
+          coverPath,
+          draftId,
+        }
+        Taro.setStorageSync(PUBLISH_STORAGE_KEY, payload)
+        Taro.navigateTo({ url: '/pages/publish/index' })
+        return
+      }
+
       if (job === 'save') {
         setSaving(true)
         Taro.showLoading({ title: '保存中...' })
@@ -75,6 +113,12 @@ export default function PreviewPage() {
 
         const tempFilePath = await canvasToTempFile('export-canvas')
         await Taro.saveImageToPhotosAlbum({ filePath: tempFilePath })
+
+        try {
+          await persistDraft(tempFilePath)
+        } catch {
+          // 草稿同步失败不阻断保存相册
+        }
 
         Taro.hideLoading()
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
@@ -101,12 +145,18 @@ export default function PreviewPage() {
         })
       } else {
         Taro.showToast({
-          title: job === 'save' ? '保存失败' : '预览失败',
+          title:
+            job === 'save'
+              ? '保存失败'
+              : job === 'cover'
+                ? '准备发布失败'
+                : '预览失败',
           icon: 'none',
         })
       }
     } finally {
       if (job === 'save') setSaving(false)
+      if (job === 'cover') setPublishing(false)
       finishExportJob()
     }
   }
@@ -114,6 +164,11 @@ export default function PreviewPage() {
   const handleSave = () => {
     if (!pattern || saving || exportBusy) return
     beginExportJob('save')
+  }
+
+  const handlePublish = () => {
+    if (!pattern || publishing || exportBusy) return
+    beginExportJob('cover')
   }
 
   const handleFullscreen = useCallback(() => {
@@ -132,48 +187,54 @@ export default function PreviewPage() {
 
   return (
     <View className='preview-page'>
-      <View className='preview-page__summary'>
-        <View className='preview-page__block'>
-          <Text className='preview-page__headline'>
-            {pattern.width}×{pattern.height} 格 · {pattern.totalBeads} 颗
-          </Text>
-          <Text className='preview-page__desc'>
-            MARD 221 标准色 · 5mm 拼豆 · {STYLE_MODE_LABELS[config.styleMode]}模式
-          </Text>
-        </View>
-        <View className='preview-page__block'>
-          <Text className='preview-page__headline'>署名</Text>
-          <CreatorSignatureInput value={creatorNickname} onChange={setCreatorNickname} />
-        </View>
-      </View>
+      <ScrollView scrollY className='preview-page__scroll' enhanced showScrollbar={false}>
+        <View className='preview-page__content'>
+          <View className='preview-page__tags'>
+            <Text className='preview-page__tag'>{config.longEdge}格</Text>
+            <Text className='preview-page__tag'>MARD 221 标准色</Text>
+            <Text className='preview-page__tag'>{getExportClarityLabel(config.exportCellPx)}</Text>
+          </View>
 
-      <View className='preview-page__preview-slot'>
-        <ZoomablePatternViewer
-          pattern={pattern}
-          config={config}
-          onFullscreen={handleFullscreen}
-        />
-      </View>
+          <View className='preview-page__preview-slot'>
+            <ZoomablePatternViewer
+              pattern={pattern}
+              config={config}
+              onFullscreen={handleFullscreen}
+            />
+          </View>
 
-      <ScrollView scrollY className='preview-page__stats-scroll'>
-        <ColorStats pattern={pattern} />
+          <View className='preview-page__stats'>
+            <ColorStats pattern={pattern} />
+          </View>
+
+          <View className='preview-page__actions'>
+            <Button
+              className='preview-page__btn preview-page__btn--ghost'
+              loading={saving || (exportBusy && exportJob === 'save')}
+              disabled={saving || exportBusy}
+              onClick={handleSave}
+            >
+              <View className='preview-page__btn-inner'>
+                <Image className='preview-page__btn-icon' src={saveIcon} mode='aspectFit' />
+                <Text>保存相册</Text>
+              </View>
+            </Button>
+            <Button
+              className='preview-page__btn preview-page__btn--primary'
+              loading={publishing || (exportBusy && exportJob === 'cover')}
+              disabled={saving || exportBusy}
+              onClick={handlePublish}
+            >
+              <View className='preview-page__btn-inner'>
+                <Image className='preview-page__btn-icon preview-page__btn-icon--primary' src={publishIcon} mode='aspectFit' />
+                <Text>发布</Text>
+              </View>
+            </Button>
+          </View>
+        </View>
       </ScrollView>
 
-      <View className='preview-page__actions'>
-        <Button className='preview-page__btn preview-page__btn--ghost' onClick={() => Taro.navigateBack()}>
-          重新选图
-        </Button>
-        <Button
-          className='preview-page__btn preview-page__btn--primary'
-          loading={saving || (exportBusy && exportJob === 'save')}
-          disabled={saving || exportBusy}
-          onClick={handleSave}
-        >
-          保存相册
-        </Button>
-      </View>
-
-      {exportJob && (
+      {exportJob && exportJob !== 'cover' && (
         <PatternCanvas
           canvasId='export-canvas'
           pattern={pattern}
@@ -181,6 +242,18 @@ export default function PreviewPage() {
           mode='export'
           hidden
           creatorNickname={creatorNickname}
+          onReady={handleExportCanvasReady}
+        />
+      )}
+
+      {exportJob === 'cover' && (
+        <PatternCanvas
+          canvasId='cover-canvas'
+          pattern={pattern}
+          config={config}
+          mode='preview'
+          hidden
+          cellPx={getCoverCellPx(pattern)}
           onReady={handleExportCanvasReady}
         />
       )}

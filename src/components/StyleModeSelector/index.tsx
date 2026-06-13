@@ -1,5 +1,7 @@
-import { View, Text } from '@tarojs/components'
-import { STYLE_MODE_HINTS, STYLE_MODE_LABELS } from '@/utils/constants'
+import { View, Text, Image } from '@tarojs/components'
+import { STYLE_MODE_LABELS, STYLE_MODE_SUBTITLES } from '@/utils/constants'
+import modePortrait from '@/assets/generate/mode-portrait.png'
+import modeManga from '@/assets/generate/mode-manga.png'
 import type { StyleMode } from '@/types'
 import './index.scss'
 
@@ -8,24 +10,38 @@ interface StyleModeSelectorProps {
   onChange: (mode: StyleMode) => void
 }
 
-export default function StyleModeSelector({ value, onChange }: StyleModeSelectorProps) {
-  const modes: StyleMode[] = ['portrait', 'manga']
+const MODES: { key: StyleMode; avatar: string }[] = [
+  { key: 'portrait', avatar: modePortrait },
+  { key: 'manga', avatar: modeManga },
+]
 
+export default function StyleModeSelector({ value, onChange }: StyleModeSelectorProps) {
   return (
     <View className='style-mode'>
-      <Text className='style-mode__label'>转换模式</Text>
-      <View className='style-mode__options'>
-        {modes.map((mode) => (
-          <View
-            key={mode}
-            className={`style-mode__option${value === mode ? ' style-mode__option--active' : ''}`}
-            onClick={() => onChange(mode)}
-          >
-            {STYLE_MODE_LABELS[mode]}
-          </View>
-        ))}
+      <Text className='style-mode__title'>选择模式</Text>
+      <View className='style-mode__cards'>
+        {MODES.map((mode) => {
+          const isActive = value === mode.key
+          return (
+            <View
+              key={mode.key}
+              className={`style-mode__card${isActive ? ' style-mode__card--active' : ''}`}
+              onClick={() => onChange(mode.key)}
+            >
+              {isActive ? (
+                <View className='style-mode__check'>
+                  <Text className='style-mode__check-icon'>✓</Text>
+                </View>
+              ) : null}
+              <Image className='style-mode__avatar' src={mode.avatar} mode='aspectFit' />
+              <Text className={`style-mode__name${isActive ? ' style-mode__name--active' : ''}`}>
+                {STYLE_MODE_LABELS[mode.key]}
+              </Text>
+              <Text className='style-mode__subtitle'>{STYLE_MODE_SUBTITLES[mode.key]}</Text>
+            </View>
+          )
+        })}
       </View>
-      <Text className='style-mode__hint'>{STYLE_MODE_HINTS[value]}</Text>
     </View>
   )
 }

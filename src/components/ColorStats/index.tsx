@@ -1,39 +1,32 @@
 import { View, Text } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import { useMemo, useState } from 'react'
 import { getColorById } from '@/services/palette'
-import { buildStatsTsv } from '@/services/patternRenderer'
+import { getColorDisplayName } from '@/utils/colorDisplayName'
 import type { PatternResult } from '@/types'
 import './index.scss'
 
 interface ColorStatsProps {
   pattern: PatternResult
+  previewLimit?: number
 }
 
-export default function ColorStats({ pattern }: ColorStatsProps) {
-  const entries = Object.entries(pattern.stats).sort((a, b) => b[1] - a[1])
+export default function ColorStats({ pattern, previewLimit = 4 }: ColorStatsProps) {
+  const [expanded, setExpanded] = useState(false)
 
-  const handleCopy = async () => {
-    try {
-      await Taro.setClipboardData({
-        data: buildStatsTsv(pattern.stats),
-      })
-      Taro.showToast({ title: '已复制清单', icon: 'success' })
-    } catch {
-      Taro.showToast({ title: '复制失败', icon: 'none' })
-    }
-  }
+  const entries = useMemo(
+    () => Object.entries(pattern.stats).sort((a, b) => b[1] - a[1]),
+    [pattern.stats],
+  )
+
+  const visibleEntries = expanded ? entries : entries.slice(0, previewLimit)
+  const colorCount = entries.length
 
   return (
     <View className='color-stats'>
-      <View className='color-stats__header'>
-        <Text className='color-stats__title'>色号用量</Text>
-        <Text className='color-stats__copy' onClick={handleCopy}>
-          复制清单
-        </Text>
-      </View>
+      <Text className='color-stats__title'>色号用量（共 {colorCount} 种）</Text>
 
       <View className='color-stats__list'>
-        {entries.map(([id, count]) => {
+        {visibleEntries.map(([id, count]) => {
           const color = getColorById(id)
           const percent = ((count / pattern.totalBeads) * 100).toFixed(1)
           return (
@@ -42,16 +35,24 @@ export default function ColorStats({ pattern }: ColorStatsProps) {
                 className='color-stats__swatch'
                 style={{ backgroundColor: color?.hex ?? '#ccc' }}
               />
-              <View className='color-stats__info'>
+              <View className='color-stats__meta'>
                 <Text className='color-stats__id'>{id}</Text>
-                <Text className='color-stats__count'>
-                  {count} 颗 · {percent}%
-                </Text>
+                <Text className='color-stats__name'>{getColorDisplayName(id)}</Text>
+              </View>
+              <View className='color-stats__values'>
+                <Text className='color-stats__count'>{count} 颗</Text>
+                <Text className='color-stats__percent'>{percent}%</Text>
               </View>
             </View>
           )
         })}
       </View>
+
+      {colorCount > previewLimit && (
+        <Text className='color-stats__more' onClick={() => setExpanded((value) => !value)}>
+          {expanded ? '收起色号 ^' : '查看全部色号 >'}
+        </Text>
+      )}
     </View>
   )
 }

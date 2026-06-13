@@ -1,0 +1,170 @@
+@import '@/styles/variables.scss';
+
+.publish-page {
+  min-height: 100vh;
+  background: $color-bg;
+  padding: 24px 32px 180px;
+  box-sizing: border-box;
+}
+
+.publish-page--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: $color-text-secondary;
+  font-size: 28px;
+}
+
+.publish-page__preview {
+  @include card;
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.publish-page__cover-wrap {
+  width: 160px;
+  height: 160px;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid #eceff3;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.publish-page__cover {
+  width: 100%;
+  height: 100%;
+}
+
+.publish-page__cover--empty {
+  background: $color-primary-light;
+}
+
+.publish-page__preview-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.publish-page__preview-size {
+  font-size: 30px;
+  font-weight: 600;
+  color: $color-text;
+  margin-bottom: 12px;
+}
+
+.publish-page__preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.publish-page__preview-tag {
+  @include pill-tag;
+}
+
+.publish-page__form {
+  @include card;
+  padding: 28px 24px;
+}
+
+.publish-page__field + .publish-page__field {
+  margin-top: 28px;
+}
+
+.publish-page__label {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: $color-text;
+  margin-bottom: 14px;
+}
+
+.publish-page__label-hint {
+  font-size: 22px;
+  font-weight: 400;
+  color: $color-text-secondary;
+}
+
+.publish-page__input {
+  width: 100%;
+  height: 80px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: $color-bg;
+  font-size: 28px;
+  color: $color-text;
+  box-sizing: border-box;
+}
+
+.publish-page__textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 20px;
+  border-radius: 16px;
+  background: $color-bg;
+  font-size: 28px;
+  color: $color-text;
+  box-sizing: border-box;
+}
+
+.publish-page__categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.publish-page__category {
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: $color-bg;
+  color: $color-text-secondary;
+  font-size: 26px;
+}
+
+.publish-page__category.is-active {
+  background: $color-primary-light;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.publish-page__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.publish-page__toggle-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  color: $color-text-secondary;
+}
+
+.publish-page__footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 32px calc(20px + env(safe-area-inset-bottom));
+  background: $color-card;
+  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.08);
+}
+
+.publish-page__submit {
+  width: 100%;
+  border-radius: 999px;
+  background: $color-primary !important;
+  color: #fff !important;
+  font-size: 30px;
+  font-weight: 600;
+  border: none;
+}

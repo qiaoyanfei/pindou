@@ -1,0 +1,41 @@
+$color-primary: #7c3aed;
+$color-primary-dark: #6d28d9;
+$color-primary-light: #ede9fe;
+$color-primary-soft: #f5f3ff;
+$color-text: #1f2937;
+$color-text-secondary: #6b7280;
+$color-border: #e5e7eb;
+$color-bg: #f5f6f8;
+$color-card: #ffffff;
+$color-warn-bg: #fffbeb;
+$color-warn-text: #92400e;
+$color-success: #10b981;
+$radius-lg: 24px;
+$radius-md: 16px;
+$radius-sm: 12px;
+$tabbar-height: 120px;
+$shadow-card: 0 8px 24px rgba(15, 23, 42, 0.06);
+
+@mixin card {
+  background: $color-card;
+  border-radius: $radius-md;
+  box-shadow: $shadow-card;
+}
+
+@mixin pill-tag {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: $color-primary-light;
+  color: $color-primary;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+@mixin primary-button {
+  background: linear-gradient(135deg, #8b5cf6, $color-primary) !important;
+  color: #fff !important;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+}

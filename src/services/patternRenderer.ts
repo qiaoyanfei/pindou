@@ -377,6 +377,11 @@ export function buildStatsTsv(stats: Record<string, number>): string {
   return ['色号\t数量', ...rows].join('\n')
 }
 
+export function getCoverCellPx(pattern: PatternResult, maxLongEdgePx = 640): number {
+  const longEdge = Math.max(pattern.width, pattern.height)
+  return Math.max(4, Math.min(12, Math.floor(maxLongEdgePx / longEdge)))
+}
+
 export function getPreviewCellPx(
   pattern: PatternResult,
   maxCanvasPx = 600,

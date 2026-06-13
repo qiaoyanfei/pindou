@@ -41,13 +41,24 @@ export const DEFAULT_CONFIG: PatternConfig = {
 export const PALETTE_VERSION = 'mard221-v1'
 
 export const STYLE_MODE_LABELS: Record<StyleMode, string> = {
-  portrait: '人物',
-  manga: '漫画',
+  portrait: '人物模式',
+  manga: '漫画模式',
+}
+
+export const STYLE_MODE_SUBTITLES: Record<StyleMode, string> = {
+  portrait: '适合头像、人物、穿搭',
+  manga: '适合插画、卡通、萌宠等',
 }
 
 export const STYLE_MODE_HINTS: Record<StyleMode, string> = {
-  portrait: `适合人像照片，白色干净背景，长边 ${STYLE_MODE_LONG_EDGE_LIMITS.portrait.min}–${STYLE_MODE_LONG_EDGE_LIMITS.portrait.max} 格，默认 ${STYLE_MODE_DEFAULT_LONG_EDGE.portrait} 格`,
-  manga: `适合插画 / 二次元，白色干净背景，默认长边 ${STYLE_MODE_DEFAULT_LONG_EDGE.manga} 格`,
+  portrait: STYLE_MODE_SUBTITLES.portrait,
+  manga: STYLE_MODE_SUBTITLES.manga,
+}
+
+export function getExportClarityLabel(exportCellPx: number): string {
+  if (exportCellPx >= 34) return '高清清晰度'
+  if (exportCellPx >= 30) return '较高清晰度'
+  return '标准清晰度'
 }
 
 /** 每格分块采样密度（4×4 像素/格） */

@@ -1,5 +1,6 @@
 {
   "miniprogramRoot": "dist/",
+  "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "pindou",
   "description": "拼豆图纸生成器",
   "appid": "wx109c000e1b6615f4",

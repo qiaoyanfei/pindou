@@ -1,0 +1,180 @@
+import { View, Text, Image, Input, Textarea, Switch, Button } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
+import { useState } from 'react'
+import {
+  CATEGORY_OPTIONS,
+  fetchDraft,
+  publishPost,
+} from '@/services/communityService'
+import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
+import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
+import type { PostCategory } from '@/types/community'
+import './index.scss'
+
+export default function PublishPage() {
+  const [payload, setPayload] = useState<PublishStoragePayload | null>(null)
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState<PostCategory>(CATEGORY_OPTIONS[0])
+  const [description, setDescription] = useState('')
+  const [isPublic, setIsPublic] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [coverPreview, setCoverPreview] = useState('')
+
+  useDidShow(() => {
+    const stored = Taro.getStorageSync(PUBLISH_STORAGE_KEY) as PublishStoragePayload | undefined
+    if (!stored?.pattern) {
+      Taro.showToast({ title: '请先准备图纸', icon: 'none' })
+      setTimeout(() => Taro.navigateBack(), 800)
+      return
+    }
+    setPayload(stored)
+    setTitle(stored.title || '')
+    setCoverPreview(stored.coverPath || '')
+  })
+
+  const handleSubmit = async () => {
+    if (!payload?.pattern) return
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) {
+      Taro.showToast({ title: '请填写标题', icon: 'none' })
+      return
+    }
+
+    setSubmitting(true)
+    Taro.showLoading({ title: '发布中...' })
+    try {
+      let coverFileId = ''
+      let patternFileId = ''
+
+      if (payload.draftId) {
+        const draft = await fetchDraft(payload.draftId)
+        coverFileId = draft.coverFileId
+        patternFileId = draft.patternFileId
+      } else {
+        if (!payload.coverPath) {
+          throw new Error('缺少封面图，请返回预览页重新操作')
+        }
+        const stamp = Date.now()
+        coverFileId = await uploadCloudFile(`posts/covers/${stamp}.png`, payload.coverPath)
+        patternFileId = await uploadJsonCloudFile(`posts/patterns/${stamp}.json`, payload.pattern)
+      }
+
+      const result = await publishPost({
+        draftId: payload.draftId,
+        title: trimmedTitle,
+        category,
+        description: description.trim(),
+        visibility: isPublic ? 'public' : 'private',
+        coverFileId,
+        patternFileId,
+        pattern: payload.pattern,
+        config: payload.config,
+      })
+
+      Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
+      Taro.hideLoading()
+      Taro.redirectTo({
+        url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}`,
+      })
+    } catch (error) {
+      Taro.hideLoading()
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '发布失败',
+        icon: 'none',
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!payload?.pattern) {
+    return <View className='publish-page publish-page--empty'>加载中...</View>
+  }
+
+  const { pattern, config } = payload
+
+  return (
+    <View className='publish-page'>
+      <View className='publish-page__preview'>
+        <View className='publish-page__cover-wrap'>
+          {coverPreview ? (
+            <Image className='publish-page__cover' src={coverPreview} mode='aspectFit' />
+          ) : (
+            <View className='publish-page__cover publish-page__cover--empty' />
+          )}
+        </View>
+        <View className='publish-page__preview-meta'>
+          <Text className='publish-page__preview-size'>
+            {pattern.width}×{pattern.height} · {pattern.totalBeads} 颗
+          </Text>
+          <View className='publish-page__preview-tags'>
+            <Text className='publish-page__preview-tag'>MARD221</Text>
+            <Text className='publish-page__preview-tag'>{config.styleMode === 'manga' ? '漫画模式' : '人物模式'}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View className='publish-page__form'>
+        <View className='publish-page__field'>
+          <Text className='publish-page__label'>
+            标题 <Text className='publish-page__label-hint'>（必填）</Text>
+          </Text>
+          <Input
+            className='publish-page__input'
+            value={title}
+            maxlength={40}
+            placeholder='给作品起个名字'
+            onInput={(event) => setTitle(event.detail.value)}
+          />
+        </View>
+
+        <View className='publish-page__field'>
+          <Text className='publish-page__label'>分类</Text>
+          <View className='publish-page__categories'>
+            {CATEGORY_OPTIONS.map((item) => (
+              <Text
+                key={item}
+                className={`publish-page__category${category === item ? ' is-active' : ''}`}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </Text>
+            ))}
+          </View>
+        </View>
+
+        <View className='publish-page__field'>
+          <Text className='publish-page__label'>简介</Text>
+          <Textarea
+            className='publish-page__textarea'
+            value={description}
+            maxlength={200}
+            placeholder='介绍一下你的作品（选填）'
+            onInput={(event) => setDescription(event.detail.value)}
+          />
+        </View>
+
+        <View className='publish-page__field'>
+          <View className='publish-page__toggle-row'>
+            <Text className='publish-page__label'>公开作品</Text>
+            <Switch checked={isPublic} color='#7c3aed' onChange={(event) => setIsPublic(event.detail.value)} />
+          </View>
+          <Text className='publish-page__toggle-hint'>
+            {isPublic ? '公开作品可获得小豆奖励' : '仅自己可见，不发放小豆奖励'}
+          </Text>
+        </View>
+      </View>
+
+      <View className='publish-page__footer'>
+        <Button
+          className='publish-page__submit'
+          loading={submitting}
+          disabled={submitting}
+          onClick={handleSubmit}
+        >
+          发布作品
+        </Button>
+      </View>
+    </View>
+  )
+}

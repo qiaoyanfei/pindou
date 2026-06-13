@@ -1,0 +1,100 @@
+@import '@/styles/variables.scss';
+
+$tabbar-content-height: 98px;
+$tabbar-icon-slot: 48px;
+$tabbar-label-height: 28px;
+$tabbar-icon-label-gap: 8px;
+$tabbar-bottom-padding: 10px;
+$tabbar-center-btn-size: 88px;
+
+.app-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: #fff;
+  border-top: 1px solid #eceff3;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app-tabbar__inner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  height: $tabbar-content-height;
+  background: #fff;
+}
+
+.app-tabbar__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  padding-bottom: $tabbar-bottom-padding;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.app-tabbar__icon-slot {
+  width: $tabbar-icon-slot;
+  height: $tabbar-icon-slot;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.app-tabbar__icon {
+  width: $tabbar-icon-slot;
+  height: $tabbar-icon-slot;
+  flex-shrink: 0;
+}
+
+.app-tabbar__label {
+  margin-top: $tabbar-icon-label-gap;
+  height: $tabbar-label-height;
+  line-height: $tabbar-label-height;
+  color: #9ca3af;
+  font-size: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.app-tabbar__label.is-active {
+  color: $color-primary;
+  font-weight: 700;
+}
+
+.app-tabbar__col--center .app-tabbar__icon-slot {
+  overflow: visible;
+}
+
+.app-tabbar__center-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: $tabbar-center-btn-size;
+  height: $tabbar-center-btn-size;
+  border-radius: 50%;
+  background: $color-primary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(124, 58, 237, 0.28);
+}
+
+.app-tabbar__center-icon {
+  color: #fff;
+  font-size: 48px;
+  font-weight: 300;
+  line-height: 1;
+  margin-top: -2px;
+}
+
+.app-tabbar__col--center.is-active .app-tabbar__label {
+  color: $color-primary;
+  font-weight: 700;
+}
