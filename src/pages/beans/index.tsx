@@ -5,6 +5,9 @@ import mineBeanIcon from '@/assets/icons/mine-bean.svg'
 import beansPouchIcon from '@/assets/icons/beans-pouch.svg'
 import chevronRightIcon from '@/assets/icons/chevron-right-grey.svg'
 import { fetchBeanLogs, getCachedUser } from '@/services/communityService'
+import { isUserAuthenticated } from '@/services/wechatAuth'
+import { refreshSessionIfLoggedIn } from '@/services/session'
+import { goLogin } from '@/utils/authRoute'
 import { formatDateTime } from '@/utils/formatDate'
 import { getBeanLogIconStyle } from '@/utils/beanLogIcon'
 import type { BeanTransaction } from '@/types/community'
@@ -38,8 +41,13 @@ export default function BeansPage() {
     }
   }, [])
 
-  useDidShow(() => {
-    setBalance(getCachedUser()?.beanBalance ?? 0)
+  useDidShow(async () => {
+    const user = await refreshSessionIfLoggedIn()
+    if (!isUserAuthenticated(user)) {
+      goLogin('/pages/beans/index')
+      return
+    }
+    setBalance(user?.beanBalance ?? 0)
     loadLogs(filter)
   })
 

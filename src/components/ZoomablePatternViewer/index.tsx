@@ -2,9 +2,7 @@ import { View, Text, Image, MovableArea, MovableView } from '@tarojs/components'
 import { memo, useEffect, useMemo, useState } from 'react'
 import Taro from '@tarojs/taro'
 import PatternCanvas from '@/components/PatternCanvas'
-import {
-  getPreviewCellPxForArea,
-} from '@/services/patternRenderer'
+import { getPreviewCellPxForArea } from '@/services/patternRenderer'
 import { canvasToTempFile } from '@/utils/canvas'
 import type { PatternConfig, PatternResult } from '@/types'
 import './index.scss'
@@ -85,7 +83,6 @@ function ZoomablePatternViewer({
   return (
     <View className='zoom-viewer'>
       <View className='zoom-viewer__toolbar'>
-        <Text className='zoom-viewer__hint'>双指缩放 · 单指拖动</Text>
         <Text className='zoom-viewer__action' onClick={handleFullscreen}>
           全屏预览
         </Text>

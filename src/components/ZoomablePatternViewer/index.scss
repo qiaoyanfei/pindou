@@ -8,17 +8,12 @@
 
 .zoom-viewer__toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   height: 72px;
   padding: 0 24px;
   border-bottom: 1px solid #f3f4f6;
   box-sizing: border-box;
-}
-
-.zoom-viewer__hint {
-  font-size: 24px;
-  color: #6b7280;
 }
 
 .zoom-viewer__action {

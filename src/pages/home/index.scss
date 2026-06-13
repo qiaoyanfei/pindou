@@ -201,8 +201,7 @@ $home-padding-x: 32px;
 .home-page__card-cover-wrap {
   position: relative;
   width: 100%;
-  padding-top: 100%;
-  background: #f3f4f6;
+  background: #eef0f3;
 }
 
 .home-page__card-cover {
@@ -299,10 +298,13 @@ $home-padding-x: 32px;
 }
 
 .home-page__empty,
-.home-page__loading,
 .home-page__footer-tip {
   padding: 48px $home-padding-x;
   text-align: center;
   font-size: 26px;
   color: $color-text-secondary;
+}
+
+.home-page__empty {
+  min-height: 240px;
 }

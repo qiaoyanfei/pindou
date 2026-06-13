@@ -1,5 +1,17 @@
 @import '@/styles/list-page.scss';
 
 .my-likes-page {
-  // page-specific overrides if needed
+  background: #f8f9fd;
+
+  .list-page__count {
+    font-size: 26px;
+    color: #6b7280;
+    margin-bottom: 16px;
+  }
+
+  .page-list-banner--tip {
+    margin-bottom: 24px;
+    border-radius: 20px;
+    background: #f5f3ff;
+  }
 }

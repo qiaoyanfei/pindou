@@ -16,31 +16,106 @@ const AXIS_TEXT_COLOR = '#666666'
 const HEADER_TEXT_COLOR = '#333333'
 const LEGEND_TEXT_COLOR = '#444444'
 
-function buildSheetHeaderText(
-  appName: string,
+const HEADER_TITLE_COLOR = '#1a1a1a'
+const HEADER_META_COLOR = '#1a1a1a'
+const HEADER_SEPARATOR_COLOR = '#c8c8c8'
+const META_SEPARATOR = '|'
+
+function getMetaSegmentGap(cellPx: number): number {
+  return Math.max(18, Math.round(cellPx * 0.75))
+}
+
+function buildSheetMetaSegments(
   creatorNickname: string | undefined,
   gridWidth: number,
   gridHeight: number,
   totalBeads: number,
   colorCount: number,
-): string {
-  const author = creatorNickname?.trim() ?? ''
-  return `由「${appName}」小程序生成｜作者：${author}｜规格：${gridWidth}×${gridHeight}｜总用豆数：${totalBeads}｜总色卡数：${colorCount}`
+): string[] {
+  const author = creatorNickname?.trim() || '拼豆玩家'
+  return [
+    `作者: ${author}`,
+    `规格: ${gridWidth}×${gridHeight}`,
+    `总用豆数: ${totalBeads}`,
+    `总色卡数: ${colorCount}`,
+  ]
 }
 
-function resolveHeaderFontSize(
+function measureMetaLineWidth(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  segments: string[],
+  fontSize: number,
+  segmentGap: number,
+): number {
+  ctx.font = `700 ${fontSize}px sans-serif`
+  const separatorWidth = ctx.measureText(META_SEPARATOR).width
+  let width = 0
+  segments.forEach((segment, index) => {
+    if (index > 0) width += segmentGap + separatorWidth + segmentGap
+    width += ctx.measureText(segment).width
+  })
+  return width
+}
+
+function resolveMetaFontSize(
+  ctx: CanvasRenderingContext2D,
+  segments: string[],
   maxWidth: number,
   baseFontSize: number,
+  segmentGap: number,
 ): number {
   let fontSize = baseFontSize
-  while (fontSize >= 9) {
-    ctx.font = `600 ${fontSize}px sans-serif`
-    if (ctx.measureText(text).width <= maxWidth) return fontSize
+  while (fontSize >= 9 && measureMetaLineWidth(ctx, segments, fontSize, segmentGap) > maxWidth) {
     fontSize -= 1
   }
-  return 9
+  return fontSize
+}
+
+function drawSheetMetaLine(
+  ctx: CanvasRenderingContext2D,
+  segments: string[],
+  x: number,
+  y: number,
+  fontSize: number,
+  segmentGap: number,
+): void {
+  let cursorX = x
+  ctx.font = `700 ${fontSize}px sans-serif`
+  const separatorWidth = ctx.measureText(META_SEPARATOR).width
+
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      cursorX += segmentGap
+      ctx.fillStyle = HEADER_SEPARATOR_COLOR
+      ctx.fillText(META_SEPARATOR, cursorX, y)
+      cursorX += separatorWidth + segmentGap
+    }
+    ctx.fillStyle = HEADER_META_COLOR
+    ctx.fillText(segment, cursorX, y)
+    cursorX += ctx.measureText(segment).width
+  })
+}
+
+function getSheetPadding(cellPx: number): number {
+  return Math.max(32, Math.round(cellPx * 1.4))
+}
+
+function getSheetHeaderMetrics(cellPx: number) {
+  const titleFontSize = Math.max(20, Math.round(cellPx * 0.8))
+  const metaFontSize = Math.max(12, Math.round(cellPx * 0.5))
+  const titleLineHeight = Math.round(titleFontSize * 1.3)
+  const metaLineHeight = Math.round(metaFontSize * 1.45)
+  const headerLineGap = Math.max(10, Math.round(cellPx * 0.38))
+  const headerBottomGap = Math.max(16, Math.round(cellPx * 0.65))
+  return {
+    titleFontSize,
+    metaFontSize,
+    titleLineHeight,
+    metaLineHeight,
+    headerLineGap,
+    headerBottomGap,
+    headerHeight: titleLineHeight + headerLineGap + metaLineHeight + headerBottomGap,
+  }
 }
 
 function getLabelColor(hex: string): string {
@@ -191,8 +266,9 @@ export function getSheetLayoutMetrics(
   pattern: PatternResult,
   cellPx: number,
 ): SheetLayoutMetrics {
-  const padding = Math.max(8, Math.round(cellPx * 0.6))
-  const headerHeight = Math.max(28, Math.round(cellPx * 1.4))
+  const padding = getSheetPadding(cellPx)
+  const headerMetrics = getSheetHeaderMetrics(cellPx)
+  const headerHeight = headerMetrics.headerHeight
   const axisWidth = Math.max(22, Math.round(cellPx * 0.9))
   const axisHeight = Math.max(18, Math.round(cellPx * 0.75))
   const gridWidth = pattern.width * cellPx
@@ -204,9 +280,10 @@ export function getSheetLayoutMetrics(
   const colorCount = Object.keys(pattern.stats).length
   const itemsPerRow = Math.max(1, Math.floor(contentWidth / legendItemWidth))
   const legendRows = Math.ceil(colorCount / itemsPerRow)
+  const legendTopGap = Math.max(16, Math.round(cellPx * 0.55))
   const legendHeight =
     legendRows > 0
-      ? legendRows * legendItemHeight + (legendRows - 1) * legendGap + padding
+      ? legendTopGap + legendRows * legendItemHeight + (legendRows - 1) * legendGap
       : 0
 
   return {
@@ -255,26 +332,41 @@ export function renderPatternSheetToCanvas(
 
   const gridOriginX = layout.padding + layout.axisWidth
   const gridOriginY = layout.padding + layout.headerHeight + layout.axisHeight
-
-  const headerText = buildSheetHeaderText(
-    appName,
+  const headerMetrics = getSheetHeaderMetrics(cellPx)
+  const headerTextWidth = layout.width - layout.padding * 2
+  const metaSegments = buildSheetMetaSegments(
     creatorNickname,
     width,
     height,
     totalBeads,
     Object.keys(stats).length,
   )
-  const headerFontSize = resolveHeaderFontSize(
-    ctx,
-    headerText,
-    layout.width - layout.padding * 2,
-    Math.max(11, Math.round(cellPx * 0.52)),
-  )
-  ctx.fillStyle = HEADER_TEXT_COLOR
-  ctx.font = `600 ${headerFontSize}px sans-serif`
+  const metaSegmentGap = getMetaSegmentGap(cellPx)
+  const metaY =
+    layout.padding
+    + headerMetrics.titleLineHeight
+    + headerMetrics.headerLineGap
+    + headerMetrics.metaLineHeight / 2
+
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(headerText, layout.padding, layout.padding + layout.headerHeight / 2)
+
+  ctx.fillStyle = HEADER_TITLE_COLOR
+  ctx.font = `700 ${headerMetrics.titleFontSize}px sans-serif`
+  ctx.fillText(
+    appName,
+    layout.padding,
+    layout.padding + headerMetrics.titleLineHeight / 2,
+  )
+
+  const metaFontSize = resolveMetaFontSize(
+    ctx,
+    metaSegments,
+    headerTextWidth,
+    headerMetrics.metaFontSize,
+    metaSegmentGap,
+  )
+  drawSheetMetaLine(ctx, metaSegments, layout.padding, metaY, metaFontSize, metaSegmentGap)
 
   const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))
   ctx.fillStyle = AXIS_TEXT_COLOR
@@ -329,7 +421,7 @@ export function renderPatternSheetToCanvas(
     }
   }
 
-  const legendTop = gridOriginY + layout.gridHeight + layout.padding / 2
+  const legendTop = gridOriginY + layout.gridHeight + Math.max(16, Math.round(cellPx * 0.55))
   const entries = Object.entries(stats).sort((a, b) => b[1] - a[1])
   const itemsPerRow = Math.max(1, Math.floor((layout.axisWidth + layout.gridWidth) / layout.legendItemWidth))
   const swatchSize = Math.max(14, Math.round(cellPx * 0.7))

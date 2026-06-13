@@ -6,6 +6,8 @@ import ImageUploader from '@/components/ImageUploader'
 import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
+import { requireAuthenticated } from '@/services/session'
+import { safeRedirect } from '@/utils/navigation'
 import {
   DEFAULT_CONFIG,
   STYLE_MODE_DEFAULT_EXPORT_CELL_PX,
@@ -33,8 +35,13 @@ export default function GeneratePage() {
   const [imagePath, setImagePath] = useState('')
   const [config, setConfig] = useState<PatternConfig>(createInitialConfig)
   const [loading, setLoading] = useState(false)
+  const [authed, setAuthed] = useState(false)
 
-  useDidShow(() => {
+  useDidShow(async () => {
+    const user = await requireAuthenticated('/pages/generate/index')
+    if (!user) return
+    setAuthed(true)
+
     const saved = Taro.getStorageSync(GENERATE_CONFIG_STORAGE_KEY)
     if (saved) {
       setConfig(normalizeConfig(saved))
@@ -65,7 +72,7 @@ export default function GeneratePage() {
   }
 
   const handleBack = () => {
-    Taro.reLaunch({ url: '/pages/home/index' })
+    safeRedirect('/pages/home/index')
   }
 
   const handleGenerate = async () => {
@@ -91,6 +98,10 @@ export default function GeneratePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!authed) {
+    return null
   }
 
   return (

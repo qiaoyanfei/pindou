@@ -1,42 +1,26 @@
 import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
-import { fetchDrafts } from '@/services/communityService'
-import { downloadJsonFile } from '@/services/cloudClient'
-import { PUBLISH_STORAGE_KEY, type PatternResult } from '@/types'
-import type { DraftItem, PostSummary } from '@/types/community'
+import {
+  fetchPendingPosts,
+  prepareRegenerateFromPost,
+  updatePostVisibility,
+} from '@/services/communityService'
+import { showModal } from '@/utils/dialog'
+import type { PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
 
-function draftToListItem(draft: DraftItem): PostSummary {
-  return {
-    _id: draft._id,
-    title: draft.title,
-    category: '宠物',
-    coverUrl: draft.coverUrl,
-    width: draft.width,
-    height: draft.height,
-    styleMode: draft.styleMode,
-    paletteId: draft.paletteId,
-    likeCount: 0,
-    favoriteCount: 0,
-    downloadCount: 0,
-    author: { nickName: '', avatarUrl: '' },
-    createdAt: draft.createdAt,
-    updatedAt: draft.updatedAt,
-  }
-}
-
 export default function DraftsPage() {
-  const [drafts, setDrafts] = useState<DraftItem[]>([])
+  const [list, setList] = useState<PostSummary[]>([])
   const [loading, setLoading] = useState(true)
 
-  const loadDrafts = async () => {
+  const loadPending = useCallback(async () => {
     setLoading(true)
     try {
-      setDrafts(await fetchDrafts())
+      setList(await fetchPendingPosts())
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '加载失败',
@@ -45,28 +29,39 @@ export default function DraftsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useDidShow(() => {
-    loadDrafts()
+    loadPending()
   })
 
-  const handlePublish = async (draft: DraftItem) => {
-    Taro.showLoading({ title: '加载中...' })
+  const handleGoPublic = async (postId: string) => {
+    const res = await showModal({
+      title: '提交公开审核',
+      content: '提交后将进入人工审核，通过前作品保存在待发布列表，审核通过后展示到社区并获得小豆奖励',
+      confirmText: '提交审核',
+    })
+    if (!res?.confirm) return
     try {
-      const pattern = await downloadJsonFile<PatternResult>(draft.patternFileId)
-      Taro.setStorageSync(PUBLISH_STORAGE_KEY, {
-        pattern,
-        config: draft.config,
-        draftId: draft._id,
-        title: draft.title,
+      await updatePostVisibility(postId, 'public')
+      Taro.showToast({ title: '已提交审核', icon: 'success' })
+      loadPending()
+    } catch (error) {
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '操作失败',
+        icon: 'none',
       })
-      Taro.hideLoading()
-      Taro.navigateTo({ url: '/pages/publish/index' })
+    }
+  }
+
+  const handleRegenerate = async (postId: string) => {
+    Taro.showLoading({ title: '加载图纸...' })
+    try {
+      await prepareRegenerateFromPost(postId)
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({
-        title: error instanceof Error ? error.message : '加载草稿失败',
+        title: error instanceof Error ? error.message : '加载失败',
         icon: 'none',
       })
     }
@@ -78,23 +73,29 @@ export default function DraftsPage() {
         <View className='list-page__content'>
           {loading ? (
             <View className='list-page__loading'>加载中...</View>
-          ) : drafts.length === 0 ? (
+          ) : list.length === 0 ? (
             <View className='list-page__empty'>
               <Text className='list-page__empty-icon'>📝</Text>
-              <Text className='list-page__empty-text'>暂无待发布草稿</Text>
-              <Text className='list-page__empty-desc'>在预览页保存草稿后会显示在这里</Text>
+              <Text className='list-page__empty-text'>暂无待发布作品</Text>
+              <Text className='list-page__empty-desc'>发布时关闭「公开作品」，或提交公开审核中的作品会保存在这里</Text>
             </View>
           ) : (
             <>
-              <Text className='list-page__count'>共 {drafts.length} 张待发布图纸</Text>
-              <PageListBanner variant='tip' icon='📝' title='在预览页保存草稿后会显示在这里' />
-              {drafts.map((draft, index) => (
+              <Text className='list-page__count'>共 {list.length} 张待发布图纸</Text>
+              <PageListBanner
+                variant='tip'
+                icon='📝'
+                title='待发布包含：未公开、审核中、审核未通过的作品'
+              />
+              {list.map((item, index) => (
                 <PostListItem
-                  key={draft._id}
-                  item={draftToListItem(draft)}
-                  mode='draft'
+                  key={item._id}
+                  item={item}
+                  mode='pending'
                   tintIndex={index}
-                  onPublish={() => handlePublish(draft)}
+                  onClick={() => Taro.navigateTo({ url: `/pages/my-post-detail/index?type=pending&id=${item._id}` })}
+                  onPublish={() => handleGoPublic(item._id)}
+                  onRegenerate={() => handleRegenerate(item._id)}
                 />
               ))}
               <Text className='list-page__end'>· 没有更多啦 ·</Text>

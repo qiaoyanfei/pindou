@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { isOnLoginPage, safeNavigateTo, safeRedirect } from '@/utils/navigation'
 
 export const LOGIN_PAGE = '/pages/login/index'
 
@@ -7,5 +8,6 @@ export function buildLoginUrl(redirect = '/pages/mine/index'): string {
 }
 
 export function goLogin(redirect = '/pages/mine/index'): void {
-  Taro.redirectTo({ url: buildLoginUrl(redirect) })
+  if (isOnLoginPage()) return
+  safeRedirect(buildLoginUrl(redirect))
 }

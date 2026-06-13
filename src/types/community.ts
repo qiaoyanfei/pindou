@@ -14,6 +14,15 @@ export const POST_CATEGORIES: PostCategory[] = [
 
 export type PostVisibility = 'public' | 'private'
 
+export type PostReviewStatus = 'draft' | 'pending' | 'approved' | 'rejected'
+
+export interface PostReviewHistoryItem {
+  status: PostReviewStatus
+  label: string
+  note?: string
+  createdAt: string
+}
+
 export type FeedTab = 'recommend' | 'latest'
 
 export interface UserProfile {
@@ -24,7 +33,7 @@ export interface UserProfile {
   beanBalance: number
   level: number
   bio: string
-  draftCount?: number
+  draftCount?: number // 待发布（未公开）作品数量
   postCount?: number
 }
 
@@ -41,6 +50,10 @@ export interface PostSummary {
   likeCount: number
   favoriteCount: number
   downloadCount: number
+  visibility?: PostVisibility
+  reviewStatus?: PostReviewStatus
+  reviewNote?: string
+  reviewHistory?: PostReviewHistoryItem[]
   author: {
     nickName: string
     avatarUrl: string
@@ -99,6 +112,7 @@ export interface AppRemoteConfig {
   inviteReward: number
   feedbackWechatId: string
   feedbackQrUrl: string
+  adminOpenIds?: string[]
 }
 
 export type FeedbackType =

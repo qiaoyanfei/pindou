@@ -7,6 +7,7 @@ export default defineAppConfig({
     'pages/login/index',
     'pages/preview/index',
     'pages/post-detail/index',
+    'pages/my-post-detail/index',
     'pages/publish/index',
     'pages/publish-success/index',
     'pages/drafts/index',
@@ -16,16 +17,12 @@ export default defineAppConfig({
     'pages/beans/index',
     'pages/feedback/index',
     'pages/feedback-form/index',
+    'pages/admin-review/index',
   ],
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#fff',
-    navigationBarTitleText: '拼豆豆',
+    navigationBarTitleText: 'happy拼豆嘛',
     navigationBarTextStyle: 'black',
-  },
-  permission: {
-    'scope.writePhotosAlbum': {
-      desc: '用于保存生成的拼豆豆图纸到相册',
-    },
   },
 })

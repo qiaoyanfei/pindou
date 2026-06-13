@@ -1,11 +1,24 @@
 import Taro from '@tarojs/taro'
 import { initCloud, uploadCloudFile, getTempFileUrl } from '@/services/cloudClient'
 import { getCachedUser, login, refreshCounts, setCachedUser } from '@/services/communityService'
-import type { UserProfile } from '@/types/community'
+import { persistSession } from '@/services/session'
+import { sanitizeProfileForStorage, isUsableNickName, normalizeNickName, resolveNickNameForDisplay } from '@/utils/userProfile'
+import type { AppRemoteConfig, UserProfile } from '@/types/community'
+
+function sanitizeLoginNickName(nickName?: string): string | undefined {
+  if (!nickName || !isUsableNickName(nickName)) return undefined
+  return normalizeNickName(nickName)
+}
 
 export interface WechatProfileInput {
   nickName?: string
   avatarUrl?: string
+}
+
+export interface WechatLoginResult {
+  user: UserProfile
+  registerReward: number
+  isNew: boolean
 }
 
 /** 云开发 openid + 用户主动点击过「微信一键登录」 */
@@ -19,9 +32,7 @@ export function markSessionLoggedIn(): void {
 }
 
 export function getDisplayNickName(user: UserProfile | null | undefined): string {
-  const nickName = user?.nickName?.trim()
-  if (!nickName || nickName === '拼豆玩家') return '微信用户'
-  return nickName
+  return resolveNickNameForDisplay(user ?? null)
 }
 
 export function formatAuthError(error: unknown): string {
@@ -55,26 +66,31 @@ export async function enrichUserProfile(user: UserProfile): Promise<UserProfile>
 
 async function normalizeAvatarUrl(avatarUrl?: string): Promise<string | undefined> {
   if (!avatarUrl) return undefined
-  if (
-    avatarUrl.startsWith('cloud://')
-    || avatarUrl.startsWith('http://')
-    || avatarUrl.startsWith('https://')
-  ) {
-    return avatarUrl
-  }
+  if (avatarUrl.startsWith('cloud://')) return avatarUrl
 
+  initCloud()
   try {
-    initCloud()
+    let localPath = avatarUrl
+    if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+      const res = await Taro.downloadFile({ url: avatarUrl })
+      if (res.statusCode !== 200 || !res.tempFilePath) {
+        return avatarUrl
+      }
+      localPath = res.tempFilePath
+    }
     return await uploadCloudFile(
       `avatars/${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
-      avatarUrl,
+      localPath,
     )
   } catch {
-    return avatarUrl
+    if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+      return avatarUrl
+    }
+    return undefined
   }
 }
 
-/** 在用户点击回调内第一时间调用，不能先 setState */
+/** @deprecated 2022 年后微信统一返回「微信用户」，请改用 input type="nickname" */
 export async function tryGetWechatProfile(): Promise<WechatProfileInput | null> {
   try {
     const profile = await Taro.getUserProfile({ desc: '用于展示您的微信头像和昵称' })
@@ -99,18 +115,44 @@ export async function tryGetWechatProfile(): Promise<WechatProfileInput | null> 
   return null
 }
 
+async function saveWechatProfile(profile?: WechatProfileInput): Promise<{
+  user: UserProfile
+  config: AppRemoteConfig
+  registerReward: number
+  isNew: boolean
+}> {
+  initCloud()
+  const avatarUrl = profile?.avatarUrl ? await normalizeAvatarUrl(profile.avatarUrl) : undefined
+  const result = await login({
+    nickName: sanitizeLoginNickName(profile?.nickName),
+    avatarUrl,
+    persist: false,
+  })
+  const canonical = sanitizeProfileForStorage(result.user)
+  setCachedUser(canonical)
+  persistSession(canonical, result.config)
+  return {
+    user: canonical,
+    config: result.config,
+    registerReward: result.registerReward,
+    isNew: Boolean(result.user.isNew),
+  }
+}
+
 export async function oneClickWechatLogin(
   profile?: WechatProfileInput,
-): Promise<UserProfile> {
-  initCloud()
+): Promise<WechatLoginResult> {
   const inviterId = Taro.getStorageSync('inviterId') as string
   const avatarUrl = profile?.avatarUrl ? await normalizeAvatarUrl(profile.avatarUrl) : undefined
 
   const result = await login({
     inviterId: inviterId || undefined,
-    nickName: profile?.nickName?.trim() || undefined,
+    nickName: sanitizeLoginNickName(profile?.nickName),
     avatarUrl,
+    persist: false,
   })
+
+  if (inviterId) Taro.removeStorageSync('inviterId')
 
   try {
     await refreshCounts()
@@ -118,20 +160,36 @@ export async function oneClickWechatLogin(
     // counts refresh is best-effort
   }
 
-  const cached = getCachedUser()
-  const merged = cached || result.user
-  const enriched = await enrichUserProfile(merged)
-  setCachedUser(enriched)
+  const canonical = sanitizeProfileForStorage(result.user)
 
-  if (!enriched.openid) {
+  if (!canonical.openid) {
     throw new Error('登录失败，未获取到用户身份')
   }
 
+  setCachedUser(canonical)
   markSessionLoggedIn()
-  return enriched
+  persistSession(canonical, result.config)
+  return {
+    user: canonical,
+    registerReward: result.registerReward,
+    isNew: Boolean(result.user.isNew),
+  }
+}
+
+/** 已登录用户点击同步微信昵称与头像 */
+export async function updateWechatProfile(profile: WechatProfileInput): Promise<UserProfile> {
+  const result = await saveWechatProfile(profile)
+  try {
+    await refreshCounts()
+  } catch {
+    // counts refresh is best-effort
+  }
+  const latest = getCachedUser()
+  return latest || result.user
 }
 
 /** @deprecated use oneClickWechatLogin */
 export async function completeWechatLogin(profile: WechatProfileInput): Promise<UserProfile> {
-  return oneClickWechatLogin(profile)
+  const result = await oneClickWechatLogin(profile)
+  return result.user
 }

@@ -1,8 +1,8 @@
-import { View, Text, Image, Button } from '@tarojs/components'
+import { View, Text, Image, Button, Input } from '@tarojs/components'
 import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
 import AppTabBar from '@/components/AppTabBar'
-import defaultAvatar from '@/assets/default-avatar.svg'
+import UserAvatar from '@/components/UserAvatar'
 import mineBeanIcon from '@/assets/icons/mine-bean.svg'
 import mineLikeIcon from '@/assets/icons/mine-like.svg'
 import mineFavoriteIcon from '@/assets/icons/mine-favorite.svg'
@@ -10,16 +10,26 @@ import mineDraftIcon from '@/assets/icons/mine-draft.svg'
 import minePublishedIcon from '@/assets/icons/mine-published.svg'
 import mineFeedbackIcon from '@/assets/icons/mine-feedback.svg'
 import chevronRightIcon from '@/assets/icons/chevron-right-grey.svg'
-import { initCloud } from '@/services/cloudClient'
+import { initCloud, uploadCloudFile } from '@/services/cloudClient'
 import {
   getCachedConfig,
   getCachedUser,
   refreshCounts,
-  setCachedUser,
 } from '@/services/communityService'
-import { enrichUserProfile, isUserAuthenticated } from '@/services/wechatAuth'
+import {
+  formatAuthError,
+  isUserAuthenticated,
+  showAuthError,
+  updateWechatProfile,
+} from '@/services/wechatAuth'
 import { goLogin } from '@/utils/authRoute'
-import { DEFAULT_USER_BIO, DEFAULT_USER_NICKNAME } from '@/utils/userDisplay'
+import { refreshSessionIfLoggedIn, restoreSessionFromStorage } from '@/services/session'
+import { DEFAULT_USER_BIO } from '@/utils/userDisplay'
+import { MINI_PROGRAM_NAME } from '@/utils/constants'
+import {
+  normalizeNickName,
+  resolveNickNameForDisplay,
+} from '@/utils/userProfile'
 import './index.scss'
 
 interface MenuItem {
@@ -31,7 +41,9 @@ interface MenuItem {
 
 export default function MinePage() {
   const [user, setUser] = useState(getCachedUser())
+  const [nickNameInput, setNickNameInput] = useState('')
   const [pageTop, setPageTop] = useState(24)
+  const [syncingProfile, setSyncingProfile] = useState(false)
   const config = getCachedConfig()
 
   useEffect(() => {
@@ -39,33 +51,36 @@ export default function MinePage() {
     setPageTop(menu.bottom + 12)
   }, [])
 
-  const syncUser = async () => {
+  const syncUser = () => {
     const cached = getCachedUser()
-    if (!cached?.openid) return
-    const enriched = await enrichUserProfile(cached)
-    setCachedUser(enriched)
-    setUser(enriched)
+    setUser(cached)
+    setNickNameInput(resolveNickNameForDisplay(cached))
   }
 
   useDidShow(async () => {
-    const cached = getCachedUser()
-    if (!isUserAuthenticated(cached)) {
+    restoreSessionFromStorage()
+    try {
+      await refreshSessionIfLoggedIn()
+    } catch {
+      // best-effort refresh
+    }
+
+    if (!isUserAuthenticated(getCachedUser())) {
       goLogin('/pages/mine/index')
       return
     }
 
     try {
       initCloud()
-      await syncUser()
       await refreshCounts()
-      await syncUser()
+      syncUser()
     } catch {
       // silent refresh is best-effort
     }
   })
 
   useShareAppMessage(() => ({
-    title: '一起来拼豆豆，生成专属拼豆图纸',
+    title: `一起来${MINI_PROGRAM_NAME}，生成专属拼豆图纸`,
     path: `/pages/home/index?inviterId=${user?.openid || ''}`,
   }))
 
@@ -85,6 +100,64 @@ export default function MinePage() {
     Taro.navigateTo({ url })
   }
 
+  const handleChooseAvatar = async (event: { detail: { avatarUrl?: string } }) => {
+    const path = event.detail.avatarUrl
+    if (!path || syncingProfile) return
+
+    setSyncingProfile(true)
+    Taro.showLoading({ title: '同步头像...' })
+    try {
+      initCloud()
+      const cloudUrl = await uploadCloudFile(
+        `avatars/${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
+        path,
+      )
+      const updated = await updateWechatProfile({
+        avatarUrl: cloudUrl,
+        nickName: getCachedUser()?.nickName,
+      })
+      setUser(updated)
+      Taro.showToast({ title: '头像已更新', icon: 'success' })
+    } catch (error) {
+      showAuthError(formatAuthError(error))
+    } finally {
+      Taro.hideLoading()
+      setSyncingProfile(false)
+    }
+  }
+
+  const handleNicknameBlur = async (event: { detail: { value: string } }) => {
+    const next = normalizeNickName(event.detail.value)
+    const current = resolveNickNameForDisplay(user)
+
+    if (!next) {
+      setNickNameInput(current)
+      return
+    }
+
+    if (next.length < 2) {
+      Taro.showToast({ title: '昵称至少 2 个字符', icon: 'none' })
+      setNickNameInput(current)
+      return
+    }
+
+    if (next === current || syncingProfile) return
+
+    setSyncingProfile(true)
+    Taro.showLoading({ title: '保存中...' })
+    try {
+      const updated = await updateWechatProfile({ nickName: next })
+      setUser(updated)
+      setNickNameInput(resolveNickNameForDisplay(updated))
+    } catch (error) {
+      setNickNameInput(current)
+      showAuthError(formatAuthError(error))
+    } finally {
+      Taro.hideLoading()
+      setSyncingProfile(false)
+    }
+  }
+
   if (!user?.openid) {
     return null
   }
@@ -93,11 +166,36 @@ export default function MinePage() {
     <View className='mine-page' style={{ paddingTop: `${pageTop}px` }}>
       <View className='mine-page__header'>
         <View className='mine-page__profile-main'>
-          <Image className='mine-page__avatar' src={defaultAvatar} mode='aspectFill' />
+          <Button
+            className='mine-page__avatar-btn'
+            openType='chooseAvatar'
+            onChooseAvatar={handleChooseAvatar}
+          >
+            <UserAvatar
+              key={user.avatarUrl || 'empty'}
+              avatarUrl={user.avatarUrl}
+              size='md'
+              className='mine-page__avatar'
+            />
+          </Button>
           <View className='mine-page__info'>
-            <Text className='mine-page__nickname'>{DEFAULT_USER_NICKNAME}</Text>
+            <View className='mine-page__name-row'>
+              <Input
+                className='mine-page__nickname-input'
+                type='nickname'
+                placeholder='点击使用微信昵称'
+                maxlength={20}
+                value={nickNameInput}
+                disabled={syncingProfile}
+                onInput={(event) => setNickNameInput(event.detail.value)}
+                onBlur={handleNicknameBlur}
+              />
+            </View>
             <Text className='mine-page__bio'>{user.bio || DEFAULT_USER_BIO}</Text>
-            <View className='mine-page__beans' onClick={() => navigate('/pages/beans/index')}>
+            <View
+              className='mine-page__beans'
+              onClick={() => navigate('/pages/beans/index')}
+            >
               <Image className='mine-page__beans-icon' src={mineBeanIcon} mode='aspectFit' />
               <Text className='mine-page__beans-text'>小豆: {user.beanBalance ?? 0}</Text>
               <Text className='mine-page__beans-arrow'>›</Text>
@@ -129,7 +227,7 @@ export default function MinePage() {
 
       <View className='mine-page__invite'>
         <View className='mine-page__invite-content'>
-          <Text className='mine-page__invite-title'>邀请好友，一起拼豆豆</Text>
+          <Text className='mine-page__invite-title'>邀请好友，一起{MINI_PROGRAM_NAME}</Text>
           <Text className='mine-page__invite-desc'>
             每成功邀请 1 位新用户注册{'\n'}你将获得 {config?.inviteReward ?? 5} 小豆奖励
           </Text>

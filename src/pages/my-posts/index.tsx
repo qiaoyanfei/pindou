@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
 import { CATEGORY_OPTIONS, fetchMyPosts } from '@/services/communityService'
+import { showActionSheet } from '@/utils/dialog'
 import type { PostCategory, PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
@@ -38,17 +39,14 @@ export default function MyPostsPage() {
   }, [categoryFilter, list])
 
   const openPost = (postId: string) => {
-    Taro.navigateTo({ url: `/pages/post-detail/index?id=${postId}` })
+    Taro.navigateTo({ url: `/pages/my-post-detail/index?type=published&id=${postId}` })
   }
 
-  const pickCategory = () => {
-    Taro.showActionSheet({
-      itemList: ['全部', ...CATEGORY_OPTIONS],
-      success: (res) => {
-        const next = res.tapIndex === 0 ? '全部' : CATEGORY_OPTIONS[res.tapIndex - 1]
-        setCategoryFilter(next)
-      },
-    })
+  const pickCategory = async () => {
+    const res = await showActionSheet({ itemList: ['全部', ...CATEGORY_OPTIONS] })
+    if (!res) return
+    const next = res.tapIndex === 0 ? '全部' : CATEGORY_OPTIONS[res.tapIndex - 1]
+    setCategoryFilter(next)
   }
 
   return (
@@ -60,15 +58,15 @@ export default function MyPostsPage() {
           ) : list.length === 0 ? (
             <View className='list-page__empty'>
               <Text className='list-page__empty-icon'>📋</Text>
-              <Text className='list-page__empty-text'>还没有发布的图纸</Text>
+              <Text className='list-page__empty-text'>还没有公开的作品</Text>
             </View>
           ) : (
             <>
               <PageListBanner
                 variant='summary'
                 icon='📦'
-                title={`共 ${list.length} 个已发布图纸`}
-                desc='这些图纸已发布到社区，其他用户可以看到'
+                title={`共 ${list.length} 个已公开作品`}
+                desc='这些作品已公开到社区，其他用户可以看到'
                 showChevron
               />
               <View className='list-page__filters'>

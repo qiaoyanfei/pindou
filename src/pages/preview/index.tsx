@@ -6,9 +6,9 @@ import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
-import { DEFAULT_CONFIG, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
+import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
 import { getCoverCellPx } from '@/services/patternRenderer'
-import { saveDraft } from '@/services/communityService'
+import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
 import saveIcon from '@/assets/icons/preview-save.svg'
 import publishIcon from '@/assets/icons/preview-publish.svg'
 import {
@@ -35,12 +35,12 @@ export default function PreviewPage() {
   const [exportBusy, setExportBusy] = useState(false)
   const [exportJob, setExportJob] = useState<ExportJob | null>(null)
   const [creatorNickname, setCreatorNickname] = useState('')
-  const [draftId, setDraftId] = useState<string>()
   const exportJobRef = useRef<ExportJob | null>(null)
   const exportBusyRef = useRef(false)
   exportBusyRef.current = exportBusy
 
   useDidShow(() => {
+    restoreSessionFromStorage()
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       Taro.showToast({ title: '请先生成图纸', icon: 'none' })
@@ -53,7 +53,6 @@ export default function PreviewPage() {
     setExportJob(null)
     setExportBusy(false)
     setCreatorNickname(resolveCreatorNickname())
-    setDraftId(Taro.getStorageSync('currentDraftId') as string | undefined)
   })
 
   const beginExportJob = (job: ExportJob) => {
@@ -69,20 +68,6 @@ export default function PreviewPage() {
     setExportBusy(false)
   }
 
-  const persistDraft = async (coverPath: string) => {
-    if (!pattern) return draftId
-    const nextDraftId = await saveDraft({
-      draftId,
-      title: '未命名图纸',
-      coverPath,
-      pattern,
-      config,
-    })
-    setDraftId(nextDraftId)
-    Taro.setStorageSync('currentDraftId', nextDraftId)
-    return nextDraftId
-  }
-
   const handleExportCanvasReady = async () => {
     const job = exportJobRef.current
     if (!job || !pattern) return
@@ -95,7 +80,6 @@ export default function PreviewPage() {
           pattern,
           config,
           coverPath,
-          draftId,
         }
         Taro.setStorageSync(PUBLISH_STORAGE_KEY, payload)
         Taro.navigateTo({ url: '/pages/publish/index' })
@@ -114,12 +98,6 @@ export default function PreviewPage() {
         const tempFilePath = await canvasToTempFile('export-canvas')
         await Taro.saveImageToPhotosAlbum({ filePath: tempFilePath })
 
-        try {
-          await persistDraft(tempFilePath)
-        } catch {
-          // 草稿同步失败不阻断保存相册
-        }
-
         Taro.hideLoading()
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
       } else {
@@ -137,7 +115,7 @@ export default function PreviewPage() {
       if (job === 'save' && (message.includes('auth deny') || message.includes('authorize'))) {
         Taro.showModal({
           title: '需要相册权限',
-          content: '请在设置中允许保存图片到相册，以便保存拼豆豆图纸。',
+          content: `请在设置中允许保存图片到相册，以便保存${MINI_PROGRAM_NAME}图纸。`,
           confirmText: '去设置',
           success: (res) => {
             if (res.confirm) Taro.openSetting()
@@ -166,8 +144,10 @@ export default function PreviewPage() {
     beginExportJob('save')
   }
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!pattern || publishing || exportBusy) return
+    const user = await requireAuthenticated('/pages/publish/index')
+    if (!user) return
     beginExportJob('cover')
   }
 

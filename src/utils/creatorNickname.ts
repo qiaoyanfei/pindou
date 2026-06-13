@@ -1,8 +1,8 @@
 import Taro from '@tarojs/taro'
+import { getCachedUser } from '@/services/communityService'
+import { isUsableNickName, resolveNickNameForDisplay } from '@/utils/userProfile'
 
 export const CREATOR_NICKNAME_KEY = 'pindou_creator_nickname'
-
-export const DEFAULT_CREATOR_NICKNAME = '微信用户'
 
 export function getStoredCreatorNickname(): string {
   const value = Taro.getStorageSync(CREATOR_NICKNAME_KEY) as unknown
@@ -19,9 +19,11 @@ export function setStoredCreatorNickname(nickname: string): void {
   }
 }
 
-/** 读取本地已保存的创作者署名（微信昵称填写或自定义） */
+/** 导出图纸作者名：优先自定义署名，否则取登录用户昵称 */
 export function resolveCreatorNickname(): string {
-  return getStoredCreatorNickname()
+  const stored = getStoredCreatorNickname()
+  if (isUsableNickName(stored)) return stored
+  return resolveNickNameForDisplay(getCachedUser())
 }
 
 export function normalizeCreatorSignature(value: string): string {

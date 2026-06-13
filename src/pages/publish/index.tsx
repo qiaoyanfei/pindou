@@ -3,10 +3,10 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import {
   CATEGORY_OPTIONS,
-  fetchDraft,
   publishPost,
 } from '@/services/communityService'
 import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
+import { requireAuthenticated } from '@/services/session'
 import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
 import type { PostCategory } from '@/types/community'
 import './index.scss'
@@ -20,7 +20,10 @@ export default function PublishPage() {
   const [submitting, setSubmitting] = useState(false)
   const [coverPreview, setCoverPreview] = useState('')
 
-  useDidShow(() => {
+  useDidShow(async () => {
+    const user = await requireAuthenticated('/pages/publish/index')
+    if (!user) return
+
     const stored = Taro.getStorageSync(PUBLISH_STORAGE_KEY) as PublishStoragePayload | undefined
     if (!stored?.pattern) {
       Taro.showToast({ title: '请先准备图纸', icon: 'none' })
@@ -41,26 +44,16 @@ export default function PublishPage() {
     }
 
     setSubmitting(true)
-    Taro.showLoading({ title: '发布中...' })
+    Taro.showLoading({ title: isPublic ? '提交审核...' : '保存中...' })
     try {
-      let coverFileId = ''
-      let patternFileId = ''
-
-      if (payload.draftId) {
-        const draft = await fetchDraft(payload.draftId)
-        coverFileId = draft.coverFileId
-        patternFileId = draft.patternFileId
-      } else {
-        if (!payload.coverPath) {
-          throw new Error('缺少封面图，请返回预览页重新操作')
-        }
-        const stamp = Date.now()
-        coverFileId = await uploadCloudFile(`posts/covers/${stamp}.png`, payload.coverPath)
-        patternFileId = await uploadJsonCloudFile(`posts/patterns/${stamp}.json`, payload.pattern)
+      if (!payload.coverPath) {
+        throw new Error('缺少封面图，请返回预览页重新操作')
       }
+      const stamp = Date.now()
+      const coverFileId = await uploadCloudFile(`posts/covers/${stamp}.png`, payload.coverPath)
+      const patternFileId = await uploadJsonCloudFile(`posts/patterns/${stamp}.json`, payload.pattern)
 
       const result = await publishPost({
-        draftId: payload.draftId,
         title: trimmedTitle,
         category,
         description: description.trim(),
@@ -74,12 +67,12 @@ export default function PublishPage() {
       Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
       Taro.hideLoading()
       Taro.redirectTo({
-        url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}`,
+        url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}&visibility=${isPublic ? 'public' : 'private'}&reviewStatus=${result.reviewStatus || (isPublic ? 'pending' : 'draft')}`,
       })
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({
-        title: error instanceof Error ? error.message : '发布失败',
+        title: error instanceof Error ? error.message : '操作失败',
         icon: 'none',
       })
     } finally {
@@ -160,7 +153,9 @@ export default function PublishPage() {
             <Switch checked={isPublic} color='#7c3aed' onChange={(event) => setIsPublic(event.detail.value)} />
           </View>
           <Text className='publish-page__toggle-hint'>
-            {isPublic ? '公开作品可获得小豆奖励' : '仅自己可见，不发放小豆奖励'}
+            {isPublic
+              ? '开启后将提交人工审核，通过前保存在「待发布」，审核通过后展示到社区并获得小豆奖励'
+              : '关闭后仅自己可见，保存到「待发布」，可随时再提交公开审核'}
           </Text>
         </View>
       </View>
@@ -172,7 +167,7 @@ export default function PublishPage() {
           disabled={submitting}
           onClick={handleSubmit}
         >
-          发布作品
+          {isPublic ? '提交公开审核' : '保存到待发布'}
         </Button>
       </View>
     </View>

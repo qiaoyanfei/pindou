@@ -151,7 +151,7 @@ export const SYMMETRY_MAX_PAIR_OFFSET = 12
 export const SYMMETRY_RGB_MATCH_TOLERANCE = 36
 
 /** 导出图水印：小程序名称 */
-export const MINI_PROGRAM_NAME = '拼豆豆'
+export const MINI_PROGRAM_NAME = 'happy拼豆嘛'
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))

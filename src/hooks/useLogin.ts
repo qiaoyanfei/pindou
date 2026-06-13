@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { getCachedUser } from '@/services/communityService'
 import {
-  enrichUserProfile,
   isUserAuthenticated,
   oneClickWechatLogin,
 } from '@/services/wechatAuth'
@@ -27,10 +26,10 @@ export function useLogin() {
     }
   }, [])
 
-  useDidShow(async () => {
+  useDidShow(() => {
     const cached = getCachedUser()
     if (cached?.openid) {
-      setUser(await enrichUserProfile(cached))
+      setUser(cached)
     }
   })
 

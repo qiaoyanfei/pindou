@@ -1,8 +1,9 @@
 import { View, Text, Image } from '@tarojs/components'
-import Taro from '@tarojs/taro'
 import { getCachedUser } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
+import { restoreSessionFromStorage } from '@/services/session'
 import { buildLoginUrl } from '@/utils/authRoute'
+import { safeNavigateTo, safeRedirect } from '@/utils/navigation'
 import tabHomeIcon from '@/assets/icons/tab-home.svg'
 import tabHomeActiveIcon from '@/assets/icons/tab-home-active.svg'
 import tabMineIcon from '@/assets/icons/tab-mine.svg'
@@ -33,11 +34,14 @@ const TABS = [
 
 export default function AppTabBar({ active }: AppTabBarProps) {
   const switchTab = (url: string, key: 'home' | 'generate' | 'mine') => {
-    if (key === 'mine' && !isUserAuthenticated(getCachedUser())) {
-      Taro.navigateTo({ url: buildLoginUrl(url) })
+    if (active === key) return
+
+    restoreSessionFromStorage()
+    if ((key === 'mine' || key === 'generate') && !isUserAuthenticated(getCachedUser())) {
+      safeNavigateTo(buildLoginUrl(url))
       return
     }
-    Taro.reLaunch({ url })
+    safeRedirect(url)
   }
 
   return (

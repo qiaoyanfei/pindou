@@ -125,3 +125,63 @@
   @include primary-button;
   font-size: 30px;
 }
+
+.feedback-page__admin {
+  margin-top: 24px;
+  height: 88px;
+  border-radius: 999px;
+  border: 2px solid $color-primary;
+  background: #fff !important;
+  color: $color-primary !important;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 88px;
+}
+
+.feedback-page__admin::after {
+  border: none;
+}
+
+.feedback-page__admin-hint {
+  margin-top: 32px;
+  padding: 24px;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.feedback-page__admin-hint-title {
+  display: block;
+  font-size: 26px;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.feedback-page__admin-hint-desc {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.5;
+}
+
+.feedback-page__admin-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  gap: 16px;
+}
+
+.feedback-page__admin-hint-openid {
+  flex: 1;
+  font-size: 22px;
+  color: $color-text;
+  word-break: break-all;
+}
+
+.feedback-page__admin-hint-error {
+  display: block;
+  margin-top: 12px;
+  font-size: 22px;
+  color: #dc2626;
+}

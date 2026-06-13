@@ -1,3 +1,4 @@
+import Taro from '@tarojs/taro'
 import type {
   AppRemoteConfig,
   BeanTransaction,
@@ -5,11 +6,15 @@ import type {
   FeedTab,
   PostCategory,
   PostDetail,
+  PostReviewStatus,
   PostSummary,
+  PostVisibility,
   PublishPayload,
   UserProfile,
 } from '@/types/community'
 import type { PatternConfig, PatternResult } from '@/types'
+import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
+import { PATTERN_STORAGE_KEY } from '@/types'
 import {
   callCloudApi,
   downloadJsonFile,
@@ -18,16 +23,31 @@ import {
   uploadCloudFile,
   uploadJsonCloudFile,
 } from '@/services/cloudClient'
+import { getSessionConfig, persistSession, setSessionConfig } from '@/services/session'
+import { resolveAuthorNickName } from '@/utils/userProfile'
 
 let cachedUser: UserProfile | null = null
-let cachedConfig: AppRemoteConfig | null = null
+let loginPromise: Promise<LoginResult> | null = null
+
+function normalizeUserProfile(user: UserProfile & { isNew?: boolean }): UserProfile {
+  return {
+    ...user,
+    beanBalance: Math.max(0, Number(user.beanBalance) || 0),
+  }
+}
+
+export interface LoginResult {
+  user: UserProfile & { isNew?: boolean }
+  config: AppRemoteConfig
+  registerReward: number
+}
 
 export function getCachedUser(): UserProfile | null {
   return cachedUser
 }
 
 export function getCachedConfig(): AppRemoteConfig | null {
-  return cachedConfig
+  return getSessionConfig()
 }
 
 export function setCachedUser(user: UserProfile | null): void {
@@ -38,11 +58,40 @@ export async function login(params?: {
   inviterId?: string
   nickName?: string
   avatarUrl?: string
-}): Promise<{ user: UserProfile; config: AppRemoteConfig }> {
-  const result = await callCloudApi<{ user: UserProfile; config: AppRemoteConfig }>('login', params || {})
-  cachedUser = result.user
-  cachedConfig = result.config
-  return result
+  persist?: boolean
+}): Promise<LoginResult> {
+  const wantsProfileUpdate = Boolean(params?.nickName || params?.avatarUrl)
+
+  if (loginPromise) {
+    if (wantsProfileUpdate) {
+      try {
+        await loginPromise
+      } catch {
+        // ignore stale login failure, retry with profile payload
+      }
+    } else {
+      return loginPromise
+    }
+  }
+
+  loginPromise = (async () => {
+    const { persist, ...loginData } = params || {}
+    const result = await callCloudApi<LoginResult>('login', loginData)
+    const user = normalizeUserProfile(result.user)
+    cachedUser = user
+    setSessionConfig(result.config)
+    const shouldPersist = persist ?? Taro.getStorageSync('sessionLoggedIn') === '1'
+    if (shouldPersist) {
+      persistSession(user, result.config)
+    }
+    return { ...result, user }
+  })()
+
+  try {
+    return await loginPromise
+  } finally {
+    loginPromise = null
+  }
 }
 
 export async function refreshCounts(): Promise<void> {
@@ -54,6 +103,8 @@ export async function refreshCounts(): Promise<void> {
   }>('getCounts')
   if (cachedUser) {
     cachedUser = { ...cachedUser, draftCount: counts.draftCount, postCount: counts.postCount }
+    const config = getSessionConfig()
+    if (config) persistSession(cachedUser, config)
   }
 }
 
@@ -62,14 +113,20 @@ export async function fetchFeed(tab: FeedTab, page = 1): Promise<{ list: PostSum
   const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
   const authorAvatars = result.list.map((item) => item.author?.avatarUrl).filter(Boolean)
   const urlMap = await getTempFileUrls([...fileIds, ...authorAvatars] as string[])
-  const list = result.list.map((item) => ({
-    ...item,
-    coverUrl: urlMap[item.coverFileId] || item.coverUrl || '',
-    author: {
-      ...item.author,
-      avatarUrl: urlMap[item.author.avatarUrl] || item.author.avatarUrl || '',
-    },
-  }))
+  const list = result.list.map((item) => {
+    const normalized = normalizePostSummary({
+      ...item,
+      coverUrl: urlMap[item.coverFileId] || item.coverUrl || '',
+    })
+    const avatarKey = item.author?.avatarUrl || ''
+    return {
+      ...normalized,
+      author: {
+        ...normalized.author,
+        avatarUrl: urlMap[avatarKey] || normalized.author.avatarUrl || '',
+      },
+    }
+  })
   return { list, hasMore: result.hasMore }
 }
 
@@ -77,7 +134,7 @@ export async function searchPosts(keyword: string): Promise<PostSummary[]> {
   const result = await callCloudApi<{ list: PostSummary[] }>('searchPosts', { keyword })
   const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
   const urlMap = await getTempFileUrls(fileIds)
-  return result.list.map((item) => ({
+  return result.list.map((item) => normalizePostSummary({
     ...item,
     coverUrl: urlMap[item.coverFileId] || '',
   }))
@@ -88,11 +145,11 @@ export async function fetchPostDetail(postId: string): Promise<PostDetail> {
   const post = result.post
   const coverUrl = post.coverFileId ? await getTempFileUrl(post.coverFileId) : ''
   const avatarUrl = post.author?.avatarUrl ? await getTempFileUrl(post.author.avatarUrl) : ''
-  return {
+  return normalizePostSummary({
     ...post,
     coverUrl,
     author: { ...post.author, avatarUrl },
-  }
+  }) as PostDetail
 }
 
 export async function toggleLike(postId: string): Promise<{ liked: boolean; likeCount: number }> {
@@ -167,8 +224,16 @@ export async function deleteDraft(draftId: string): Promise<void> {
   await refreshCounts()
 }
 
-export async function publishPost(payload: PublishPayload): Promise<{ postId: string; reward: number }> {
-  const result = await callCloudApi<{ postId: string; reward: number }>('publishPost', {
+export async function publishPost(payload: PublishPayload): Promise<{
+  postId: string
+  reward: number
+  reviewStatus?: import('@/types/community').PostReviewStatus
+}> {
+  const result = await callCloudApi<{
+    postId: string
+    reward: number
+    reviewStatus?: import('@/types/community').PostReviewStatus
+  }>('publishPost', {
     ...payload,
     width: payload.pattern.width,
     height: payload.pattern.height,
@@ -181,25 +246,25 @@ export async function publishPost(payload: PublishPayload): Promise<{ postId: st
   if (cachedUser) {
     cachedUser = {
       ...cachedUser,
-      beanBalance: cachedUser.beanBalance + result.reward,
-      postCount: (cachedUser.postCount || 0) + 1,
+      draftCount: (cachedUser.draftCount || 0) + 1,
     }
+    const config = getSessionConfig()
+    if (config) persistSession(cachedUser, config)
   }
   await refreshCounts()
   return result
 }
 
 function normalizePostSummary(item: PostSummary): PostSummary {
-  const raw = item as PostSummary & { authorNickName?: string; authorAvatarUrl?: string }
+  const raw = item as PostSummary & { authorNickName?: string; authorAvatarUrl?: string; _openid?: string }
+  const openid = item.author?.openid || raw._openid
   return {
     ...item,
-    author: item.author?.nickName
-      ? item.author
-      : {
-          nickName: raw.authorNickName || '拼豆玩家',
-          avatarUrl: raw.authorAvatarUrl || '',
-          openid: raw.author?.openid,
-        },
+    author: {
+      nickName: resolveAuthorNickName(item.author?.nickName || raw.authorNickName, openid),
+      avatarUrl: item.author?.avatarUrl || raw.authorAvatarUrl || '',
+      openid,
+    },
   }
 }
 
@@ -211,12 +276,36 @@ export async function fetchMyPosts(): Promise<PostSummary[]> {
   )
 }
 
-export async function fetchMyLikes(): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('getMyLikes')
+export async function fetchPendingPosts(): Promise<PostSummary[]> {
+  const result = await callCloudApi<{ list: PostSummary[] }>('getPendingPosts')
   const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
   return result.list.map((item) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '', liked: true }),
+    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '' }),
   )
+}
+
+export async function fetchMyLikes(): Promise<PostSummary[]> {
+  const result = await callCloudApi<{ list: PostSummary[] }>('getMyLikes')
+  const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
+  const authorAvatars = result.list
+    .map((item) => item.author?.avatarUrl)
+    .filter(Boolean) as string[]
+  const urlMap = await getTempFileUrls([...fileIds, ...authorAvatars])
+  return result.list.map((item) => {
+    const normalized = normalizePostSummary({
+      ...item,
+      coverUrl: urlMap[item.coverFileId] || item.coverUrl || '',
+      liked: true,
+    })
+    const avatarKey = normalized.author?.avatarUrl || ''
+    return {
+      ...normalized,
+      author: {
+        ...normalized.author,
+        avatarUrl: urlMap[avatarKey] || avatarKey || '',
+      },
+    }
+  })
 }
 
 export async function fetchMyFavorites(): Promise<PostSummary[]> {
@@ -232,12 +321,6 @@ export async function fetchBeanLogs(filter: 'all' | 'income' | 'expense'): Promi
   return result.list
 }
 
-export async function updateProfile(profile: Partial<UserProfile>): Promise<UserProfile> {
-  const result = await callCloudApi<{ user: UserProfile }>('updateProfile', profile)
-  cachedUser = { ...cachedUser, ...result.user }
-  return result.user
-}
-
 export async function submitFeedback(payload: {
   type: string
   content: string
@@ -247,8 +330,59 @@ export async function submitFeedback(payload: {
   await callCloudApi('submitFeedback', payload)
 }
 
-export async function updatePostVisibility(postId: string, visibility: 'public' | 'private'): Promise<void> {
-  await callCloudApi('updatePostVisibility', { postId, visibility })
+export async function updatePostVisibility(
+  postId: string,
+  visibility: 'public' | 'private',
+): Promise<PostReviewStatus> {
+  const result = await callCloudApi<{ reviewStatus: PostReviewStatus }>('updatePostVisibility', {
+    postId,
+    visibility,
+  })
+  await refreshCounts()
+  return result.reviewStatus
+}
+
+export interface AdminCheckResult {
+  isAdmin: boolean
+  openid?: string
+  adminCount?: number
+}
+
+export async function checkIsAdmin(): Promise<AdminCheckResult> {
+  const result = await callCloudApi<AdminCheckResult>('checkAdmin')
+  return {
+    isAdmin: Boolean(result.isAdmin),
+    openid: result.openid,
+    adminCount: result.adminCount,
+  }
+}
+
+export async function fetchReviewQueue(): Promise<PostSummary[]> {
+  const result = await callCloudApi<{ list: PostSummary[] }>('getReviewQueue')
+  const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
+  return result.list.map((item) =>
+    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '' }),
+  )
+}
+
+export async function reviewPost(
+  postId: string,
+  action: 'approve' | 'reject',
+  note?: string,
+): Promise<void> {
+  await callCloudApi('reviewPost', { postId, action, note })
+}
+
+export async function prepareRegenerateFromPost(postId: string): Promise<void> {
+  const post = await fetchPostDetail(postId)
+  const pattern = await loadPatternFromPost(post)
+  const config: PatternConfig = normalizeConfig({
+    ...DEFAULT_CONFIG,
+    styleMode: post.styleMode,
+    paletteId: post.paletteId,
+  })
+  Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config })
+  Taro.reLaunch({ url: '/pages/generate/index' })
 }
 
 export function formatPostMeta(item: Pick<PostSummary, 'width' | 'height' | 'styleMode' | 'paletteId'>): string {
@@ -259,6 +393,23 @@ export function formatPostMeta(item: Pick<PostSummary, 'width' | 'height' | 'sty
 export function formatCount(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`
   return String(value)
+}
+
+export function isOwnPost(authorOpenid?: string): boolean {
+  const user = getCachedUser()
+  return Boolean(user?.openid && authorOpenid && user.openid === authorOpenid)
+}
+
+export function buildPostDetailUrl(
+  postId: string,
+  authorOpenid?: string,
+  visibility?: PostVisibility,
+): string {
+  if (isOwnPost(authorOpenid)) {
+    const type = visibility === 'private' ? 'pending' : 'published'
+    return `/pages/my-post-detail/index?type=${type}&id=${postId}`
+  }
+  return `/pages/post-detail/index?id=${postId}`
 }
 
 export const CATEGORY_OPTIONS: PostCategory[] = ['宠物', '人物', '饰品', '食物', '动漫', '动物', '亲子']

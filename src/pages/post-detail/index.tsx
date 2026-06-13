@@ -1,6 +1,6 @@
 import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   downloadPost,
   fetchPostDetail,
@@ -12,12 +12,22 @@ import {
   toggleLike,
 } from '@/services/communityService'
 import { getColorById } from '@/services/palette'
-import { DEFAULT_CONFIG, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
+import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import './index.scss'
 
 const COLOR_PREVIEW_LIMIT = 6
+const PREVIEW_TOOLBAR_HEIGHT = 72
+
+function getPreviewFrameSize() {
+  const sys = Taro.getWindowInfo()
+  const totalHeight = Math.floor(sys.windowHeight * 0.38)
+  return {
+    totalHeight,
+    viewportHeight: totalHeight - PREVIEW_TOOLBAR_HEIGHT,
+  }
+}
 
 export default function PostDetailPage() {
   const router = useRouter()
@@ -26,7 +36,12 @@ export default function PostDetailPage() {
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [showAllColors, setShowAllColors] = useState(false)
+  const [previewFrame, setPreviewFrame] = useState(getPreviewFrameSize)
   const downloadCost = getCachedConfig()?.downloadCost ?? 0
+
+  useEffect(() => {
+    setPreviewFrame(getPreviewFrameSize())
+  }, [])
 
   const loadPost = useCallback(async () => {
     if (!postId) {
@@ -53,7 +68,7 @@ export default function PostDetailPage() {
   })
 
   useShareAppMessage(() => ({
-    title: post?.title || '拼豆豆图纸',
+    title: post?.title || `${MINI_PROGRAM_NAME}图纸`,
     path: `/pages/post-detail/index?id=${postId}`,
     imageUrl: post?.coverUrl,
   }))
@@ -149,19 +164,33 @@ export default function PostDetailPage() {
   return (
     <View className='post-detail-page'>
       <ScrollView scrollY className='post-detail-page__scroll'>
-        <View className='post-detail-page__cover-wrap' onClick={handlePreviewCover}>
-          <Image className='post-detail-page__cover' src={post.coverUrl || ''} mode='aspectFill' />
-          <View className='post-detail-page__cover-fullscreen'>
-            <Text>⛶ 全屏查看</Text>
-          </View>
-        </View>
         <View className='post-detail-page__body'>
+          <View className='post-detail-page__preview'>
+            <View className='post-detail-page__preview-toolbar'>
+              <Text className='post-detail-page__preview-hint'>点击查看高清大图</Text>
+              <Text className='post-detail-page__preview-action' onClick={handlePreviewCover}>
+                全屏预览
+              </Text>
+            </View>
+            <View
+              className='post-detail-page__preview-viewport'
+              style={{ height: `${previewFrame.viewportHeight}px` }}
+              onClick={handlePreviewCover}
+            >
+              {post.coverUrl ? (
+                <Image className='post-detail-page__preview-image' src={post.coverUrl} mode='aspectFit' />
+              ) : (
+                <View className='post-detail-page__preview-image post-detail-page__preview-image--empty' />
+              )}
+            </View>
+          </View>
+
           <Text className='post-detail-page__title'>{post.title}</Text>
 
           <View className='post-detail-page__tags'>
             <Text className='post-detail-page__tag'>{post.width}×{post.height}</Text>
             <Text className='post-detail-page__tag'>{post.paletteId.toUpperCase()}</Text>
-            <Text className='post-detail-page__tag'>{STYLE_MODE_LABELS[post.styleMode]}模式</Text>
+            <Text className='post-detail-page__tag'>{STYLE_MODE_LABELS[post.styleMode]}</Text>
             {post.category ? <Text className='post-detail-page__tag'>{post.category}</Text> : null}
           </View>
 

@@ -1,12 +1,18 @@
 import { View, Text, Input, Image } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useReachBottom, useLoad } from '@tarojs/taro'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AppTabBar from '@/components/AppTabBar'
 import {
   fetchFeed,
   formatCount,
+  getCachedUser,
   searchPosts,
+  buildPostDetailUrl,
 } from '@/services/communityService'
+import { isUserAuthenticated } from '@/services/wechatAuth'
+import { buildLoginUrl } from '@/utils/authRoute'
+import { restoreSessionFromStorage } from '@/services/session'
+import { safeNavigateTo, safeRedirect } from '@/utils/navigation'
 import heroBanner from '@/assets/home-hero-mascot.png'
 import searchIcon from '@/assets/icons/search.svg'
 import type { FeedTab, PostSummary } from '@/types/community'
@@ -16,6 +22,15 @@ const TABS: { key: FeedTab; label: string }[] = [
   { key: 'recommend', label: '推荐' },
   { key: 'latest', label: '最新' },
 ]
+
+const EMPTY_FEED = { posts: [] as PostSummary[], page: 1, hasMore: true }
+
+function createEmptyFeeds(): Record<FeedTab, typeof EMPTY_FEED> {
+  return {
+    recommend: { ...EMPTY_FEED, posts: [] },
+    latest: { ...EMPTY_FEED, posts: [] },
+  }
+}
 
 function splitWaterfall(list: PostSummary[]): [PostSummary[], PostSummary[]] {
   const left: PostSummary[] = []
@@ -27,12 +42,24 @@ function splitWaterfall(list: PostSummary[]): [PostSummary[], PostSummary[]] {
   return [left, right]
 }
 
+function getCoverAspectPadding(item: PostSummary): string {
+  if (item.width > 0 && item.height > 0) {
+    return `${(item.height / item.width) * 100}%`
+  }
+  return '100%'
+}
+
 function FeedCard({ item, onClick }: { item: PostSummary; onClick: () => void }) {
+  const coverAspectPadding = getCoverAspectPadding(item)
+
   return (
     <View className='home-page__card' onClick={onClick}>
-      <View className='home-page__card-cover-wrap'>
+      <View
+        className='home-page__card-cover-wrap'
+        style={{ paddingTop: coverAspectPadding }}
+      >
         {item.coverUrl ? (
-          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFill' />
+          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFit' />
         ) : (
           <View className='home-page__card-cover home-page__card-cover--placeholder' />
         )}
@@ -63,6 +90,7 @@ function FeedCard({ item, onClick }: { item: PostSummary; onClick: () => void })
 
 export default function HomePage() {
   const [headerLayout, setHeaderLayout] = useState({ paddingTop: 48, headerRight: 96, rowHeight: 32 })
+  const inflightRef = useRef<Partial<Record<FeedTab, boolean>>>({})
 
   useLoad((options) => {
     const inviterId = options?.inviterId as string | undefined
@@ -80,80 +108,89 @@ export default function HomePage() {
   }, [])
 
   const [tab, setTab] = useState<FeedTab>('recommend')
+  const [feeds, setFeeds] = useState(createEmptyFeeds)
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [posts, setPosts] = useState<PostSummary[]>([])
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const [loading, setLoading] = useState(false)
+  const [searchPosts, setSearchPosts] = useState<PostSummary[]>([])
+  const [refreshingTab, setRefreshingTab] = useState<FeedTab | null>(null)
 
   const isSearching = searchKeyword.length > 0
+  const currentFeed = feeds[tab]
+  const posts = isSearching ? searchPosts : currentFeed.posts
+  const hasMore = isSearching ? false : currentFeed.hasMore
+  const page = currentFeed.page
+  const isLoading = isSearching ? refreshingTab === tab : refreshingTab === tab
+
   const [leftCol, rightCol] = useMemo(() => splitWaterfall(posts), [posts])
 
-  const loadFeed = useCallback(
-    async (nextTab: FeedTab, nextPage: number, replace = false) => {
-      if (loading) return
-      setLoading(true)
-      try {
-        const result = await fetchFeed(nextTab, nextPage)
-        setPosts((prev) => (replace ? result.list : [...prev, ...result.list]))
-        setHasMore(result.hasMore)
-        setPage(nextPage)
-        setTab(nextTab)
-      } catch (error) {
-        Taro.showToast({
-          title: error instanceof Error ? error.message : '加载失败',
-          icon: 'none',
-        })
-      } finally {
-        setLoading(false)
-        Taro.stopPullDownRefresh()
-      }
-    },
-    [loading],
-  )
+  const loadFeed = useCallback(async (nextTab: FeedTab, nextPage: number, replace = false) => {
+    if (inflightRef.current[nextTab]) return
+
+    inflightRef.current[nextTab] = true
+    setRefreshingTab(nextTab)
+    try {
+      const result = await fetchFeed(nextTab, nextPage)
+      setFeeds((prev) => ({
+        ...prev,
+        [nextTab]: {
+          posts: replace ? result.list : [...prev[nextTab].posts, ...result.list],
+          page: nextPage,
+          hasMore: result.hasMore,
+        },
+      }))
+    } catch (error) {
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '加载失败',
+        icon: 'none',
+      })
+    } finally {
+      inflightRef.current[nextTab] = false
+      setRefreshingTab((current) => (current === nextTab ? null : current))
+      Taro.stopPullDownRefresh()
+    }
+  }, [])
 
   const loadSearch = useCallback(async (value: string) => {
     const trimmed = value.trim()
     if (!trimmed) {
       setSearchKeyword('')
-      setPosts([])
-      setPage(1)
-      setHasMore(true)
-      await loadFeed(tab, 1, true)
+      setSearchPosts([])
+      if (feeds[tab].posts.length === 0) {
+        await loadFeed(tab, 1, true)
+      }
       return
     }
-    setLoading(true)
+
+    setRefreshingTab(tab)
     try {
       const list = await searchPosts(trimmed)
       setSearchKeyword(trimmed)
-      setPosts(list)
-      setHasMore(false)
+      setSearchPosts(list)
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '搜索失败',
         icon: 'none',
       })
     } finally {
-      setLoading(false)
+      setRefreshingTab(null)
     }
-  }, [loadFeed, tab])
+  }, [feeds, loadFeed, tab])
 
   useEffect(() => {
-    loadFeed('recommend', 1, true)
+    void loadFeed('recommend', 1, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   usePullDownRefresh(() => {
     if (isSearching) {
-      loadSearch(searchKeyword)
+      void loadSearch(searchKeyword)
       return
     }
-    loadFeed(tab, 1, true)
+    void loadFeed(tab, 1, true)
   })
 
   useReachBottom(() => {
-    if (isSearching || !hasMore || loading) return
+    if (isSearching || !hasMore || refreshingTab === tab) return
     void loadFeed(tab, page + 1)
   })
 
@@ -161,15 +198,25 @@ export default function HomePage() {
     if (nextTab === tab && !isSearching) return
     setSearchKeyword('')
     setKeyword('')
-    loadFeed(nextTab, 1, true)
+    setSearchPosts([])
+    setTab(nextTab)
+    if (feeds[nextTab].posts.length === 0) {
+      void loadFeed(nextTab, 1, true)
+    }
   }
 
-  const openPost = (postId: string) => {
-    Taro.navigateTo({ url: `/pages/post-detail/index?id=${postId}` })
+  const openPost = (item: PostSummary) => {
+    restoreSessionFromStorage()
+    Taro.navigateTo({ url: buildPostDetailUrl(item._id, item.author?.openid, item.visibility) })
   }
 
   const goGenerate = () => {
-    Taro.reLaunch({ url: '/pages/generate/index' })
+    restoreSessionFromStorage()
+    if (!isUserAuthenticated(getCachedUser())) {
+      safeNavigateTo(buildLoginUrl('/pages/generate/index'))
+      return
+    }
+    safeRedirect('/pages/generate/index')
   }
 
   return (
@@ -187,7 +234,7 @@ export default function HomePage() {
             style={{ height: `${headerLayout.rowHeight}px` }}
           >
             <View className='home-page__title-row'>
-              <Text className='home-page__title'>拼豆豆</Text>
+              <Text className='home-page__title'>happy拼豆嘛</Text>
               <Text className='home-page__heart'>♥</Text>
             </View>
           </View>
@@ -237,7 +284,7 @@ export default function HomePage() {
             onClick={() => {
               setKeyword('')
               setSearchKeyword('')
-              loadFeed(tab, 1, true)
+              setSearchPosts([])
             }}
           >
             清除
@@ -245,27 +292,32 @@ export default function HomePage() {
         </View>
       ) : null}
 
-      {posts.length === 0 && !loading ? (
+      {posts.length === 0 ? (
         <View className='home-page__empty'>
-          <Text>{isSearching ? '没有找到相关图纸' : '暂无作品，快去生成吧'}</Text>
+          <Text>
+            {isLoading
+              ? '加载中...'
+              : isSearching
+                ? '没有找到相关图纸'
+                : '暂无作品，快去生成吧'}
+          </Text>
         </View>
       ) : (
         <View className='home-page__waterfall'>
           <View className='home-page__column'>
             {leftCol.map((item) => (
-              <FeedCard key={item._id} item={item} onClick={() => openPost(item._id)} />
+              <FeedCard key={item._id} item={item} onClick={() => openPost(item)} />
             ))}
           </View>
           <View className='home-page__column'>
             {rightCol.map((item) => (
-              <FeedCard key={item._id} item={item} onClick={() => openPost(item._id)} />
+              <FeedCard key={item._id} item={item} onClick={() => openPost(item)} />
             ))}
           </View>
         </View>
       )}
 
-      {loading ? <View className='home-page__loading'>加载中...</View> : null}
-      {!loading && !hasMore && posts.length > 0 ? (
+      {!isLoading && !hasMore && posts.length > 0 ? (
         <View className='home-page__footer-tip'>· 没有更多啦 ·</View>
       ) : null}
 

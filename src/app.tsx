@@ -3,7 +3,7 @@ import { useLaunch } from '@tarojs/taro'
 import Taro from '@tarojs/taro'
 import { getPalette } from '@/services/palette'
 import { initCloud } from '@/services/cloudClient'
-import { login } from '@/services/communityService'
+import { restoreSessionFromStorage, refreshSessionIfLoggedIn } from '@/services/session'
 import './app.scss'
 
 function App({ children }: PropsWithChildren) {
@@ -14,14 +14,10 @@ function App({ children }: PropsWithChildren) {
       Taro.setStorageSync('inviterId', inviterId)
     }
     if (initCloud()) {
-      const storedInviter = Taro.getStorageSync('inviterId') as string | undefined
-      login({ inviterId: storedInviter || inviterId })
-        .then(() => {
-          if (storedInviter || inviterId) Taro.removeStorageSync('inviterId')
-        })
-        .catch(() => {
-          // 云环境未配置时在页面内提示
-        })
+      restoreSessionFromStorage()
+      refreshSessionIfLoggedIn().catch(() => {
+        // 云环境未配置或未登录时在页面内提示
+      })
     }
   })
 

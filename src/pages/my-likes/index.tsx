@@ -3,7 +3,8 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { useCallback, useState } from 'react'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
-import { fetchMyLikes } from '@/services/communityService'
+import { buildPostDetailUrl, fetchMyLikes } from '@/services/communityService'
+import { restoreSessionFromStorage } from '@/services/session'
 import type { PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
@@ -30,8 +31,11 @@ export default function MyLikesPage() {
     load()
   })
 
-  const openPost = (postId: string) => {
-    Taro.navigateTo({ url: `/pages/post-detail/index?id=${postId}` })
+  const openPost = (item: PostSummary) => {
+    restoreSessionFromStorage()
+    Taro.navigateTo({
+      url: buildPostDetailUrl(item._id, item.author?.openid, item.visibility),
+    })
   }
 
   return (
@@ -44,6 +48,7 @@ export default function MyLikesPage() {
             <View className='list-page__empty'>
               <Text className='list-page__empty-icon'>❤</Text>
               <Text className='list-page__empty-text'>还没有点赞的图纸</Text>
+              <Text className='list-page__empty-desc'>在图纸详情页点赞后会显示在这里</Text>
             </View>
           ) : (
             <>
@@ -55,9 +60,10 @@ export default function MyLikesPage() {
                   item={item}
                   mode='like'
                   tintIndex={index}
-                  onClick={() => openPost(item._id)}
+                  onClick={() => openPost(item)}
                 />
               ))}
+              <Text className='list-page__end'>· 没有更多啦 ·</Text>
             </>
           )}
         </View>

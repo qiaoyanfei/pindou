@@ -46,7 +46,6 @@ export interface PublishStoragePayload {
   pattern: PatternResult
   config: PatternConfig
   coverPath?: string
-  draftId?: string
   title?: string
 }
 

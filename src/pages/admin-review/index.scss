@@ -1,0 +1,152 @@
+@import '@/styles/variables.scss';
+
+.admin-review-page {
+  min-height: 100vh;
+  background: $color-bg;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 32px);
+}
+
+.admin-review-page__scroll {
+  height: 100vh;
+}
+
+.admin-review-page__content {
+  padding: 24px 32px 48px;
+}
+
+.admin-review-page__empty,
+.admin-review-page__loading {
+  padding: 80px 32px;
+  text-align: center;
+  color: $color-text-secondary;
+  font-size: 28px;
+  line-height: 1.6;
+}
+
+.admin-review-page__empty-meta {
+  display: block;
+  margin-top: 12px;
+  font-size: 24px;
+  color: $color-text-secondary;
+  word-break: break-all;
+}
+
+.admin-review-page__tip {
+  display: block;
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 24px;
+  line-height: 1.5;
+}
+
+.admin-review-page__card {
+  background: $color-card;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: $shadow-card;
+  overflow: hidden;
+}
+
+.admin-review-page__card-top {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.admin-review-page__card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-review-page__cover {
+  width: 160px;
+  height: 160px;
+  border-radius: 16px;
+  background: #f3f4f6;
+  flex-shrink: 0;
+}
+
+.admin-review-page__cover--empty {
+  background: #eef0f3;
+}
+
+.admin-review-page__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-review-page__title {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  color: $color-text;
+  margin-bottom: 8px;
+}
+
+.admin-review-page__meta,
+.admin-review-page__author {
+  display: block;
+  font-size: 24px;
+  color: $color-text-secondary;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.admin-review-page__desc {
+  display: block;
+  margin-top: 16px;
+  font-size: 26px;
+  color: $color-text-secondary;
+  line-height: 1.5;
+}
+
+.admin-review-page__actions {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.admin-review-page__btn {
+  flex: 1;
+  height: 80px;
+  margin: 0;
+  padding: 0 !important;
+  line-height: 80px;
+  border-radius: 999px !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  border: none !important;
+}
+
+.admin-review-page__btn::after {
+  border: none;
+}
+
+.admin-review-page__btn--approve {
+  background: $color-primary !important;
+  color: #fff !important;
+}
+
+.admin-review-page__btn--reject {
+  background: #fff !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
+}
+
+.admin-review-page__reject-input {
+  display: block;
+  width: 100%;
+  height: 72px;
+  min-height: 72px;
+  padding: 0 20px;
+  border-radius: 12px;
+  background: #f9fafb;
+  font-size: 26px;
+  line-height: 72px;
+  box-sizing: border-box;
+}
