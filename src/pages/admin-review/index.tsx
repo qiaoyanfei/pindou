@@ -115,7 +115,12 @@ export default function AdminReviewPage() {
               <View className='admin-review-page__card' key={item._id}>
                 <View className='admin-review-page__card-top'>
                   {item.coverUrl ? (
-                    <Image className='admin-review-page__cover' src={item.coverUrl} mode='aspectFit' />
+                    <Image
+                      className='admin-review-page__cover'
+                      src={item.coverUrl}
+                      mode='aspectFit'
+                      showMenuByLongpress={false}
+                    />
                   ) : (
                     <View className='admin-review-page__cover admin-review-page__cover--empty' />
                   )}

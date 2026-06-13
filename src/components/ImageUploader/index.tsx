@@ -34,7 +34,7 @@ export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProp
   return (
     <View className='image-uploader' onClick={handleChoose}>
       {imagePath ? (
-        <Image className='image-uploader__preview' src={imagePath} mode='aspectFit' />
+        <Image className='image-uploader__preview' src={imagePath} mode='aspectFit' showMenuByLongpress={false} />
       ) : (
         <View className='image-uploader__placeholder'>
           <View className='image-uploader__cloud-wrap'>

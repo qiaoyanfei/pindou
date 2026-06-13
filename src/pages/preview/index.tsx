@@ -5,6 +5,7 @@ import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
+import { previewImageWithoutMenu } from '@/utils/previewImage'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
 import { getCoverCellPx } from '@/services/patternRenderer'
@@ -104,7 +105,7 @@ export default function PreviewPage() {
         Taro.showLoading({ title: '加载预览...' })
         const tempFilePath = await canvasToTempFile('export-canvas')
         Taro.hideLoading()
-        await Taro.previewImage({
+        await previewImageWithoutMenu({
           urls: [tempFilePath],
           current: tempFilePath,
         })

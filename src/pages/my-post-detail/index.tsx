@@ -18,6 +18,7 @@ import {
   REVIEW_STATUS_ICONS,
   REVIEW_STATUS_LABELS,
 } from '@/utils/postReview'
+import { previewImageWithoutMenu } from '@/utils/previewImage'
 import { showActionSheet, showModal } from '@/utils/dialog'
 import { safeNavigateBack, safeNavigateTo } from '@/utils/navigation'
 import type { PatternResult } from '@/types'
@@ -151,7 +152,7 @@ export default function MyPostDetailPage() {
 
   const handlePreviewCover = () => {
     if (!source?.coverUrl) return
-    Taro.previewImage({ urls: [source.coverUrl], current: source.coverUrl })
+    previewImageWithoutMenu({ urls: [source.coverUrl], current: source.coverUrl })
   }
 
   const handleGoPublic = async () => {
@@ -264,7 +265,12 @@ export default function MyPostDetailPage() {
             <View className='owner-card__top'>
               <View className='owner-card__cover-wrap' onClick={handlePreviewCover}>
                 {source.coverUrl ? (
-                  <Image className='owner-card__cover' src={source.coverUrl} mode='aspectFit' />
+                  <Image
+                    className='owner-card__cover'
+                    src={source.coverUrl}
+                    mode='aspectFit'
+                    showMenuByLongpress={false}
+                  />
                 ) : (
                   <View className='owner-card__cover owner-card__cover--empty' />
                 )}
@@ -348,7 +354,12 @@ export default function MyPostDetailPage() {
               <View className='owner-preview-link'>
                 <View className='owner-preview-link__thumb-wrap'>
                   {source.coverUrl ? (
-                    <Image className='owner-preview-link__thumb' src={source.coverUrl} mode='aspectFit' />
+                    <Image
+                      className='owner-preview-link__thumb'
+                      src={source.coverUrl}
+                      mode='aspectFit'
+                      showMenuByLongpress={false}
+                    />
                   ) : (
                     <View className='owner-preview-link__thumb owner-preview-link__thumb--empty' />
                   )}

@@ -91,7 +91,7 @@ export default function PublishPage() {
       <View className='publish-page__preview'>
         <View className='publish-page__cover-wrap'>
           {coverPreview ? (
-            <Image className='publish-page__cover' src={coverPreview} mode='aspectFit' />
+            <Image className='publish-page__cover' src={coverPreview} mode='aspectFit' showMenuByLongpress={false} />
           ) : (
             <View className='publish-page__cover publish-page__cover--empty' />
           )}

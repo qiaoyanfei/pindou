@@ -78,7 +78,7 @@ export default function PostListItem({
   return (
     <View className={`post-list-item${mode === 'like' || mode === 'favorite' ? ' post-list-item--interaction' : ''}`} onClick={onClick}>
       <View className='post-list-item__cover-wrap' style={{ background: tint }}>
-        <Image className='post-list-item__cover' src={item.coverUrl || ''} mode='aspectFit' />
+        <Image className='post-list-item__cover' src={item.coverUrl || ''} mode='aspectFit' showMenuByLongpress={false} />
       </View>
 
       <View className='post-list-item__body'>

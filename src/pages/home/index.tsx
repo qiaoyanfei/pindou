@@ -59,7 +59,7 @@ function FeedCard({ item, onClick }: { item: PostSummary; onClick: () => void })
         style={{ paddingTop: coverAspectPadding }}
       >
         {item.coverUrl ? (
-          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFit' />
+          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFit' showMenuByLongpress={false} />
         ) : (
           <View className='home-page__card-cover home-page__card-cover--placeholder' />
         )}

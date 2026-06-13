@@ -1,6 +1,7 @@
-import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
+import { View, Text, Image, ScrollView, Button, CoverView } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import PatternCanvas from '@/components/PatternCanvas'
 import {
   downloadPost,
   fetchPostDetail,
@@ -13,9 +14,21 @@ import {
 } from '@/services/communityService'
 import { getColorById } from '@/services/palette'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
-import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
+import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
+import { previewImageWithoutMenu } from '@/utils/previewImage'
+import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import './index.scss'
+
+const POST_DETAIL_EXPORT_CANVAS_ID = 'post-detail-export-canvas'
+
+interface ExportPayload {
+  pattern: PatternResult
+  config: PatternConfig
+  creatorNickname: string
+  charged: boolean
+  beanCost?: number
+}
 
 const COLOR_PREVIEW_LIMIT = 6
 const PREVIEW_TOOLBAR_HEIGHT = 72
@@ -35,6 +48,8 @@ export default function PostDetailPage() {
   const [post, setPost] = useState<PostDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
+  const exportPayloadRef = useRef<ExportPayload | null>(null)
   const [showAllColors, setShowAllColors] = useState(false)
   const [previewFrame, setPreviewFrame] = useState(getPreviewFrameSize)
   const downloadCost = getCachedConfig()?.downloadCost ?? 0
@@ -82,7 +97,7 @@ export default function PostDetailPage() {
 
   const handlePreviewCover = () => {
     if (!post?.coverUrl) return
-    Taro.previewImage({ urls: [post.coverUrl], current: post.coverUrl })
+    previewImageWithoutMenu({ urls: [post.coverUrl], current: post.coverUrl })
   }
 
   const handleToggleLike = async () => {
@@ -111,8 +126,34 @@ export default function PostDetailPage() {
     }
   }
 
+  const handleExportCanvasReady = async () => {
+    const payload = exportPayloadRef.current
+    if (!payload) return
+
+    try {
+      await saveCanvasToAlbum(POST_DETAIL_EXPORT_CANVAS_ID)
+      Taro.hideLoading()
+      Taro.showToast({
+        title: payload.charged && payload.beanCost ? `已保存，消耗 ${payload.beanCost} 小豆` : '已保存到相册',
+        icon: 'success',
+      })
+      if (payload.charged) {
+        setPost((prev) =>
+          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev,
+        )
+      }
+    } catch (error) {
+      Taro.hideLoading()
+      handleAlbumSaveError(error)
+    } finally {
+      exportPayloadRef.current = null
+      setExportPayload(null)
+      setDownloading(false)
+    }
+  }
+
   const handleDownload = async () => {
-    if (!post || downloading) return
+    if (!post || downloading || exportPayload) return
 
     const confirm = await new Promise<boolean>((resolve) => {
       Taro.showModal({
@@ -133,22 +174,21 @@ export default function PostDetailPage() {
         styleMode: result.post.styleMode,
         paletteId: result.post.paletteId,
       })
-      Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config } satisfies {
-        pattern: PatternResult
-        config: PatternConfig
-      })
-      Taro.hideLoading()
-      Taro.showToast({ title: result.charged ? `已消耗 ${result.beanCost} 小豆` : '下载成功', icon: 'success' })
-      setTimeout(() => {
-        Taro.navigateTo({ url: '/pages/preview/index' })
-      }, 600)
+      const payload: ExportPayload = {
+        pattern,
+        config,
+        creatorNickname: result.post.author?.nickName || '',
+        charged: Boolean(result.charged),
+        beanCost: result.beanCost,
+      }
+      exportPayloadRef.current = payload
+      setExportPayload(payload)
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({
         title: error instanceof Error ? error.message : '下载失败',
         icon: 'none',
       })
-    } finally {
       setDownloading(false)
     }
   }
@@ -178,7 +218,12 @@ export default function PostDetailPage() {
               onClick={handlePreviewCover}
             >
               {post.coverUrl ? (
-                <Image className='post-detail-page__preview-image' src={post.coverUrl} mode='aspectFit' />
+                <Image
+                  className='post-detail-page__preview-image'
+                  src={post.coverUrl}
+                  mode='aspectFit'
+                  showMenuByLongpress={false}
+                />
               ) : (
                 <View className='post-detail-page__preview-image post-detail-page__preview-image--empty' />
               )}
@@ -286,6 +331,20 @@ export default function PostDetailPage() {
           下载{downloadCost > 0 ? ` · ${downloadCost}豆` : ''}
         </Button>
       </View>
+
+      {exportPayload ? (
+        <PatternCanvas
+          canvasId={POST_DETAIL_EXPORT_CANVAS_ID}
+          pattern={exportPayload.pattern}
+          config={exportPayload.config}
+          mode='export'
+          hidden
+          creatorNickname={exportPayload.creatorNickname}
+          onReady={handleExportCanvasReady}
+        />
+      ) : null}
+
+      {downloading ? <CoverView className='post-detail-page__export-mask' /> : null}
     </View>
   )
 }
