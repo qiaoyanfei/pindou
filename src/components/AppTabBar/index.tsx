@@ -1,9 +1,9 @@
 import { View, Text, Image } from '@tarojs/components'
 import { getCachedUser } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
-import { restoreSessionFromStorage } from '@/services/session'
+import { restoreSessionFromStorage, refreshSessionIfLoggedIn } from '@/services/session'
 import { buildLoginUrl } from '@/utils/authRoute'
-import { safeNavigateTo, safeRedirect } from '@/utils/navigation'
+import { redirectToGeneratePage, safeNavigateTo, safeRedirect } from '@/utils/navigation'
 import tabHomeIcon from '@/assets/icons/tab-home.svg'
 import tabHomeActiveIcon from '@/assets/icons/tab-home-active.svg'
 import tabMineIcon from '@/assets/icons/tab-mine.svg'
@@ -33,15 +33,30 @@ const TABS = [
 ]
 
 export default function AppTabBar({ active }: AppTabBarProps) {
-  const switchTab = (url: string, key: 'home' | 'generate' | 'mine') => {
+  const switchTab = async (url: string, key: 'home' | 'generate' | 'mine') => {
     if (active === key) return
 
     restoreSessionFromStorage()
-    if ((key === 'mine' || key === 'generate') && !isUserAuthenticated(getCachedUser())) {
-      safeNavigateTo(buildLoginUrl(url))
-      return
+    if (key === 'mine' || key === 'generate') {
+      await refreshSessionIfLoggedIn()
+      if (!isUserAuthenticated(getCachedUser())) {
+        safeNavigateTo(buildLoginUrl(url))
+        return
+      }
     }
     safeRedirect(url)
+  }
+
+  const openGenerate = async () => {
+    if (active === 'generate') return
+
+    restoreSessionFromStorage()
+    await refreshSessionIfLoggedIn()
+    if (!isUserAuthenticated(getCachedUser())) {
+      safeNavigateTo(buildLoginUrl('/pages/generate/index'))
+      return
+    }
+    redirectToGeneratePage(true)
   }
 
   return (
@@ -55,7 +70,7 @@ export default function AppTabBar({ active }: AppTabBarProps) {
               <View
                 key={tab.key}
                 className={`app-tabbar__col app-tabbar__col--center${isActive ? ' is-active' : ''}`}
-                onClick={() => switchTab(tab.url, tab.key)}
+                onClick={openGenerate}
               >
                 <View className='app-tabbar__icon-slot'>
                   <View className='app-tabbar__center-btn'>

@@ -56,9 +56,15 @@ export const STYLE_MODE_HINTS: Record<StyleMode, string> = {
 }
 
 export function getExportClarityLabel(exportCellPx: number): string {
-  if (exportCellPx >= 34) return '高清清晰度'
-  if (exportCellPx >= 30) return '较高清晰度'
-  return '标准清晰度'
+  return `${exportCellPx}px/格`
+}
+
+export function createDefaultConfigForStyleMode(styleMode: StyleMode): PatternConfig {
+  return normalizeConfig({
+    styleMode,
+    longEdge: STYLE_MODE_DEFAULT_LONG_EDGE[styleMode],
+    exportCellPx: STYLE_MODE_DEFAULT_EXPORT_CELL_PX[styleMode],
+  })
 }
 
 /** 每格分块采样密度（4×4 像素/格） */

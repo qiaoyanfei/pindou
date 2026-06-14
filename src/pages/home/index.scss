@@ -288,8 +288,12 @@ $home-padding-x: 32px;
 
 .home-page__card-like-icon {
   font-size: 22px;
-  color: #ef4444;
+  color: #d1d5db;
   line-height: 1;
+}
+
+.home-page__card-like.is-liked .home-page__card-like-icon {
+  color: #ef4444;
 }
 
 .home-page__card-like-count {

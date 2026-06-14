@@ -59,6 +59,7 @@ export async function login(params?: {
   nickName?: string
   avatarUrl?: string
   persist?: boolean
+  refreshOnly?: boolean
 }): Promise<LoginResult> {
   const wantsProfileUpdate = Boolean(params?.nickName || params?.avatarUrl)
 
@@ -234,7 +235,14 @@ export async function publishPost(payload: PublishPayload): Promise<{
     reward: number
     reviewStatus?: import('@/types/community').PostReviewStatus
   }>('publishPost', {
-    ...payload,
+    draftId: payload.draftId,
+    title: payload.title,
+    category: payload.category,
+    description: payload.description,
+    visibility: payload.visibility,
+    coverFileId: payload.coverFileId,
+    sheetFileId: payload.sheetFileId,
+    patternFileId: payload.patternFileId,
     width: payload.pattern.width,
     height: payload.pattern.height,
     styleMode: payload.config.styleMode,
@@ -242,6 +250,7 @@ export async function publishPost(payload: PublishPayload): Promise<{
     stats: payload.pattern.stats,
     totalBeads: payload.pattern.totalBeads,
     colorCount: Object.keys(payload.pattern.stats).length,
+    config: payload.config,
   })
   if (cachedUser) {
     cachedUser = {
@@ -251,7 +260,11 @@ export async function publishPost(payload: PublishPayload): Promise<{
     const config = getSessionConfig()
     if (config) persistSession(cachedUser, config)
   }
-  await refreshCounts()
+  try {
+    await refreshCounts()
+  } catch {
+    // count sync failure should not block publish
+  }
   return result
 }
 
@@ -338,7 +351,11 @@ export async function updatePostVisibility(
     postId,
     visibility,
   })
-  await refreshCounts()
+  try {
+    await refreshCounts()
+  } catch {
+    // count sync failure should not block visibility update
+  }
   return result.reviewStatus
 }
 

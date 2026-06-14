@@ -7,6 +7,7 @@ import {
   formatPostMeta,
   reviewPost,
 } from '@/services/communityService'
+import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { requireAuthenticated } from '@/services/session'
 import type { PostSummary } from '@/types/community'
 import './index.scss'
@@ -120,6 +121,12 @@ export default function AdminReviewPage() {
                       src={item.coverUrl}
                       mode='aspectFit'
                       showMenuByLongpress={false}
+                      onClick={() => {
+                        requestHdPatternPreview({
+                          postId: item._id,
+                          creatorNickname: item.author?.nickName,
+                        })
+                      }}
                     />
                   ) : (
                     <View className='admin-review-page__cover admin-review-page__cover--empty' />
@@ -165,6 +172,8 @@ export default function AdminReviewPage() {
           )}
         </View>
       </ScrollView>
+
+      <HdPatternPreviewHost />
     </View>
   )
 }

@@ -5,8 +5,8 @@ import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
-import { previewImageWithoutMenu } from '@/utils/previewImage'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
+import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
 import { getCoverCellPx } from '@/services/patternRenderer'
 import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
@@ -26,7 +26,7 @@ interface StoredPayload {
   config: PatternConfig
 }
 
-type ExportJob = 'save' | 'fullscreen' | 'cover'
+type ExportJob = 'save' | 'cover'
 
 export default function PreviewPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
@@ -37,8 +37,6 @@ export default function PreviewPage() {
   const [exportJob, setExportJob] = useState<ExportJob | null>(null)
   const [creatorNickname, setCreatorNickname] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
-  const exportBusyRef = useRef(false)
-  exportBusyRef.current = exportBusy
 
   useDidShow(() => {
     restoreSessionFromStorage()
@@ -101,14 +99,6 @@ export default function PreviewPage() {
 
         Taro.hideLoading()
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
-      } else {
-        Taro.showLoading({ title: '加载预览...' })
-        const tempFilePath = await canvasToTempFile('export-canvas')
-        Taro.hideLoading()
-        await previewImageWithoutMenu({
-          urls: [tempFilePath],
-          current: tempFilePath,
-        })
       }
     } catch (error) {
       Taro.hideLoading()
@@ -124,12 +114,7 @@ export default function PreviewPage() {
         })
       } else {
         Taro.showToast({
-          title:
-            job === 'save'
-              ? '保存失败'
-              : job === 'cover'
-                ? '准备发布失败'
-                : '预览失败',
+          title: job === 'save' ? '保存失败' : '准备发布失败',
           icon: 'none',
         })
       }
@@ -153,14 +138,13 @@ export default function PreviewPage() {
   }
 
   const handleFullscreen = useCallback(() => {
-    if (exportBusyRef.current) {
-      Taro.showToast({ title: '导出图准备中，请稍候', icon: 'none' })
-      return
-    }
-    exportJobRef.current = 'fullscreen'
-    setExportBusy(true)
-    setExportJob('fullscreen')
-  }, [])
+    if (!pattern) return
+    requestHdPatternPreview({
+      pattern,
+      config,
+      creatorNickname,
+    })
+  }, [pattern, config, creatorNickname])
 
   if (!pattern) {
     return <View className='preview-page preview-page--empty'>加载中...</View>
@@ -215,7 +199,7 @@ export default function PreviewPage() {
         </View>
       </ScrollView>
 
-      {exportJob && exportJob !== 'cover' && (
+      {exportJob === 'save' && (
         <PatternCanvas
           canvasId='export-canvas'
           pattern={pattern}
@@ -234,12 +218,15 @@ export default function PreviewPage() {
           config={config}
           mode='preview'
           hidden
+          hideColorCode
           cellPx={getCoverCellPx(pattern)}
           onReady={handleExportCanvasReady}
         />
       )}
 
       {exportBusy && <CoverView className='preview-page__export-mask' />}
+
+      <HdPatternPreviewHost />
     </View>
   )
 }

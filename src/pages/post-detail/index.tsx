@@ -12,10 +12,12 @@ import {
   toggleFavorite,
   toggleLike,
 } from '@/services/communityService'
+import { patchPostInteraction } from '@/utils/postInteractionSync'
 import { getColorById } from '@/services/palette'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
 import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
-import { previewImageWithoutMenu } from '@/utils/previewImage'
+import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
+import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import './index.scss'
@@ -67,6 +69,7 @@ export default function PostDetailPage() {
     try {
       const detail = await fetchPostDetail(postId)
       setPost(detail)
+      void resolvePatternForPreview(detail).catch(() => {})
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '加载失败',
@@ -96,8 +99,11 @@ export default function PostDetailPage() {
   const visibleColors = showAllColors ? colorEntries : colorEntries.slice(0, COLOR_PREVIEW_LIMIT)
 
   const handlePreviewCover = () => {
-    if (!post?.coverUrl) return
-    previewImageWithoutMenu({ urls: [post.coverUrl], current: post.coverUrl })
+    if (!post) return
+    requestHdPatternPreview({
+      post,
+      creatorNickname: post.author?.nickName,
+    })
   }
 
   const handleToggleLike = async () => {
@@ -105,6 +111,11 @@ export default function PostDetailPage() {
     try {
       const result = await toggleLike(post._id)
       setPost({ ...post, liked: result.liked, likeCount: result.likeCount })
+      patchPostInteraction({
+        postId: post._id,
+        liked: result.liked,
+        likeCount: result.likeCount,
+      })
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '操作失败',
@@ -118,6 +129,11 @@ export default function PostDetailPage() {
     try {
       const result = await toggleFavorite(post._id)
       setPost({ ...post, favorited: result.favorited, favoriteCount: result.favoriteCount })
+      patchPostInteraction({
+        postId: post._id,
+        favorited: result.favorited,
+        favoriteCount: result.favoriteCount,
+      })
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '操作失败',
@@ -207,7 +223,6 @@ export default function PostDetailPage() {
         <View className='post-detail-page__body'>
           <View className='post-detail-page__preview'>
             <View className='post-detail-page__preview-toolbar'>
-              <Text className='post-detail-page__preview-hint'>点击查看高清大图</Text>
               <Text className='post-detail-page__preview-action' onClick={handlePreviewCover}>
                 全屏预览
               </Text>
@@ -248,7 +263,6 @@ export default function PostDetailPage() {
               )}
               <Text className='post-detail-page__author-name'>{post.author.nickName}</Text>
             </View>
-            <View className='post-detail-page__follow'>+ 关注</View>
           </View>
 
           <Text className='post-detail-page__meta'>{formatPostMeta(post)}</Text>
@@ -345,6 +359,8 @@ export default function PostDetailPage() {
       ) : null}
 
       {downloading ? <CoverView className='post-detail-page__export-mask' /> : null}
+
+      <HdPatternPreviewHost />
     </View>
   )
 }

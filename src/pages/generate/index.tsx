@@ -6,47 +6,76 @@ import ImageUploader from '@/components/ImageUploader'
 import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
+import {
+  getGenerateDraft,
+  resetGenerateDraft,
+  setGenerateDraft,
+  setGenerateImageWithDefaultConfig,
+  syncGenerateDraftFromPage,
+} from '@/services/generateSession'
 import { requireAuthenticated } from '@/services/session'
 import { safeRedirect } from '@/utils/navigation'
 import {
-  DEFAULT_CONFIG,
-  STYLE_MODE_DEFAULT_EXPORT_CELL_PX,
-  STYLE_MODE_DEFAULT_LONG_EDGE,
-  STYLE_MODE_LABELS,
+  createDefaultConfigForStyleMode,
   getExportClarityLabel,
-  normalizeConfig,
+  STYLE_MODE_LABELS,
 } from '@/utils/constants'
-import { GENERATE_CONFIG_STORAGE_KEY, PATTERN_STORAGE_KEY, type PatternConfig, type StyleMode } from '@/types'
+import { PATTERN_STORAGE_KEY, GENERATE_PAGE_RESET_KEY, type PatternConfig, type StyleMode } from '@/types'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 
 function createInitialConfig(): PatternConfig {
-  const styleMode: StyleMode = 'manga'
+  return createDefaultConfigForStyleMode('manga')
+}
+
+function readDraftState(): { imagePath: string; config: PatternConfig } {
+  const draft = getGenerateDraft()
+  if (draft) {
+    return {
+      imagePath: draft.imagePath,
+      config: draft.config,
+    }
+  }
   return {
-    ...DEFAULT_CONFIG,
-    styleMode,
-    longEdge: STYLE_MODE_DEFAULT_LONG_EDGE[styleMode],
-    exportCellPx: STYLE_MODE_DEFAULT_EXPORT_CELL_PX[styleMode],
+    imagePath: '',
+    config: createInitialConfig(),
   }
 }
 
 export default function GeneratePage() {
+  const initialDraft = readDraftState()
   const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32, headerRight: 96 })
-  const [imagePath, setImagePath] = useState('')
-  const [config, setConfig] = useState<PatternConfig>(createInitialConfig)
+  const [imagePath, setImagePath] = useState(initialDraft.imagePath)
+  const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
   const [authed, setAuthed] = useState(false)
+
+  const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
+    setImagePath(next.imagePath)
+    setConfig(next.config)
+  }
 
   useDidShow(async () => {
     const user = await requireAuthenticated('/pages/generate/index')
     if (!user) return
     setAuthed(true)
 
-    const saved = Taro.getStorageSync(GENERATE_CONFIG_STORAGE_KEY)
-    if (saved) {
-      setConfig(normalizeConfig(saved))
+    if (Taro.getStorageSync(GENERATE_PAGE_RESET_KEY)) {
+      Taro.removeStorageSync(GENERATE_PAGE_RESET_KEY)
+      applyDraftState(resetGenerateDraft())
+      return
+    }
+
+    const draft = getGenerateDraft()
+    if (draft) {
+      applyDraftState(draft)
     }
   })
+
+  const handleImageSelect = (path: string) => {
+    const next = setGenerateImageWithDefaultConfig(path, config.styleMode)
+    applyDraftState(next)
+  }
 
   useEffect(() => {
     const windowInfo = Taro.getWindowInfo()
@@ -59,16 +88,9 @@ export default function GeneratePage() {
   }, [])
 
   const handleStyleModeChange = (styleMode: StyleMode) => {
-    setConfig((prev) => {
-      const next = normalizeConfig({
-        ...prev,
-        styleMode,
-        longEdge: STYLE_MODE_DEFAULT_LONG_EDGE[styleMode],
-        exportCellPx: STYLE_MODE_DEFAULT_EXPORT_CELL_PX[styleMode],
-      })
-      Taro.setStorageSync(GENERATE_CONFIG_STORAGE_KEY, next)
-      return next
-    })
+    const nextConfig = createDefaultConfigForStyleMode(styleMode)
+    setGenerateDraft(imagePath, nextConfig)
+    setConfig(nextConfig)
   }
 
   const handleBack = () => {
@@ -81,6 +103,7 @@ export default function GeneratePage() {
       return
     }
 
+    syncGenerateDraftFromPage(imagePath, config)
     setLoading(true)
     Taro.showLoading({ title: '生成中...' })
 
@@ -125,7 +148,7 @@ export default function GeneratePage() {
       </View>
 
       <View className='generate-page__body'>
-        <ImageUploader imagePath={imagePath} onSelect={setImagePath} />
+        <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
 
         <StyleModeSelector value={config.styleMode} onChange={handleStyleModeChange} />
 
@@ -141,7 +164,7 @@ export default function GeneratePage() {
           </View>
         </View>
 
-        <AdvancedSettings config={config} />
+        <AdvancedSettings config={config} imagePath={imagePath} />
 
         <Button
           className='generate-page__submit'

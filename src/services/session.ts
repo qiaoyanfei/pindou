@@ -13,6 +13,17 @@ const CONFIG_STORAGE_KEY = 'pindou_app_config'
 let cachedConfig: AppRemoteConfig | null = null
 let refreshPromise: Promise<UserProfile | null> | null = null
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  const errMsg = (error as { errMsg?: string })?.errMsg
+  return errMsg || ''
+}
+
+export function isSessionInvalidError(message: string): boolean {
+  const invalidHints = ['登录已失效', '账号已注销', '未获取到 openid', '未获取到用户身份', '用户不存在']
+  return invalidHints.some((hint) => message.includes(hint))
+}
+
 export function getSessionConfig(): AppRemoteConfig | null {
   return cachedConfig
 }
@@ -73,15 +84,16 @@ export async function refreshSessionIfLoggedIn(): Promise<UserProfile | null> {
 
     restoreSessionFromStorage()
     try {
-      const inviterId = Taro.getStorageSync('inviterId') as string | undefined
-      const result = await login({
-        inviterId: inviterId || undefined,
-      })
-      if (inviterId) Taro.removeStorageSync('inviterId')
+      const result = await login({ refreshOnly: true })
       persistSession(result.user, result.config)
       markSessionLoggedIn()
       return result.user
-    } catch {
+    } catch (error) {
+      const message = getErrorMessage(error)
+      if (isSessionInvalidError(message)) {
+        clearSession()
+        return null
+      }
       return getCachedUser()
     } finally {
       refreshPromise = null

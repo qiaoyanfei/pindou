@@ -2,16 +2,23 @@ import { View, Text, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import gearIcon from '@/assets/icons/gear.svg'
 import chevronRightIcon from '@/assets/icons/chevron-right.svg'
-import { GENERATE_CONFIG_STORAGE_KEY, type PatternConfig } from '@/types'
+import { syncGenerateDraftFromPage } from '@/services/generateSession'
+import type { PatternConfig } from '@/types'
 import './index.scss'
 
 interface AdvancedSettingsProps {
   config: PatternConfig
+  imagePath: string
 }
 
-export default function AdvancedSettings({ config }: AdvancedSettingsProps) {
+export default function AdvancedSettings({ config, imagePath }: AdvancedSettingsProps) {
   const openSettings = () => {
-    Taro.setStorageSync(GENERATE_CONFIG_STORAGE_KEY, config)
+    if (!imagePath) {
+      Taro.showToast({ title: '请先上传图片', icon: 'none' })
+      return
+    }
+
+    syncGenerateDraftFromPage(imagePath, config)
     Taro.navigateTo({ url: '/pages/advanced-settings/index' })
   }
 

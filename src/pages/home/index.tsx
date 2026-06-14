@@ -1,5 +1,5 @@
 import { View, Text, Input, Image } from '@tarojs/components'
-import Taro, { usePullDownRefresh, useReachBottom, useLoad } from '@tarojs/taro'
+import Taro, { usePullDownRefresh, useReachBottom, useLoad, useDidShow } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AppTabBar from '@/components/AppTabBar'
 import {
@@ -12,10 +12,16 @@ import {
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
 import { restoreSessionFromStorage } from '@/services/session'
-import { safeNavigateTo, safeRedirect } from '@/utils/navigation'
+import { safeNavigateTo, safeRedirect, redirectToGeneratePage } from '@/utils/navigation'
 import heroBanner from '@/assets/home-hero-mascot.png'
 import searchIcon from '@/assets/icons/search.svg'
 import type { FeedTab, PostSummary } from '@/types/community'
+import {
+  applyPatchesToPosts,
+  patchPostInList,
+  POST_INTERACTION_EVENT,
+  type PostInteractionPatch,
+} from '@/utils/postInteractionSync'
 import './index.scss'
 
 const TABS: { key: FeedTab; label: string }[] = [
@@ -78,7 +84,7 @@ function FeedCard({ item, onClick }: { item: PostSummary; onClick: () => void })
             )}
             <Text className='home-page__card-author-name'>{item.author.nickName}</Text>
           </View>
-          <View className='home-page__card-like'>
+          <View className={`home-page__card-like${item.liked ? ' is-liked' : ''}`}>
             <Text className='home-page__card-like-icon'>♥</Text>
             <Text className='home-page__card-like-count'>{formatCount(item.likeCount)}</Text>
           </View>
@@ -181,6 +187,41 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const onInteractionChange = (patch: PostInteractionPatch) => {
+      setFeeds((prev) => ({
+        recommend: {
+          ...prev.recommend,
+          posts: patchPostInList(prev.recommend.posts, patch),
+        },
+        latest: {
+          ...prev.latest,
+          posts: patchPostInList(prev.latest.posts, patch),
+        },
+      }))
+      setSearchResults((prev) => patchPostInList(prev, patch))
+    }
+
+    Taro.eventCenter.on(POST_INTERACTION_EVENT, onInteractionChange)
+    return () => {
+      Taro.eventCenter.off(POST_INTERACTION_EVENT, onInteractionChange)
+    }
+  }, [])
+
+  useDidShow(() => {
+    setFeeds((prev) => ({
+      recommend: {
+        ...prev.recommend,
+        posts: applyPatchesToPosts(prev.recommend.posts),
+      },
+      latest: {
+        ...prev.latest,
+        posts: applyPatchesToPosts(prev.latest.posts),
+      },
+    }))
+    setSearchResults((prev) => applyPatchesToPosts(prev))
+  })
+
   usePullDownRefresh(() => {
     if (isSearching) {
       void loadSearch(searchKeyword)
@@ -216,7 +257,7 @@ export default function HomePage() {
       safeNavigateTo(buildLoginUrl('/pages/generate/index'))
       return
     }
-    safeRedirect('/pages/generate/index')
+    redirectToGeneratePage(true)
   }
 
   return (

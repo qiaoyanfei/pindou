@@ -9,6 +9,7 @@ import {
   updatePostVisibility,
 } from '@/services/communityService'
 import { showModal } from '@/utils/dialog'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 import type { PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
@@ -48,8 +49,9 @@ export default function DraftsPage() {
       loadPending()
     } catch (error) {
       Taro.showToast({
-        title: error instanceof Error ? error.message : '操作失败',
+        title: resolveErrorMessage(error, '操作失败'),
         icon: 'none',
+        duration: 3000,
       })
     }
   }

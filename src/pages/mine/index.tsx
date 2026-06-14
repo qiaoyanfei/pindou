@@ -40,8 +40,13 @@ interface MenuItem {
 }
 
 export default function MinePage() {
-  const [user, setUser] = useState(getCachedUser())
-  const [nickNameInput, setNickNameInput] = useState('')
+  const [user, setUser] = useState(() => {
+    restoreSessionFromStorage()
+    return getCachedUser()
+  })
+  const [nickNameInput, setNickNameInput] = useState(() =>
+    resolveNickNameForDisplay(getCachedUser()),
+  )
   const [pageTop, setPageTop] = useState(24)
   const [syncingProfile, setSyncingProfile] = useState(false)
   const config = getCachedConfig()
@@ -59,6 +64,7 @@ export default function MinePage() {
 
   useDidShow(async () => {
     restoreSessionFromStorage()
+    syncUser()
     try {
       await refreshSessionIfLoggedIn()
     } catch {

@@ -130,6 +130,7 @@ function ZoomablePatternViewer({
                   height: `${imageSize.height}px`,
                 }}
                 showMenuByLongpress={false}
+                onClick={handleFullscreen}
               />
             </MovableView>
           </MovableArea>
@@ -143,6 +144,7 @@ function ZoomablePatternViewer({
           config={config}
           mode='preview'
           hidden
+          hideColorCode
           cellPx={previewCellPx}
           onReady={handleCanvasReady}
         />

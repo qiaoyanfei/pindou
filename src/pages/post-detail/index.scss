@@ -34,17 +34,12 @@
 
 .post-detail-page__preview-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   height: 72px;
   padding: 0 24px;
   border-bottom: 1px solid #f3f4f6;
   box-sizing: border-box;
-}
-
-.post-detail-page__preview-hint {
-  font-size: 24px;
-  color: #6b7280;
 }
 
 .post-detail-page__preview-action {
@@ -95,7 +90,6 @@
 .post-detail-page__author-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   margin-bottom: 20px;
 }
 
@@ -120,15 +114,6 @@
   font-size: 28px;
   font-weight: 600;
   color: $color-text;
-}
-
-.post-detail-page__follow {
-  padding: 10px 24px;
-  border-radius: 999px;
-  background: $color-primary;
-  color: #fff;
-  font-size: 24px;
-  font-weight: 600;
 }
 
 .post-detail-page__meta {

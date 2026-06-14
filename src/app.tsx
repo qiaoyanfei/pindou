@@ -2,12 +2,13 @@ import { PropsWithChildren } from 'react'
 import { useLaunch } from '@tarojs/taro'
 import Taro from '@tarojs/taro'
 import { getPalette } from '@/services/palette'
-import { initCloud } from '@/services/cloudClient'
+import { initCloud, cleanupUploadJsonCache } from '@/services/cloudClient'
 import { restoreSessionFromStorage, refreshSessionIfLoggedIn } from '@/services/session'
 import './app.scss'
 
 function App({ children }: PropsWithChildren) {
   useLaunch((options) => {
+    cleanupUploadJsonCache()
     getPalette()
     const inviterId = options?.query?.inviterId as string | undefined
     if (inviterId) {

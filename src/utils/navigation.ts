@@ -1,4 +1,6 @@
 import Taro from '@tarojs/taro'
+import { clearGenerateDraft } from '@/services/generateSession'
+import { GENERATE_PAGE_RESET_KEY } from '@/types'
 
 const NAV_COOLDOWN_MS = 600
 
@@ -48,6 +50,22 @@ export function safeRedirect(url: string): void {
   Taro.redirectTo({ url })
     .catch(() => Taro.reLaunch({ url }))
     .finally(finishNavigate)
+}
+
+export function redirectToGeneratePage(reset = true): void {
+  if (reset) {
+    Taro.setStorageSync(GENERATE_PAGE_RESET_KEY, '1')
+    clearGenerateDraft()
+  }
+  safeRedirect('/pages/generate/index')
+}
+
+export function reLaunchGeneratePage(reset = true): void {
+  if (reset) {
+    Taro.setStorageSync(GENERATE_PAGE_RESET_KEY, '1')
+    clearGenerateDraft()
+  }
+  safeReLaunch('/pages/generate/index')
 }
 
 export function safeReLaunch(url: string): void {

@@ -7,6 +7,8 @@ import {
 } from '@/services/communityService'
 import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
 import { requireAuthenticated } from '@/services/session'
+import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
 import type { PostCategory } from '@/types/community'
 import './index.scss'
@@ -72,12 +74,21 @@ export default function PublishPage() {
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({
-        title: error instanceof Error ? error.message : '操作失败',
+        title: resolveErrorMessage(error, '发布失败'),
         icon: 'none',
+        duration: 3000,
       })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handlePreviewCover = () => {
+    if (!payload?.pattern) return
+    requestHdPatternPreview({
+      pattern: payload.pattern,
+      config: payload.config,
+    })
   }
 
   if (!payload?.pattern) {
@@ -89,7 +100,7 @@ export default function PublishPage() {
   return (
     <View className='publish-page'>
       <View className='publish-page__preview'>
-        <View className='publish-page__cover-wrap'>
+        <View className='publish-page__cover-wrap' onClick={handlePreviewCover}>
           {coverPreview ? (
             <Image className='publish-page__cover' src={coverPreview} mode='aspectFit' showMenuByLongpress={false} />
           ) : (
@@ -170,6 +181,8 @@ export default function PublishPage() {
           {isPublic ? '提交公开审核' : '保存到待发布'}
         </Button>
       </View>
+
+      <HdPatternPreviewHost />
     </View>
   )
 }

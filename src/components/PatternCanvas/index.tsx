@@ -17,6 +17,8 @@ interface PatternCanvasProps {
   mode?: 'preview' | 'export'
   hidden?: boolean
   cellPx?: number
+  /** 缩略图等场景固定不显示色号；全屏高清预览与导出按 config.showColorCode */
+  hideColorCode?: boolean
   creatorNickname?: string
   onReady?: () => void
 }
@@ -28,6 +30,7 @@ export default function PatternCanvas({
   mode = 'preview',
   hidden = false,
   cellPx: cellPxOverride,
+  hideColorCode = false,
   creatorNickname,
   onReady,
 }: PatternCanvasProps) {
@@ -40,9 +43,9 @@ export default function PatternCanvas({
     }, 120)
 
     return () => clearTimeout(timer)
-  }, [pattern, config, mode, canvasId, cellPxOverride, creatorNickname])
+  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname])
 
-  const drawPattern = () => {
+  const drawPattern = (retry = 0) => {
     const query = Taro.createSelectorQuery()
     query
       .select(`#${canvasId}`)
@@ -54,7 +57,12 @@ export default function PatternCanvas({
           height: number
         } | undefined
 
-        if (!canvas) return
+        if (!canvas) {
+          if (retry < 8) {
+            setTimeout(() => drawPattern(retry + 1), 150)
+          }
+          return
+        }
 
         const cellPx =
           cellPxOverride ??
@@ -63,7 +71,7 @@ export default function PatternCanvas({
         const renderOptions = {
           cellPx,
           showGrid: config.showGrid,
-          showColorCode: config.showColorCode,
+          showColorCode: hideColorCode ? false : config.showColorCode,
           minCellPxForLabel: mode === 'export' ? 10 : 12,
         }
 

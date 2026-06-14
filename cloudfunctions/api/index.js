@@ -428,8 +428,7 @@ async function repairOrphanPosts(openid, user) {
   )
 }
 
-async function handleLogin(openid, data) {
-  const user = await ensureUser(openid, data || {})
+async function buildLoginResponse(openid, user, options = {}) {
   const synced = await syncBeanBalanceFromLogs(openid, user)
   await repairOrphanPosts(openid, synced)
   await syncAuthorProfileToPosts(openid, synced)
@@ -438,7 +437,7 @@ async function handleLogin(openid, data) {
     db.collection('posts').where({ _openid: openid, visibility: 'public' }).count(),
   ])
   const config = await getConfig()
-  const isNew = Boolean(user.isNew)
+  const isNew = Boolean(options.isNew)
   const normalized = normalizeUser(synced, openid)
   return ok({
     user: {
@@ -449,6 +448,24 @@ async function handleLogin(openid, data) {
     config,
     registerReward: isNew ? config.registerReward : 0,
   })
+}
+
+async function handleLogin(openid, data) {
+  const refreshOnly = Boolean(data?.refreshOnly)
+
+  if (refreshOnly) {
+    const existing = await getUser(openid)
+    if (!existing) {
+      return fail('登录已失效，请重新登录')
+    }
+    if (existing.status === 'deleted' || existing.status === 'disabled') {
+      return fail('账号已注销，请重新登录')
+    }
+    return buildLoginResponse(openid, existing, { isNew: false })
+  }
+
+  const user = await ensureUser(openid, data || {})
+  return buildLoginResponse(openid, user, { isNew: Boolean(user.isNew) })
 }
 
 async function handleGetFeed(openid, data) {
@@ -645,6 +662,10 @@ async function handleDeleteDraft(openid, data) {
 }
 
 async function handlePublishPost(openid, data) {
+  const title = String(data?.title || '').trim()
+  if (!title) return fail('请填写标题')
+  if (!data?.coverFileId || !data?.patternFileId) return fail('缺少图纸文件，请重新发布')
+
   const now = db.serverDate()
   const user = await getUser(openid)
   const wantsPublic = data.visibility === 'public'
@@ -668,7 +689,7 @@ async function handlePublishPost(openid, data) {
 
   const postDoc = {
     _openid: openid,
-    title: data.title,
+    title,
     description: data.description || '',
     category: data.category,
     visibility: 'private',
@@ -684,6 +705,8 @@ async function handlePublishPost(openid, data) {
     paletteId: data.paletteId || 'mard221',
     stats: data.stats || {},
     totalBeads: data.totalBeads || 0,
+    colorCount: data.colorCount || 0,
+    config: data.config || {},
     authorNickName: resolveDisplayNickName(user?.nickName, openid),
     authorAvatarUrl: user?.avatarUrl || '',
     likeCount: 0,

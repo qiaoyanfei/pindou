@@ -1,20 +1,21 @@
-import { View, Text, Switch, Slider, Image, Button, ScrollView } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { useState } from 'react'
+import { View, Text, Switch, Slider, Image, Button, ScrollView, Canvas } from '@tarojs/components'
+import Taro, { useDidShow, useUnload } from '@tarojs/taro'
+import { useRef, useState } from 'react'
 import AppTabBar from '@/components/AppTabBar'
+import { generatePatternFromImage } from '@/services/patternPipeline'
+import { getGenerateDraft, updateGenerateConfig } from '@/services/generateSession'
 import {
   EXPORT_LIMITS,
-  STYLE_MODE_DEFAULT_EXPORT_CELL_PX,
-  STYLE_MODE_DEFAULT_LONG_EDGE,
   clampLongEdge,
   getLongEdgeLimits,
   normalizeConfig,
 } from '@/utils/constants'
-import { GENERATE_CONFIG_STORAGE_KEY, type PatternConfig } from '@/types'
-import bannerCatArt from '@/assets/advanced-settings-banner-cat.svg'
+import { PATTERN_STORAGE_KEY, type PatternConfig } from '@/types'
+import bannerImage from '@/assets/advanced-settings-banner.png'
 import './index.scss'
 
 const SLIDER_BLOCK_SIZE = 14
+const PROCESS_CANVAS_ID = 'advanced-process-canvas'
 
 function clampExportCellPx(value: number): number {
   return Math.max(EXPORT_LIMITS.minCellPx, Math.min(EXPORT_LIMITS.maxCellPx, value))
@@ -22,19 +23,42 @@ function clampExportCellPx(value: number): number {
 
 export default function AdvancedSettingsPage() {
   const [config, setConfig] = useState<PatternConfig>(() => normalizeConfig())
+  const [imagePath, setImagePath] = useState('')
+  const [loading, setLoading] = useState(false)
+  const configRef = useRef(config)
+
+  configRef.current = config
+
+  const persistDraft = () => {
+    updateGenerateConfig(configRef.current)
+  }
 
   useDidShow(() => {
-    const saved = Taro.getStorageSync(GENERATE_CONFIG_STORAGE_KEY)
-    if (saved) {
-      setConfig(normalizeConfig(saved))
+    const draft = getGenerateDraft()
+    if (!draft?.imagePath) {
+      Taro.showToast({ title: '请先上传图片', icon: 'none' })
+      setTimeout(() => Taro.navigateBack(), 800)
+      return
     }
+
+    setImagePath(draft.imagePath)
+    setConfig(normalizeConfig(draft.config))
+    configRef.current = normalizeConfig(draft.config)
+  })
+
+  useUnload(() => {
+    persistDraft()
   })
 
   const longEdgeLimits = getLongEdgeLimits(config.styleMode)
-  const recommendedLongEdge = STYLE_MODE_DEFAULT_LONG_EDGE[config.styleMode]
 
   const updateConfig = (patch: Partial<PatternConfig>) => {
-    setConfig((prev) => normalizeConfig({ ...prev, ...patch }))
+    setConfig((prev) => {
+      const next = normalizeConfig({ ...prev, ...patch })
+      configRef.current = next
+      updateGenerateConfig(next)
+      return next
+    })
   }
 
   const adjustLongEdge = (delta: number) => {
@@ -45,26 +69,37 @@ export default function AdvancedSettingsPage() {
     updateConfig({ exportCellPx: clampExportCellPx(config.exportCellPx + delta) })
   }
 
-  const handleSave = () => {
-    Taro.setStorageSync(GENERATE_CONFIG_STORAGE_KEY, config)
-    Taro.showToast({ title: '设置已保存', icon: 'success' })
-    setTimeout(() => {
-      Taro.navigateBack()
-    }, 400)
+  const handlePreview = async () => {
+    if (!imagePath || loading) return
+
+    persistDraft()
+    setLoading(true)
+    Taro.showLoading({ title: '生成中...' })
+
+    try {
+      const pattern = await generatePatternFromImage(imagePath, configRef.current, PROCESS_CANVAS_ID)
+      Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config: configRef.current })
+      Taro.hideLoading()
+      Taro.navigateTo({ url: '/pages/preview/index' })
+    } catch (error) {
+      Taro.hideLoading()
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '生成失败',
+        icon: 'none',
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <View className='advanced-settings-page'>
       <ScrollView scrollY className='advanced-settings-page__scroll'>
-        <View className='advanced-settings-page__content'>
-          <View className='advanced-settings-page__banner'>
-            <View className='advanced-settings-page__banner-text'>
-              <Text className='advanced-settings-page__banner-title'>自由调整规格大小、色号、清晰度</Text>
-              <Text className='advanced-settings-page__banner-desc'>打造更满意的图纸效果</Text>
-            </View>
-            <Image className='advanced-settings-page__banner-art' src={bannerCatArt} mode='aspectFit' />
-          </View>
+        <View className='advanced-settings-page__banner'>
+          <Image className='advanced-settings-page__banner-image' src={bannerImage} mode='widthFix' />
+        </View>
 
+        <View className='advanced-settings-page__content'>
           <View className='advanced-settings-page__section-head'>
             <Text className='advanced-settings-page__section-title'>规格设置</Text>
           </View>
@@ -101,17 +136,14 @@ export default function AdvancedSettingsPage() {
                 <Text className='advanced-settings-page__unit'>格</Text>
               </View>
               <View className='advanced-settings-page__scale'>
-                <Text>{longEdgeLimits.min}格</Text>
-                <Text>{recommendedLongEdge}格 (推荐)</Text>
-                <Text>{longEdgeLimits.max}格</Text>
+                <Text>{longEdgeLimits.min}</Text>
+                <Text>{longEdgeLimits.max}</Text>
               </View>
             </View>
           </View>
 
           <View className='advanced-settings-page__field'>
-            <Text className='advanced-settings-page__field-label'>
-              导出清晰度：{config.exportCellPx}px/格
-            </Text>
+            <Text className='advanced-settings-page__field-label'>清晰度</Text>
             <Text className='advanced-settings-page__field-hint'>
               清晰度越高，图片越大，可能导出失败。
             </Text>
@@ -178,10 +210,22 @@ export default function AdvancedSettingsPage() {
       </ScrollView>
 
       <View className='advanced-settings-page__footer'>
-        <Button className='advanced-settings-page__save' onClick={handleSave}>
-          保存设置
+        <Button
+          className='advanced-settings-page__preview'
+          loading={loading}
+          disabled={loading}
+          onClick={handlePreview}
+        >
+          预览图片
         </Button>
       </View>
+
+      <Canvas
+        type='2d'
+        id={PROCESS_CANVAS_ID}
+        canvasId={PROCESS_CANVAS_ID}
+        className='advanced-settings-page__hidden-canvas'
+      />
 
       <AppTabBar active='generate' />
     </View>

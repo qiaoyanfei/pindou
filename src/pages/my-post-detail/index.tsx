@@ -10,6 +10,7 @@ import {
   updatePostVisibility,
 } from '@/services/communityService'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 import { formatDateTime } from '@/utils/formatDate'
 import {
   formatReviewHistory,
@@ -18,7 +19,8 @@ import {
   REVIEW_STATUS_ICONS,
   REVIEW_STATUS_LABELS,
 } from '@/utils/postReview'
-import { previewImageWithoutMenu } from '@/utils/previewImage'
+import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
+import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
 import { showActionSheet, showModal } from '@/utils/dialog'
 import { safeNavigateBack, safeNavigateTo } from '@/utils/navigation'
 import type { PatternResult } from '@/types'
@@ -71,6 +73,7 @@ export default function MyPostDetailPage() {
   const [source, setSource] = useState<DetailSource | null>(null)
   const [loading, setLoading] = useState(true)
   const loadTokenRef = useRef(0)
+  const postRef = useRef<PostDetail | null>(null)
 
   const reviewStatus = source?.reviewStatus || 'draft'
   const isApproved = reviewStatus === 'approved'
@@ -89,6 +92,8 @@ export default function MyPostDetailPage() {
     try {
       const post = await fetchPostDetail(itemId)
       if (token !== loadTokenRef.current) return
+      postRef.current = post
+      void resolvePatternForPreview(post).catch(() => {})
       const status = resolveReviewStatus(post.reviewStatus, post.visibility)
       setSource({
         mode: status === 'approved' ? 'published' : 'pending',
@@ -151,8 +156,10 @@ export default function MyPostDetailPage() {
   )
 
   const handlePreviewCover = () => {
-    if (!source?.coverUrl) return
-    previewImageWithoutMenu({ urls: [source.coverUrl], current: source.coverUrl })
+    if (!postRef.current) return
+    requestHdPatternPreview({
+      post: postRef.current,
+    })
   }
 
   const handleGoPublic = async () => {
@@ -172,8 +179,9 @@ export default function MyPostDetailPage() {
       loadDetail()
     } catch (error) {
       Taro.showToast({
-        title: error instanceof Error ? error.message : '操作失败',
+        title: resolveErrorMessage(error, '操作失败'),
         icon: 'none',
+        duration: 3000,
       })
     }
   }
@@ -415,6 +423,8 @@ export default function MyPostDetailPage() {
           </Button>
         )}
       </View>
+
+      <HdPatternPreviewHost />
     </View>
   )
 }

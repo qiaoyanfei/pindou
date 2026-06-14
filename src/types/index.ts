@@ -38,7 +38,14 @@ export interface RenderOptions {
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'
 
-export const GENERATE_CONFIG_STORAGE_KEY = 'pindou_generate_config'
+export const ADVANCED_SETTINGS_SESSION_KEY = 'pindou_advanced_settings_session'
+
+export const GENERATE_PAGE_RESET_KEY = 'pindou_generate_page_reset'
+
+export interface AdvancedSettingsSession {
+  imagePath: string
+  config: PatternConfig
+}
 
 export const PUBLISH_STORAGE_KEY = 'pindou_publish_payload'
 
