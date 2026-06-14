@@ -11,7 +11,7 @@ import { getCachedUser } from '@/services/communityService'
 import { restoreSessionFromStorage } from '@/services/session'
 import { safeNavigateBack, safeRedirect } from '@/utils/navigation'
 import WechatLoginIcon from '@/components/WechatLoginIcon'
-import loginLogo from '@/assets/login-logo.png'
+import loginLogo from '@/assets/login-logo.jpg'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 

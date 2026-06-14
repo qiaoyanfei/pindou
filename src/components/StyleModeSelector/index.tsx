@@ -1,7 +1,7 @@
 import { View, Text, Image } from '@tarojs/components'
 import { STYLE_MODE_LABELS, STYLE_MODE_SUBTITLES } from '@/utils/constants'
 import modePortrait from '@/assets/generate/mode-portrait.png'
-import modeManga from '@/assets/generate/mode-manga.png'
+import modeManga from '@/assets/generate/mode-manga.jpg'
 import type { StyleMode } from '@/types'
 import './index.scss'
 

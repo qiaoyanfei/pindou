@@ -13,7 +13,7 @@ import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
 import { restoreSessionFromStorage } from '@/services/session'
 import { safeNavigateTo, safeRedirect, redirectToGeneratePage } from '@/utils/navigation'
-import heroBanner from '@/assets/home-hero-mascot.png'
+import heroBanner from '@/assets/home-hero-mascot.jpg'
 import searchIcon from '@/assets/icons/search.svg'
 import type { FeedTab, PostSummary } from '@/types/community'
 import {

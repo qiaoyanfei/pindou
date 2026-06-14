@@ -1,10 +1,10 @@
 import { View, Image, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import cloudUploadIcon from '@/assets/icons/cloud-upload.png'
-import exampleBear from '@/assets/generate/example-bear.png'
-import exampleDog from '@/assets/generate/example-dog.png'
-import exampleBoy from '@/assets/generate/example-boy.png'
-import exampleGirl from '@/assets/generate/example-girl.png'
+import exampleBear from '@/assets/generate/example-bear.jpg'
+import exampleDog from '@/assets/generate/example-dog.jpg'
+import exampleBoy from '@/assets/generate/example-boy.jpg'
+import exampleGirl from '@/assets/generate/example-girl.jpg'
 import './index.scss'
 
 const EXAMPLES = [exampleBear, exampleDog, exampleBoy, exampleGirl]

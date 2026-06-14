@@ -11,7 +11,7 @@ import {
   normalizeConfig,
 } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig } from '@/types'
-import bannerImage from '@/assets/advanced-settings-banner.png'
+import bannerImage from '@/assets/advanced-settings-banner.jpg'
 import './index.scss'
 
 const SLIDER_BLOCK_SIZE = 14
