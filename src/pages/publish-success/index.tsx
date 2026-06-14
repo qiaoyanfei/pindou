@@ -22,7 +22,7 @@ export default function PublishSuccessPage() {
   const desc = reviewStatus === 'rejected'
     ? '作品内容未通过安全检测，请在「待发布」中查看详情并重新生成后再次提交。'
     : isPublicIntent
-      ? '你的作品已进入审核队列，审核通过后将展示到社区。可在「待发布」中查看进度。'
+      ? '你的作品已进入审核队列，审核通过后将在首页公开展示。可在「待发布」中查看进度。'
       : '作品已保存，仅自己可见。可在「待发布」中查看，随时提交公开审核。'
 
   return (

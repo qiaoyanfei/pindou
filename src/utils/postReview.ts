@@ -16,8 +16,8 @@ export const REVIEW_STATUS_ICONS: Record<PostReviewStatus, string> = {
 
 export const REVIEW_STATUS_DESC: Record<PostReviewStatus, string> = {
   draft: '作品未公开，仅自己可见。开启公开后将提交审核。',
-  pending: '已提交公开申请，正在审核中，通过后将展示到社区。',
-  approved: '审核已通过，该图纸已公开到社区。',
+  pending: '已提交公开申请，正在审核中，通过后将公开展示。',
+  approved: '审核已通过，作品已公开发布。',
   rejected: '审核未通过，请修改后重新生成并再次提交。',
 }
 

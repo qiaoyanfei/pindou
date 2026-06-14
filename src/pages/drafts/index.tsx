@@ -39,7 +39,7 @@ export default function DraftsPage() {
   const handleGoPublic = async (postId: string) => {
     const res = await showModal({
       title: '提交公开审核',
-      content: '提交后将进入人工审核，通过前作品保存在待发布列表，审核通过后展示到社区并获得小豆奖励',
+      content: '提交后将进入人工审核，通过前作品保存在待发布列表，审核通过后将公开展示并获得小豆奖励',
       confirmText: '提交审核',
     })
     if (!res?.confirm) return

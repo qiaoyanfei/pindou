@@ -106,7 +106,7 @@ export default function AdminReviewPage() {
       <ScrollView scrollY className='admin-review-page__scroll'>
         <View className='admin-review-page__content'>
           <Text className='admin-review-page__tip'>
-            微信提供 msgSecCheck 文本检测，图片需 mediaCheckAsync 异步回调。当前以人工审核为主，通过后作品才会进入社区。
+            微信提供 msgSecCheck 文本检测，图片需 mediaCheckAsync 异步回调。当前以人工审核为主，通过后作品才会公开展示。
           </Text>
 
           {list.length === 0 ? (

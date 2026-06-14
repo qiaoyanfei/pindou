@@ -76,7 +76,7 @@ export default function BeansPage() {
                   <Text className='beans-page__balance-label'>当前小豆</Text>
                 </View>
                 <Text className='beans-page__balance-value'>{balance}</Text>
-                <Text className='beans-page__balance-desc'>小豆可用于下载社区图纸</Text>
+                <Text className='beans-page__balance-desc'>小豆可用于下载图纸</Text>
               </View>
               <Image className='beans-page__balance-art' src={beansPouchIcon} mode='aspectFit' />
             </View>

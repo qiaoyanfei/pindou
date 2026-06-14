@@ -47,7 +47,7 @@ export function resolveNickNameForDisplay(user: UserProfile | null | undefined):
   return getFallbackNickName(user)
 }
 
-/** 社区作品作者展示名：过滤「微信用户」等无效昵称，按 openid 生成稳定 fallback */
+/** 作品作者展示名：过滤「微信用户」等无效昵称，按 openid 生成稳定 fallback */
 export function resolveAuthorNickName(nickName?: string, openid?: string): string {
   if (isUsableNickName(nickName)) return normalizeNickName(nickName!)
   return getFallbackNickName(openid ? { openid } : null)

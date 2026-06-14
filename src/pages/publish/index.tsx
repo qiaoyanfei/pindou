@@ -166,7 +166,7 @@ export default function PublishPage() {
           </View>
           <Text className='publish-page__toggle-hint'>
             {isPublic
-              ? '开启后将提交人工审核，通过前保存在「待发布」，审核通过后展示到社区并获得小豆奖励'
+              ? '开启后将提交人工审核，通过前保存在「待发布」，审核通过后将公开展示并获得小豆奖励'
               : '关闭后仅自己可见，保存到「待发布」，可随时再提交公开审核'}
           </Text>
         </View>

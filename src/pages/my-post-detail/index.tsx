@@ -230,8 +230,8 @@ export default function MyPostDetailPage() {
     const res = await showModal({
       title: '提交公开审核',
       content: reward > 0
-        ? `提交后将进入人工审核，审核通过后将展示到社区，并获得 ${reward} 小豆奖励`
-        : '提交后将进入人工审核，审核通过后将展示到社区',
+        ? `提交后将进入人工审核，审核通过后将公开展示，并获得 ${reward} 小豆奖励`
+        : '提交后将进入人工审核，审核通过后将公开展示',
       confirmText: '提交审核',
     })
     if (!res?.confirm) return
@@ -416,7 +416,7 @@ export default function MyPostDetailPage() {
 
           {isApproved ? (
             <View className='owner-section' onClick={handleCommunityPreview}>
-              <Text className='owner-section__title'>社区展示效果</Text>
+              <Text className='owner-section__title'>公开展示效果</Text>
               <View className='owner-preview-link'>
                 <View className='owner-preview-link__thumb-wrap'>
                   {source.coverUrl ? (
@@ -431,7 +431,7 @@ export default function MyPostDetailPage() {
                   )}
                 </View>
                 <View className='owner-preview-link__info'>
-                  <Text className='owner-preview-link__title'>查看图纸在社区中的展示效果</Text>
+                  <Text className='owner-preview-link__title'>查看图纸的公开展示效果</Text>
                   <Text className='owner-preview-link__desc'>预览其他用户看到的详情页</Text>
                 </View>
                 <Text className='owner-preview-link__arrow'>›</Text>

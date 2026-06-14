@@ -51,7 +51,7 @@ export default function MyPostsPage() {
                 variant='summary'
                 icon='📦'
                 title={`共 ${list.length} 个已公开作品`}
-                desc='这些作品已公开到社区，其他用户可以看到'
+                desc='这些作品已公开发布，其他用户可以看到'
               />
               {list.map((item, index) => (
                 <PostListItem

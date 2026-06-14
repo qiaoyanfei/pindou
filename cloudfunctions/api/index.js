@@ -914,7 +914,7 @@ async function handleReviewPost(openid, data) {
   }
 
   if (action === 'reject') {
-    const rejectNote = note || '内容不符合社区规范'
+    const rejectNote = note || '内容不符合平台规范'
     const history = prependHistory(
       post.reviewHistory,
       buildHistoryEntry('rejected', '审核未通过', rejectNote),
