@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
   feedbackWechatId: 'doudou_shouzuo',
   feedbackQrUrl: '',
   adminOpenIds: [],
+  dailyPublishLimit: 5,
+  publishWhitelistOpenIds: [],
 }
 
 async function checkTextSec(openid, content) {
@@ -68,6 +70,58 @@ async function isAdmin(openid) {
   const admins = normalizeAdminOpenIds(config.adminOpenIds)
   const normalizedOpenid = String(openid || '').trim()
   return admins.some((item) => item === normalizedOpenid)
+}
+
+function normalizePublishWhitelistOpenIds(value) {
+  return normalizeAdminOpenIds(value)
+}
+
+function isPublishLimitExempt(openid, config) {
+  const normalizedOpenid = String(openid || '').trim()
+  const whitelist = [
+    ...normalizeAdminOpenIds(config.adminOpenIds),
+    ...normalizePublishWhitelistOpenIds(config.publishWhitelistOpenIds),
+  ]
+  return whitelist.some((item) => item === normalizedOpenid)
+}
+
+/** 北京时间当日 00:00 ~ 次日 00:00，用于按自然日统计发布次数 */
+function getChinaDayRange(now = new Date()) {
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+  const chinaNow = new Date(utcMs + 8 * 3600000)
+  const chinaStart = Date.UTC(
+    chinaNow.getUTCFullYear(),
+    chinaNow.getUTCMonth(),
+    chinaNow.getUTCDate(),
+  )
+  const start = new Date(chinaStart - 8 * 3600000)
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+  return { start, end }
+}
+
+async function getTodayPublishCount(openid) {
+  const { start, end } = getChinaDayRange()
+  const res = await db.collection('posts')
+    .where({
+      _openid: openid,
+      createdAt: _.gte(start).and(_.lt(end)),
+    })
+    .count()
+  return res.total || 0
+}
+
+async function assertDailyPublishAllowed(openid) {
+  const config = await getConfig()
+  if (isPublishLimitExempt(openid, config)) return null
+
+  const limit = Number(config.dailyPublishLimit)
+  if (!Number.isFinite(limit) || limit <= 0) return null
+
+  const count = await getTodayPublishCount(openid)
+  if (count >= limit) {
+    return fail(`今日发布次数已达上限（${limit} 次），请明天再试`)
+  }
+  return null
 }
 
 async function validatePublishText(openid, title, description) {
@@ -190,12 +244,21 @@ async function getConfig() {
   if (!res.data.length) return { ...DEFAULT_CONFIG }
   const merged = { ...DEFAULT_CONFIG }
   const adminOpenIds = []
+  const publishWhitelistOpenIds = []
   res.data.forEach((doc) => {
     Object.assign(merged, doc)
     adminOpenIds.push(...normalizeAdminOpenIds(doc.adminOpenIds))
+    publishWhitelistOpenIds.push(...normalizePublishWhitelistOpenIds(doc.publishWhitelistOpenIds))
   })
   if (adminOpenIds.length) {
     merged.adminOpenIds = [...new Set(adminOpenIds)]
+  }
+  if (publishWhitelistOpenIds.length) {
+    merged.publishWhitelistOpenIds = [...new Set(publishWhitelistOpenIds)]
+  }
+  merged.dailyPublishLimit = Number(merged.dailyPublishLimit)
+  if (!Number.isFinite(merged.dailyPublishLimit) || merged.dailyPublishLimit < 0) {
+    merged.dailyPublishLimit = DEFAULT_CONFIG.dailyPublishLimit
   }
   return merged
 }
@@ -665,6 +728,9 @@ async function handlePublishPost(openid, data) {
   const title = String(data?.title || '').trim()
   if (!title) return fail('请填写标题')
   if (!data?.coverFileId || !data?.patternFileId) return fail('缺少图纸文件，请重新发布')
+
+  const publishLimitError = await assertDailyPublishAllowed(openid)
+  if (publishLimitError) return publishLimitError
 
   const now = db.serverDate()
   const user = await getUser(openid)

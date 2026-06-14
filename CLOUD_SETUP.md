@@ -50,11 +50,17 @@ export const CLOUD_ENV_ID = '你的环境ID'
   "inviteReward": 5,
   "feedbackWechatId": "doudou_shouzuo",
   "feedbackQrUrl": "cloud://xxx/feedback/qrcode.png",
-  "adminOpenIds": ["你的openid"]
+  "adminOpenIds": ["你的openid"],
+  "dailyPublishLimit": 5,
+  "publishWhitelistOpenIds": ["不受限制的openid"]
 }
 ```
 
 `adminOpenIds` 必须是**数组**（不是字符串），openid 不要带 `oXXXX-` 这类占位前缀，需与云函数返回的完整 OpenID 完全一致。
+
+`dailyPublishLimit` 为每人每日最多发布次数（按北京时间自然日统计，默认 5；设为 `0` 表示不限制）。
+
+`publishWhitelistOpenIds` 为发布白名单 OpenID 数组，名单内用户不受每日发布次数限制；`adminOpenIds` 中的管理员同样不受限制。
 
 不配置则使用代码内默认值。
 
@@ -64,6 +70,7 @@ export const CLOUD_ENV_ID = '你的环境ID'
 |------|----------|
 | `posts` | `visibility` + `publishedAt`（降序） |
 | `posts` | `visibility` + `likeCount`（降序） |
+| `posts` | `_openid` + `createdAt`（降序，用于每日发布次数统计） |
 | `drafts` | `_openid` + `updatedAt`（降序） |
 | `likes` | `_openid` + `postId` |
 | `favorites` | `_openid` + `postId` |

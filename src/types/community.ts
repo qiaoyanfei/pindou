@@ -113,6 +113,10 @@ export interface AppRemoteConfig {
   feedbackWechatId: string
   feedbackQrUrl: string
   adminOpenIds?: string[]
+  /** 每人每日最多发布次数，0 表示不限制 */
+  dailyPublishLimit?: number
+  /** 发布白名单 OpenID，不受每日发布次数限制 */
+  publishWhitelistOpenIds?: string[]
 }
 
 export type FeedbackType =
