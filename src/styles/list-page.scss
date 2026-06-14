@@ -24,37 +24,6 @@
   margin-bottom: 20px;
 }
 
-.list-page__filters {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.list-page__filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  border-radius: 999px;
-  border: 2px solid #e5e7eb;
-  background: #fff;
-  font-size: 24px;
-  color: #9ca3af;
-  line-height: 1.2;
-  box-sizing: border-box;
-}
-
-.list-page__filter--active {
-  border-color: $color-primary;
-  color: $color-primary;
-  background: #fff;
-}
-
-.list-page__filter-arrow {
-  font-size: 20px;
-  line-height: 1;
-}
-
 .list-page__end {
   display: block;
   padding: 32px 0 16px;
