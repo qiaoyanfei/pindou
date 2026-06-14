@@ -9,7 +9,7 @@ import {
   resolvePreviewData,
 } from '@/utils/patternPreviewCache'
 import { canvasToTempFile } from '@/utils/canvas'
-import { previewImageForHd } from '@/utils/previewImage'
+import { previewImageWithoutMenu } from '@/utils/previewImage'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import './index.scss'
@@ -22,15 +22,12 @@ export interface HdPatternPreviewRequest {
   pattern?: PatternResult
   config?: PatternConfig
   creatorNickname?: string
-  /** 本人作品为 true：长按出现保存/分享；他人作品为 false */
-  allowLongPressMenu?: boolean
 }
 
 interface PreviewPayload {
   pattern: PatternResult
   config: PatternConfig
   creatorNickname: string
-  allowLongPressMenu: boolean
 }
 
 const CANVAS_ID = 'hd-pattern-preview-canvas'
@@ -85,7 +82,6 @@ export default function HdPatternPreviewHost() {
           pattern: request.pattern,
           config: request.config,
           creatorNickname: request.creatorNickname || resolveCreatorNickname(),
-          allowLongPressMenu: Boolean(request.allowLongPressMenu),
         })
         return
       }
@@ -102,7 +98,6 @@ export default function HdPatternPreviewHost() {
           pattern: cachedPreview.pattern,
           config: request.config || cachedPreview.config,
           creatorNickname: request.creatorNickname || request.post?.author?.nickName || resolveCreatorNickname(),
-          allowLongPressMenu: Boolean(request.allowLongPressMenu),
         })
         return
       }
@@ -114,7 +109,6 @@ export default function HdPatternPreviewHost() {
         pattern: previewData.pattern,
         config: request.config || previewData.config,
         creatorNickname: request.creatorNickname || post.author?.nickName || resolveCreatorNickname(),
-        allowLongPressMenu: Boolean(request.allowLongPressMenu),
       })
     } catch (error) {
       Taro.hideLoading()
@@ -152,14 +146,13 @@ export default function HdPatternPreviewHost() {
   }, [clearLoadingTimer])
 
   const handleCanvasReady = async () => {
-    if (!payload) return
     try {
       const tempFilePath = await canvasToTempFile(CANVAS_ID)
       Taro.hideLoading()
-      await previewImageForHd({
+      await previewImageWithoutMenu({
         urls: [tempFilePath],
         current: tempFilePath,
-      }, payload.allowLongPressMenu)
+      })
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({

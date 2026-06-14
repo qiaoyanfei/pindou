@@ -2,6 +2,7 @@ import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useShareAppMessage, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ColorStats from '@/components/ColorStats'
+import PatternCanvas from '@/components/PatternCanvas'
 import {
   fetchPostDetail,
   formatCount,
@@ -10,6 +11,8 @@ import {
   updatePostVisibility,
 } from '@/services/communityService'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
+import { resolveCreatorNickname } from '@/utils/creatorNickname'
+import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
 import { resolveErrorMessage } from '@/utils/errorMessage'
 import { formatDateTime } from '@/utils/formatDate'
 import {
@@ -20,14 +23,22 @@ import {
   REVIEW_STATUS_LABELS,
 } from '@/utils/postReview'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
-import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
+import { getCachedPreviewData, resolvePatternForPreview, resolvePreviewData } from '@/utils/patternPreviewCache'
 import { showActionSheet, showModal } from '@/utils/dialog'
-import { safeNavigateBack, safeNavigateTo } from '@/utils/navigation'
-import type { PatternResult } from '@/types'
+import { safeNavigateTo } from '@/utils/navigation'
+import type { PatternConfig, PatternResult } from '@/types'
 import type { PostCategory, PostDetail, PostReviewHistoryItem, PostReviewStatus, PostVisibility } from '@/types/community'
 import './index.scss'
 
 type DetailMode = 'published' | 'pending'
+
+const EXPORT_CANVAS_ID = 'my-post-detail-export-canvas'
+
+interface ExportPayload {
+  pattern: PatternResult
+  config: PatternConfig
+  creatorNickname: string
+}
 
 interface DetailSource {
   mode: DetailMode
@@ -72,8 +83,11 @@ export default function MyPostDetailPage() {
   const itemId = router.params.id || ''
   const [source, setSource] = useState<DetailSource | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
   const loadTokenRef = useRef(0)
   const postRef = useRef<PostDetail | null>(null)
+  const exportPayloadRef = useRef<ExportPayload | null>(null)
 
   const reviewStatus = source?.reviewStatus || 'draft'
   const isApproved = reviewStatus === 'approved'
@@ -159,8 +173,55 @@ export default function MyPostDetailPage() {
     if (!postRef.current) return
     requestHdPatternPreview({
       post: postRef.current,
-      allowLongPressMenu: true,
     })
+  }
+
+  const handleSaveImage = async () => {
+    if (!source || saving || exportPayload) return
+
+    setSaving(true)
+    Taro.showLoading({ title: '保存中...' })
+    try {
+      let previewData = getCachedPreviewData(source.id)
+      if (!previewData && postRef.current) {
+        previewData = await resolvePreviewData(postRef.current)
+      }
+      if (!previewData) {
+        throw new Error('图纸加载失败')
+      }
+
+      const payload: ExportPayload = {
+        pattern: previewData.pattern,
+        config: previewData.config,
+        creatorNickname: resolveCreatorNickname(),
+      }
+      exportPayloadRef.current = payload
+      setExportPayload(payload)
+    } catch (error) {
+      Taro.hideLoading()
+      setSaving(false)
+      Taro.showToast({
+        title: error instanceof Error ? error.message : '保存失败',
+        icon: 'none',
+      })
+    }
+  }
+
+  const handleExportCanvasReady = async () => {
+    if (!exportPayloadRef.current) return
+
+    try {
+      await saveCanvasToAlbum(EXPORT_CANVAS_ID)
+      Taro.hideLoading()
+      Taro.showToast({ title: '已保存到相册', icon: 'success' })
+    } catch (error) {
+      Taro.hideLoading()
+      handleAlbumSaveError(error)
+    } finally {
+      exportPayloadRef.current = null
+      setExportPayload(null)
+      setSaving(false)
+    }
   }
 
   const handleGoPublic = async () => {
@@ -225,10 +286,6 @@ export default function MyPostDetailPage() {
   const handleCommunityPreview = () => {
     if (!source || !isApproved) return
     safeNavigateTo(`/pages/post-detail/index?id=${source.id}`)
-  }
-
-  const handleBack = () => {
-    safeNavigateBack(isApproved ? '/pages/my-posts/index' : '/pages/drafts/index')
   }
 
   const statusActionLabel = isApproved
@@ -403,8 +460,13 @@ export default function MyPostDetailPage() {
       </ScrollView>
 
       <View className='my-post-detail-page__footer'>
-        <Button className='my-post-detail-page__btn-back' onClick={handleBack}>
-          返回列表
+        <Button
+          className='my-post-detail-page__btn-back'
+          loading={saving}
+          disabled={saving || Boolean(exportPayload)}
+          onClick={handleSaveImage}
+        >
+          保存图片
         </Button>
         {isApproved ? (
           <Button className='my-post-detail-page__btn-primary' openType='share'>
@@ -424,6 +486,18 @@ export default function MyPostDetailPage() {
           </Button>
         )}
       </View>
+
+      {exportPayload ? (
+        <PatternCanvas
+          canvasId={EXPORT_CANVAS_ID}
+          pattern={exportPayload.pattern}
+          config={exportPayload.config}
+          mode='export'
+          hidden
+          creatorNickname={exportPayload.creatorNickname}
+          onReady={handleExportCanvasReady}
+        />
+      ) : null}
 
       <HdPatternPreviewHost />
     </View>

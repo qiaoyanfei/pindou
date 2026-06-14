@@ -89,7 +89,6 @@ export default function PublishPage() {
     requestHdPatternPreview({
       pattern: payload.pattern,
       config: payload.config,
-      allowLongPressMenu: true,
     })
   }
 
