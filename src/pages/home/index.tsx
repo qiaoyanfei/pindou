@@ -111,12 +111,12 @@ export default function HomePage() {
   const [feeds, setFeeds] = useState(createEmptyFeeds)
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [searchPosts, setSearchPosts] = useState<PostSummary[]>([])
+  const [searchResults, setSearchResults] = useState<PostSummary[]>([])
   const [refreshingTab, setRefreshingTab] = useState<FeedTab | null>(null)
 
   const isSearching = searchKeyword.length > 0
   const currentFeed = feeds[tab]
-  const posts = isSearching ? searchPosts : currentFeed.posts
+  const posts = isSearching ? searchResults : currentFeed.posts
   const hasMore = isSearching ? false : currentFeed.hasMore
   const page = currentFeed.page
   const isLoading = isSearching ? refreshingTab === tab : refreshingTab === tab
@@ -154,7 +154,7 @@ export default function HomePage() {
     const trimmed = value.trim()
     if (!trimmed) {
       setSearchKeyword('')
-      setSearchPosts([])
+      setSearchResults([])
       if (feeds[tab].posts.length === 0) {
         await loadFeed(tab, 1, true)
       }
@@ -165,7 +165,7 @@ export default function HomePage() {
     try {
       const list = await searchPosts(trimmed)
       setSearchKeyword(trimmed)
-      setSearchPosts(list)
+      setSearchResults(list)
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '搜索失败',
@@ -198,7 +198,7 @@ export default function HomePage() {
     if (nextTab === tab && !isSearching) return
     setSearchKeyword('')
     setKeyword('')
-    setSearchPosts([])
+    setSearchResults([])
     setTab(nextTab)
     if (feeds[nextTab].posts.length === 0) {
       void loadFeed(nextTab, 1, true)
@@ -284,7 +284,7 @@ export default function HomePage() {
             onClick={() => {
               setKeyword('')
               setSearchKeyword('')
-              setSearchPosts([])
+              setSearchResults([])
             }}
           >
             清除

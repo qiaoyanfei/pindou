@@ -470,14 +470,37 @@ async function handleGetFeed(openid, data) {
   return ok({ list: withFlags, page, hasMore: res.data.length === pageSize })
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 async function handleSearchPosts(openid, data) {
   const keyword = String(data?.keyword || '').trim()
   if (!keyword) return ok({ list: [] })
-  const res = await db.collection('posts').where({
-    visibility: 'public',
-    title: db.RegExp({ regexp: keyword, options: 'i' }),
-  }).orderBy('publishedAt', 'desc').limit(20).get()
-  const posts = res.data.map(mapPostSummary)
+
+  const pattern = db.RegExp({ regexp: escapeRegExp(keyword), options: 'i' })
+  const publicFilter = { visibility: 'public' }
+
+  const [titleRes, authorRes, categoryRes] = await Promise.all([
+    db.collection('posts').where({ ...publicFilter, title: pattern }).orderBy('publishedAt', 'desc').limit(20).get(),
+    db.collection('posts').where({ ...publicFilter, authorNickName: pattern }).orderBy('publishedAt', 'desc').limit(20).get(),
+    db.collection('posts').where({ ...publicFilter, category: pattern }).orderBy('publishedAt', 'desc').limit(20).get(),
+  ])
+
+  const merged = new Map()
+  ;[...titleRes.data, ...authorRes.data, ...categoryRes.data].forEach((post) => {
+    merged.set(post._id, post)
+  })
+
+  const sorted = Array.from(merged.values())
+    .sort((a, b) => {
+      const aTime = new Date(a.publishedAt || a.createdAt || 0).getTime()
+      const bTime = new Date(b.publishedAt || b.createdAt || 0).getTime()
+      return bTime - aTime
+    })
+    .slice(0, 20)
+
+  const posts = sorted.map(mapPostSummary)
   const withFlags = await attachInteractionFlags(openid, posts)
   return ok({ list: withFlags })
 }
