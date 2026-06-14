@@ -9,6 +9,7 @@ import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
 import { requireAuthenticated } from '@/services/session'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { resolveErrorMessage } from '@/utils/errorMessage'
+import { STYLE_MODE_LABELS } from '@/utils/constants'
 import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
 import type { PostCategory } from '@/types/community'
 import './index.scss'
@@ -88,6 +89,7 @@ export default function PublishPage() {
     requestHdPatternPreview({
       pattern: payload.pattern,
       config: payload.config,
+      allowLongPressMenu: true,
     })
   }
 
@@ -113,7 +115,7 @@ export default function PublishPage() {
           </Text>
           <View className='publish-page__preview-tags'>
             <Text className='publish-page__preview-tag'>MARD221</Text>
-            <Text className='publish-page__preview-tag'>{config.styleMode === 'manga' ? '漫画模式' : '人物模式'}</Text>
+            <Text className='publish-page__preview-tag'>{STYLE_MODE_LABELS[config.styleMode]}</Text>
           </View>
         </View>
       </View>

@@ -11,6 +11,7 @@ import {
   loadPatternFromPost,
   toggleFavorite,
   toggleLike,
+  isOwnPost,
 } from '@/services/communityService'
 import { patchPostInteraction } from '@/utils/postInteractionSync'
 import { getColorById } from '@/services/palette'
@@ -103,6 +104,7 @@ export default function PostDetailPage() {
     requestHdPatternPreview({
       post,
       creatorNickname: post.author?.nickName,
+      allowLongPressMenu: isOwnPost(post.author?.openid),
     })
   }
 

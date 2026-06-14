@@ -1,6 +1,6 @@
 import { View, Image, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import cloudUploadIcon from '@/assets/icons/cloud-upload.svg'
+import cloudUploadIcon from '@/assets/icons/cloud-upload.png'
 import exampleBear from '@/assets/generate/example-bear.png'
 import exampleDog from '@/assets/generate/example-dog.png'
 import exampleBoy from '@/assets/generate/example-boy.png'

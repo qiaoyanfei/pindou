@@ -159,6 +159,7 @@ export default function MyPostDetailPage() {
     if (!postRef.current) return
     requestHdPatternPreview({
       post: postRef.current,
+      allowLongPressMenu: true,
     })
   }
 

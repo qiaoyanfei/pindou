@@ -143,6 +143,7 @@ export default function PreviewPage() {
       pattern,
       config,
       creatorNickname,
+      allowLongPressMenu: true,
     })
   }, [pattern, config, creatorNickname])
 

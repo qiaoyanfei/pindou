@@ -41,12 +41,12 @@ export const DEFAULT_CONFIG: PatternConfig = {
 export const PALETTE_VERSION = 'mard221-v1'
 
 export const STYLE_MODE_LABELS: Record<StyleMode, string> = {
-  portrait: '人物模式',
-  manga: '漫画模式',
+  portrait: '写实风',
+  manga: '漫画风',
 }
 
 export const STYLE_MODE_SUBTITLES: Record<StyleMode, string> = {
-  portrait: '适合头像、人物、穿搭',
+  portrait: '适合人物、宠物',
   manga: '适合插画、卡通、萌宠等',
 }
 

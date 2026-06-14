@@ -13,7 +13,7 @@ import type {
   UserProfile,
 } from '@/types/community'
 import type { PatternConfig, PatternResult } from '@/types'
-import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
+import { DEFAULT_CONFIG, normalizeConfig, STYLE_MODE_LABELS } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY } from '@/types'
 import {
   callCloudApi,
@@ -403,7 +403,7 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
 }
 
 export function formatPostMeta(item: Pick<PostSummary, 'width' | 'height' | 'styleMode' | 'paletteId'>): string {
-  const modeLabel = item.styleMode === 'manga' ? '漫画模式' : '人物模式'
+  const modeLabel = STYLE_MODE_LABELS[item.styleMode]
   return `${item.width}×${item.height} | ${modeLabel} | ${item.paletteId.toUpperCase()}`
 }
 
