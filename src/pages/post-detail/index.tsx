@@ -25,6 +25,7 @@ import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPa
 import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
+import { formatColorStatsTitle } from '@/utils/colorStatsTitle'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import './index.scss'
 
@@ -318,7 +319,9 @@ export default function PostDetailPage() {
           {colorEntries.length > 0 ? (
             <View className='post-detail-page__colors'>
               <View className='post-detail-page__colors-header'>
-                <Text className='post-detail-page__colors-title'>色号用量</Text>
+                <Text className='post-detail-page__colors-title'>
+                  {formatColorStatsTitle(colorEntries.length, post.totalBeads)}
+                </Text>
                 {colorEntries.length > COLOR_PREVIEW_LIMIT ? (
                   <Text
                     className='post-detail-page__colors-more'

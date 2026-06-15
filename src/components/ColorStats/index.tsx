@@ -2,6 +2,7 @@ import { View, Text } from '@tarojs/components'
 import { useMemo, useState } from 'react'
 import { getColorById } from '@/services/palette'
 import { getColorDisplayName } from '@/utils/colorDisplayName'
+import { formatColorStatsTitle } from '@/utils/colorStatsTitle'
 import type { PatternResult } from '@/types'
 import './index.scss'
 
@@ -23,7 +24,9 @@ export default function ColorStats({ pattern, previewLimit = 4 }: ColorStatsProp
 
   return (
     <View className='color-stats'>
-      <Text className='color-stats__title'>色号用量（共 {colorCount} 种）</Text>
+      <Text className='color-stats__title'>
+        {formatColorStatsTitle(colorCount, pattern.totalBeads)}
+      </Text>
 
       <View className='color-stats__list'>
         {visibleEntries.map(([id, count]) => {
