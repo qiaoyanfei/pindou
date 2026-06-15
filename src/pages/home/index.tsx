@@ -22,21 +22,17 @@ import {
   POST_INTERACTION_EVENT,
   type PostInteractionPatch,
 } from '@/utils/postInteractionSync'
+import {
+  hasHomeFeedCache,
+  readHomeFeedCache,
+  writeHomeFeedCache,
+} from '@/utils/homeFeedCache'
 import './index.scss'
 
 const TABS: { key: FeedTab; label: string }[] = [
   { key: 'recommend', label: '推荐' },
   { key: 'latest', label: '最新' },
 ]
-
-const EMPTY_FEED = { posts: [] as PostSummary[], page: 1, hasMore: true }
-
-function createEmptyFeeds(): Record<FeedTab, typeof EMPTY_FEED> {
-  return {
-    recommend: { ...EMPTY_FEED, posts: [] },
-    latest: { ...EMPTY_FEED, posts: [] },
-  }
-}
 
 function splitWaterfall(list: PostSummary[]): [PostSummary[], PostSummary[]] {
   const left: PostSummary[] = []
@@ -114,29 +110,46 @@ export default function HomePage() {
   }, [])
 
   const [tab, setTab] = useState<FeedTab>('recommend')
-  const [feeds, setFeeds] = useState(createEmptyFeeds)
+  const [feeds, setFeeds] = useState(readHomeFeedCache)
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<PostSummary[]>([])
-  const [refreshingTab, setRefreshingTab] = useState<FeedTab | null>(null)
+  const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null)
+  const [searching, setSearching] = useState(false)
 
   const isSearching = searchKeyword.length > 0
   const currentFeed = feeds[tab]
   const posts = isSearching ? searchResults : currentFeed.posts
   const hasMore = isSearching ? false : currentFeed.hasMore
   const page = currentFeed.page
-  const isLoading = isSearching ? refreshingTab === tab : refreshingTab === tab
+  const showInitialLoading = !isSearching
+    && posts.length === 0
+    && loadingTab === tab
+  const isLoadingMore = !isSearching && loadingTab === tab && posts.length > 0
 
   const [leftCol, rightCol] = useMemo(() => splitWaterfall(posts), [posts])
+
+  const updateFeeds = useCallback((
+    updater: (prev: ReturnType<typeof readHomeFeedCache>) => ReturnType<typeof readHomeFeedCache>,
+  ) => {
+    setFeeds((prev) => {
+      const next = updater(prev)
+      writeHomeFeedCache(next)
+      return next
+    })
+  }, [])
 
   const loadFeed = useCallback(async (nextTab: FeedTab, nextPage: number, replace = false) => {
     if (inflightRef.current[nextTab]) return
 
+    const hasCachedPosts = hasHomeFeedCache(nextTab)
     inflightRef.current[nextTab] = true
-    setRefreshingTab(nextTab)
+    if (!replace || !hasCachedPosts) {
+      setLoadingTab(nextTab)
+    }
     try {
       const result = await fetchFeed(nextTab, nextPage)
-      setFeeds((prev) => ({
+      updateFeeds((prev) => ({
         ...prev,
         [nextTab]: {
           posts: replace ? result.list : [...prev[nextTab].posts, ...result.list],
@@ -145,16 +158,18 @@ export default function HomePage() {
         },
       }))
     } catch (error) {
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
+      if (!hasCachedPosts) {
+        Taro.showToast({
+          title: error instanceof Error ? error.message : '加载失败',
+          icon: 'none',
+        })
+      }
     } finally {
       inflightRef.current[nextTab] = false
-      setRefreshingTab((current) => (current === nextTab ? null : current))
+      setLoadingTab((current) => (current === nextTab ? null : current))
       Taro.stopPullDownRefresh()
     }
-  }, [])
+  }, [updateFeeds])
 
   const loadSearch = useCallback(async (value: string) => {
     const trimmed = value.trim()
@@ -167,29 +182,32 @@ export default function HomePage() {
       return
     }
 
-    setRefreshingTab(tab)
+    setSearching(true)
     try {
       const list = await searchPosts(trimmed)
       setSearchKeyword(trimmed)
-      setSearchResults(list)
+      setSearchResults(applyPatchesToPosts(list))
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '搜索失败',
         icon: 'none',
       })
     } finally {
-      setRefreshingTab(null)
+      setSearching(false)
+      Taro.stopPullDownRefresh()
     }
   }, [feeds, loadFeed, tab])
 
   useEffect(() => {
-    void loadFeed('recommend', 1, true)
+    if (!hasHomeFeedCache('recommend')) {
+      void loadFeed('recommend', 1, true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     const onInteractionChange = (patch: PostInteractionPatch) => {
-      setFeeds((prev) => ({
+      updateFeeds((prev) => ({
         recommend: {
           ...prev.recommend,
           posts: patchPostInList(prev.recommend.posts, patch),
@@ -206,10 +224,10 @@ export default function HomePage() {
     return () => {
       Taro.eventCenter.off(POST_INTERACTION_EVENT, onInteractionChange)
     }
-  }, [])
+  }, [updateFeeds])
 
   useDidShow(() => {
-    setFeeds((prev) => ({
+    updateFeeds((prev) => ({
       recommend: {
         ...prev.recommend,
         posts: applyPatchesToPosts(prev.recommend.posts),
@@ -231,7 +249,7 @@ export default function HomePage() {
   })
 
   useReachBottom(() => {
-    if (isSearching || !hasMore || refreshingTab === tab) return
+    if (isSearching || !hasMore || loadingTab === tab) return
     void loadFeed(tab, page + 1)
   })
 
@@ -336,7 +354,7 @@ export default function HomePage() {
       {posts.length === 0 ? (
         <View className='home-page__empty'>
           <Text>
-            {isLoading
+            {showInitialLoading || searching
               ? '加载中...'
               : isSearching
                 ? '没有找到相关图纸'
@@ -358,7 +376,7 @@ export default function HomePage() {
         </View>
       )}
 
-      {!isLoading && !hasMore && posts.length > 0 ? (
+      {!showInitialLoading && !searching && !isLoadingMore && !hasMore && posts.length > 0 ? (
         <View className='home-page__footer-tip'>· 没有更多啦 ·</View>
       ) : null}
 
