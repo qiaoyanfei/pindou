@@ -8,10 +8,15 @@ import {
   formatCount,
   formatPostMeta,
   getCachedConfig,
+  getCachedUser,
   loadPatternFromPost,
   toggleFavorite,
   toggleLike,
 } from '@/services/communityService'
+import { restoreSessionFromStorage } from '@/services/session'
+import { isUserAuthenticated } from '@/services/wechatAuth'
+import { buildLoginUrl } from '@/utils/authRoute'
+import { safeNavigateTo } from '@/utils/navigation'
 import { patchPostInteraction } from '@/utils/postInteractionSync'
 import { getColorById } from '@/services/palette'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
@@ -55,7 +60,9 @@ export default function PostDetailPage() {
   const exportPayloadRef = useRef<ExportPayload | null>(null)
   const [showAllColors, setShowAllColors] = useState(false)
   const [previewFrame, setPreviewFrame] = useState(getPreviewFrameSize)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const downloadCost = getCachedConfig()?.downloadCost ?? 0
+  const loginRedirectUrl = `/pages/post-detail/index?id=${postId}`
 
   useEffect(() => {
     setPreviewFrame(getPreviewFrameSize())
@@ -82,6 +89,8 @@ export default function PostDetailPage() {
   }, [postId])
 
   useDidShow(() => {
+    restoreSessionFromStorage()
+    setIsLoggedIn(isUserAuthenticated(getCachedUser()))
     Taro.showShareMenu({ withShareTicket: true, showShareItems: ['shareAppMessage'] })
     loadPost()
   })
@@ -109,6 +118,11 @@ export default function PostDetailPage() {
 
   const handleToggleLike = async () => {
     if (!post) return
+    restoreSessionFromStorage()
+    if (!isUserAuthenticated(getCachedUser())) {
+      Taro.showToast({ title: '请先登录', icon: 'none' })
+      return
+    }
     try {
       const result = await toggleLike(post._id)
       setPost({ ...post, liked: result.liked, likeCount: result.likeCount })
@@ -127,6 +141,11 @@ export default function PostDetailPage() {
 
   const handleToggleFavorite = async () => {
     if (!post) return
+    restoreSessionFromStorage()
+    if (!isUserAuthenticated(getCachedUser())) {
+      Taro.showToast({ title: '请先登录', icon: 'none' })
+      return
+    }
     try {
       const result = await toggleFavorite(post._id)
       setPost({ ...post, favorited: result.favorited, favoriteCount: result.favoriteCount })
@@ -171,6 +190,11 @@ export default function PostDetailPage() {
 
   const handleDownload = async () => {
     if (!post || downloading || exportPayload) return
+    restoreSessionFromStorage()
+    if (!isUserAuthenticated(getCachedUser())) {
+      safeNavigateTo(buildLoginUrl(loginRedirectUrl))
+      return
+    }
 
     const confirm = await new Promise<boolean>((resolve) => {
       Taro.showModal({
@@ -244,6 +268,15 @@ export default function PostDetailPage() {
                 <View className='post-detail-page__preview-image post-detail-page__preview-image--empty' />
               )}
             </View>
+          </View>
+
+          <View className='post-detail-page__notice'>
+            <View className='post-detail-page__notice-icon'>
+              <Text className='post-detail-page__notice-icon-text'>!</Text>
+            </View>
+            <Text className='post-detail-page__notice-text'>
+              图纸仅供个人手工参考，未经授权请勿商用或二次售卖。
+            </Text>
           </View>
 
           <Text className='post-detail-page__title'>{post.title}</Text>
@@ -320,14 +353,14 @@ export default function PostDetailPage() {
 
       <View className='post-detail-page__actions'>
         <View
-          className={`post-detail-page__action${post.liked ? ' is-active' : ''}`}
+          className={`post-detail-page__action${post.liked ? ' is-active' : ''}${!isLoggedIn ? ' is-disabled' : ''}`}
           onClick={handleToggleLike}
         >
           <Text className='post-detail-page__action-icon'>{post.liked ? '❤️' : '🤍'}</Text>
           <Text>点赞</Text>
         </View>
         <View
-          className={`post-detail-page__action${post.favorited ? ' is-active' : ''}`}
+          className={`post-detail-page__action${post.favorited ? ' is-active' : ''}${!isLoggedIn ? ' is-disabled' : ''}`}
           onClick={handleToggleFavorite}
         >
           <Text className='post-detail-page__action-icon'>{post.favorited ? '★' : '☆'}</Text>

@@ -22,7 +22,7 @@ export async function claimShareReward(
     const result = await rewardShare()
     if (result.rewarded && result.amount > 0) {
       onRewarded?.({ amount: result.amount, beanBalance: result.beanBalance })
-      Taro.showToast({ title: `分享成功，获得 ${result.amount} 小豆`, icon: 'success' })
+      Taro.showToast({ title: `获得${result.amount}小豆`, icon: 'success', duration: 2000 })
     }
   } catch (error) {
     Taro.showToast({

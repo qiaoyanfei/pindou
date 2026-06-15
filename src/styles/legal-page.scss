@@ -1,0 +1,26 @@
+@import '@/styles/variables.scss';
+
+.legal-page {
+  min-height: 100vh;
+  background: $color-bg;
+  box-sizing: border-box;
+}
+
+.legal-page__scroll {
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.legal-page__content {
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.legal-page__text {
+  display: block;
+  font-size: 28px;
+  color: $color-text;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

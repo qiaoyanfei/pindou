@@ -6,6 +6,8 @@ export default defineAppConfig({
     'pages/advanced-settings/index',
     'pages/mine/index',
     'pages/login/index',
+    'pages/user-agreement/index',
+    'pages/privacy-policy/index',
     'pages/preview/index',
     'pages/post-detail/index',
     'pages/my-post-detail/index',

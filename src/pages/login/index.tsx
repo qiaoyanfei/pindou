@@ -15,18 +15,6 @@ import loginLogo from '@/assets/login-logo.jpg'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 
-const USER_AGREEMENT = `欢迎使用 happy拼豆嘛。
-
-1. 您应合法、正当地使用本小程序提供的图纸生成、发布与作品浏览等功能。
-2. 您上传、发布的内容需符合法律法规及平台规范，不得侵犯他人合法权益。
-3. 平台有权对违规内容进行审核、下架或限制相关功能。`
-
-const PRIVACY_POLICY = `我们重视您的隐私保护。
-
-1. 为提供登录、发布、下载等服务，我们会收集必要的微信身份标识及您主动填写的昵称、头像等信息。
-2. 您的图纸、发布记录等数据仅用于向您提供和优化服务，未经您同意不会向第三方出售。
-3. 您可在「我的」页面管理个人信息，如需注销或反馈请联系平台客服。`
-
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [agreed, setAgreed] = useState(false)
@@ -68,13 +56,15 @@ export default function LoginPage() {
     try {
       const loginResult = await oneClickWechatLogin()
       const reward = loginResult.registerReward
+      const toastDuration = reward > 0 ? 2000 : 1500
       Taro.showToast({
-        title: reward > 0 ? `登录成功，获得 ${reward} 小豆` : '登录成功',
+        title: reward > 0 ? `获得${reward}小豆` : '登录成功',
         icon: 'success',
+        duration: toastDuration,
       })
       setTimeout(() => {
         safeRedirect(redirectUrl)
-      }, reward > 0 ? 1200 : 400)
+      }, reward > 0 ? toastDuration : 400)
     } catch (error) {
       showAuthError(formatAuthError(error))
     } finally {
@@ -82,12 +72,10 @@ export default function LoginPage() {
     }
   }
 
-  const openAgreement = (type: 'user' | 'privacy') => {
-    Taro.showModal({
-      title: type === 'user' ? '用户协议' : '隐私政策',
-      content: type === 'user' ? USER_AGREEMENT : PRIVACY_POLICY,
-      showCancel: false,
-      confirmText: '我知道了',
+  const openAgreement = (type: 'user' | 'privacy', event?: { stopPropagation?: () => void }) => {
+    event?.stopPropagation?.()
+    Taro.navigateTo({
+      url: type === 'user' ? '/pages/user-agreement/index' : '/pages/privacy-policy/index',
     })
   }
 
@@ -141,11 +129,11 @@ export default function LoginPage() {
             </View>
             <View className='login-page__agreement-text'>
               <Text className='login-page__agreement-muted'>已阅读并同意</Text>
-              <Text className='login-page__agreement-link' onClick={() => openAgreement('user')}>
+              <Text className='login-page__agreement-link' onClick={(e) => openAgreement('user', e)}>
                 《用户协议》
               </Text>
               <Text className='login-page__agreement-muted'>和</Text>
-              <Text className='login-page__agreement-link' onClick={() => openAgreement('privacy')}>
+              <Text className='login-page__agreement-link' onClick={(e) => openAgreement('privacy', e)}>
                 《隐私政策》
               </Text>
             </View>
