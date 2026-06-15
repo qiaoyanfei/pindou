@@ -15,6 +15,9 @@ export function getBeanLogIconStyle(title: string, type: BeanTransaction['type']
   if (title.includes('注册')) {
     return { background: '#fce7f3', glyph: '🎁' }
   }
+  if (title.includes('分享')) {
+    return { background: '#dcfce7', glyph: '↗' }
+  }
   if (title.includes('邀请')) {
     return { background: '#fce7f3', glyph: '★' }
   }

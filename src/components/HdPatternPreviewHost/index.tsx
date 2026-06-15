@@ -171,9 +171,12 @@ export default function HdPatternPreviewHost() {
           canvasId={CANVAS_ID}
           pattern={payload.pattern}
           config={payload.config}
-          mode='preview'
+          mode='export'
           hidden
           cellPx={payload.config.exportCellPx}
+          creatorNickname={payload.creatorNickname}
+          showSheetHeader={false}
+          showWatermark={false}
           onReady={handleCanvasReady}
         />
       ) : null}

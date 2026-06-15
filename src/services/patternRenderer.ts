@@ -265,10 +265,12 @@ export interface SheetLayoutMetrics {
 export function getSheetLayoutMetrics(
   pattern: PatternResult,
   cellPx: number,
+  options: Pick<RenderOptions, 'showSheetHeader'> = {},
 ): SheetLayoutMetrics {
+  const showSheetHeader = options.showSheetHeader !== false
   const padding = getSheetPadding(cellPx)
   const headerMetrics = getSheetHeaderMetrics(cellPx)
-  const headerHeight = headerMetrics.headerHeight
+  const headerHeight = showSheetHeader ? headerMetrics.headerHeight : 0
   const axisWidth = Math.max(22, Math.round(cellPx * 0.9))
   const axisHeight = Math.max(18, Math.round(cellPx * 0.75))
   const gridWidth = pattern.width * cellPx
@@ -316,8 +318,10 @@ export function renderPatternSheetToCanvas(
     minCellPxForLabel = 10,
     creatorNickname,
     appName = MINI_PROGRAM_NAME,
+    showSheetHeader = true,
+    showWatermark = true,
   } = options
-  const layout = getSheetLayoutMetrics(pattern, cellPx)
+  const layout = getSheetLayoutMetrics(pattern, cellPx, { showSheetHeader })
 
   canvas.width = layout.width
   canvas.height = layout.height
@@ -332,41 +336,44 @@ export function renderPatternSheetToCanvas(
 
   const gridOriginX = layout.padding + layout.axisWidth
   const gridOriginY = layout.padding + layout.headerHeight + layout.axisHeight
-  const headerMetrics = getSheetHeaderMetrics(cellPx)
-  const headerTextWidth = layout.width - layout.padding * 2
-  const metaSegments = buildSheetMetaSegments(
-    creatorNickname,
-    width,
-    height,
-    totalBeads,
-    Object.keys(stats).length,
-  )
-  const metaSegmentGap = getMetaSegmentGap(cellPx)
-  const metaY =
-    layout.padding
-    + headerMetrics.titleLineHeight
-    + headerMetrics.headerLineGap
-    + headerMetrics.metaLineHeight / 2
 
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
+  if (showSheetHeader) {
+    const headerMetrics = getSheetHeaderMetrics(cellPx)
+    const headerTextWidth = layout.width - layout.padding * 2
+    const metaSegments = buildSheetMetaSegments(
+      creatorNickname,
+      width,
+      height,
+      totalBeads,
+      Object.keys(stats).length,
+    )
+    const metaSegmentGap = getMetaSegmentGap(cellPx)
+    const metaY =
+      layout.padding
+      + headerMetrics.titleLineHeight
+      + headerMetrics.headerLineGap
+      + headerMetrics.metaLineHeight / 2
 
-  ctx.fillStyle = HEADER_TITLE_COLOR
-  ctx.font = `700 ${headerMetrics.titleFontSize}px sans-serif`
-  ctx.fillText(
-    appName,
-    layout.padding,
-    layout.padding + headerMetrics.titleLineHeight / 2,
-  )
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
 
-  const metaFontSize = resolveMetaFontSize(
-    ctx,
-    metaSegments,
-    headerTextWidth,
-    headerMetrics.metaFontSize,
-    metaSegmentGap,
-  )
-  drawSheetMetaLine(ctx, metaSegments, layout.padding, metaY, metaFontSize, metaSegmentGap)
+    ctx.fillStyle = HEADER_TITLE_COLOR
+    ctx.font = `700 ${headerMetrics.titleFontSize}px sans-serif`
+    ctx.fillText(
+      appName,
+      layout.padding,
+      layout.padding + headerMetrics.titleLineHeight / 2,
+    )
+
+    const metaFontSize = resolveMetaFontSize(
+      ctx,
+      metaSegments,
+      headerTextWidth,
+      headerMetrics.metaFontSize,
+      metaSegmentGap,
+    )
+    drawSheetMetaLine(ctx, metaSegments, layout.padding, metaY, metaFontSize, metaSegmentGap)
+  }
 
   const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))
   ctx.fillStyle = AXIS_TEXT_COLOR
@@ -458,7 +465,9 @@ export function renderPatternSheetToCanvas(
     ctx.fillText(`${id} (${count})`, itemX + swatchSize + 6, itemY + layout.legendItemHeight / 2)
   })
 
-  drawGlobalWatermarks(ctx, layout.width, layout.height, cellPx, appName)
+  if (showWatermark) {
+    drawGlobalWatermarks(ctx, layout.width, layout.height, cellPx, appName)
+  }
 }
 
 export function buildStatsTsv(stats: Record<string, number>): string {
@@ -511,7 +520,8 @@ export function getPatternPixelSize(
 export function getExportSheetPixelSize(
   pattern: PatternResult,
   cellPx: number,
+  options: Pick<RenderOptions, 'showSheetHeader'> = {},
 ): { width: number; height: number } {
-  const layout = getSheetLayoutMetrics(pattern, cellPx)
+  const layout = getSheetLayoutMetrics(pattern, cellPx, options)
   return { width: layout.width, height: layout.height }
 }

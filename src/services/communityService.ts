@@ -169,6 +169,16 @@ export async function downloadPost(postId: string): Promise<{ post: PostDetail; 
   return result
 }
 
+export async function rewardShare(): Promise<{ rewarded: boolean; amount: number; beanBalance: number }> {
+  const result = await callCloudApi<{ rewarded: boolean; amount: number; beanBalance: number }>('rewardShare')
+  if (cachedUser && Number.isFinite(result.beanBalance)) {
+    cachedUser = { ...cachedUser, beanBalance: Math.max(0, result.beanBalance) }
+    const config = getSessionConfig()
+    if (config) persistSession(cachedUser, config)
+  }
+  return result
+}
+
 export async function loadPatternFromPost(post: PostDetail): Promise<PatternResult> {
   if (post.pattern) return post.pattern
   return downloadJsonFile<PatternResult>(post.patternFileId)

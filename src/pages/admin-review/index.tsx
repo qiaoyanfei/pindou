@@ -15,8 +15,6 @@ import './index.scss'
 export default function AdminReviewPage() {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [currentOpenid, setCurrentOpenid] = useState('')
-  const [adminCount, setAdminCount] = useState(0)
   const [list, setList] = useState<PostSummary[]>([])
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({})
   const [processingId, setProcessingId] = useState('')
@@ -26,8 +24,6 @@ export default function AdminReviewPage() {
     try {
       const adminResult = await checkIsAdmin()
       setIsAdmin(adminResult.isAdmin)
-      setCurrentOpenid(adminResult.openid || '')
-      setAdminCount(adminResult.adminCount || 0)
       if (!adminResult.isAdmin) return
       setList(await fetchReviewQueue())
     } catch (error) {
@@ -87,16 +83,7 @@ export default function AdminReviewPage() {
   if (!isAdmin) {
     return (
       <View className='admin-review-page admin-review-page__empty'>
-        <Text>无审核权限。</Text>
-        <Text className='admin-review-page__empty-meta'>
-          当前 OpenID：{currentOpenid || '未获取'}
-        </Text>
-        <Text className='admin-review-page__empty-meta'>
-          已配置管理员数量：{adminCount}
-        </Text>
-        <Text className='admin-review-page__empty-meta'>
-          请在 app_config.adminOpenIds 数组中加入上面的 OpenID，并重新部署云函数 api。
-        </Text>
+        <Text>暂无访问权限</Text>
       </View>
     )
   }

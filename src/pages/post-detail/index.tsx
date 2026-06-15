@@ -1,5 +1,5 @@
 import { View, Text, Image, ScrollView, Button, CoverView } from '@tarojs/components'
-import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PatternCanvas from '@/components/PatternCanvas'
 import {
@@ -20,6 +20,7 @@ import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPa
 import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
+import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import './index.scss'
 
 const POST_DETAIL_EXPORT_CANVAS_ID = 'post-detail-export-canvas'
@@ -85,7 +86,7 @@ export default function PostDetailPage() {
     loadPost()
   })
 
-  useShareAppMessage(() => ({
+  useShareContent(() => ({
     title: post?.title || `${MINI_PROGRAM_NAME}图纸`,
     path: `/pages/post-detail/index?id=${postId}`,
     imageUrl: post?.coverUrl,
@@ -332,7 +333,11 @@ export default function PostDetailPage() {
           <Text className='post-detail-page__action-icon'>{post.favorited ? '★' : '☆'}</Text>
           <Text>收藏</Text>
         </View>
-        <Button className='post-detail-page__share-btn' openType='share'>
+        <Button
+          className='post-detail-page__share-btn'
+          openType='share'
+          onClick={() => void claimShareReward()}
+        >
           <Text className='post-detail-page__action-icon'>↗</Text>
           <Text>分享</Text>
         </Button>

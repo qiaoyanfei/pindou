@@ -34,6 +34,10 @@ export interface RenderOptions {
   creatorNickname?: string
   /** 导出图顶部与全局水印小程序名 */
   appName?: string
+  /** 是否绘制顶部标题与元信息行，默认 true */
+  showSheetHeader?: boolean
+  /** 是否绘制全局水印，默认 true */
+  showWatermark?: boolean
 }
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'

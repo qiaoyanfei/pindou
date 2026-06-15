@@ -1,5 +1,5 @@
 import { View, Text, Image, Button, Input } from '@tarojs/components'
-import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
 import AppTabBar from '@/components/AppTabBar'
 import UserAvatar from '@/components/UserAvatar'
@@ -30,6 +30,7 @@ import {
   normalizeNickName,
   resolveNickNameForDisplay,
 } from '@/utils/userProfile'
+import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import './index.scss'
 
 interface MenuItem {
@@ -85,7 +86,7 @@ export default function MinePage() {
     }
   })
 
-  useShareAppMessage(() => ({
+  useShareContent(() => ({
     title: `一起来${MINI_PROGRAM_NAME}，生成专属拼豆图纸`,
     path: `/pages/home/index?inviterId=${user?.openid || ''}`,
   }))
@@ -235,9 +236,13 @@ export default function MinePage() {
         <View className='mine-page__invite-content'>
           <Text className='mine-page__invite-title'>邀请好友，一起{MINI_PROGRAM_NAME}</Text>
           <Text className='mine-page__invite-desc'>
-            每成功邀请 1 位新用户注册{'\n'}你将获得 {config?.inviteReward ?? 5} 小豆奖励
+            分享小程序可获得{config?.shareReward ?? 5}小豆
           </Text>
-          <Button className='mine-page__invite-btn' openType='share'>
+          <Button
+            className='mine-page__invite-btn'
+            openType='share'
+            onClick={() => void claimShareReward(() => syncUser())}
+          >
             立即邀请
           </Button>
         </View>

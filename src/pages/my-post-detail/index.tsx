@@ -1,5 +1,5 @@
 import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
-import Taro, { useDidShow, useRouter, useShareAppMessage, useUnload } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ColorStats from '@/components/ColorStats'
 import PatternCanvas from '@/components/PatternCanvas'
@@ -26,6 +26,7 @@ import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPa
 import { getCachedPreviewData, resolvePatternForPreview, resolvePreviewData } from '@/utils/patternPreviewCache'
 import { showActionSheet, showModal } from '@/utils/dialog'
 import { safeNavigateTo } from '@/utils/navigation'
+import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostCategory, PostDetail, PostReviewHistoryItem, PostReviewStatus, PostVisibility } from '@/types/community'
 import './index.scss'
@@ -158,7 +159,7 @@ export default function MyPostDetailPage() {
     Taro.setNavigationBarTitle({ title })
   }, [isApproved])
 
-  useShareAppMessage(() => ({
+  useShareContent(() => ({
     title: source?.title || '拼豆图纸',
     path: isApproved ? `/pages/post-detail/index?id=${itemId}` : '/pages/drafts/index',
     imageUrl: source?.coverUrl,
@@ -469,7 +470,11 @@ export default function MyPostDetailPage() {
           保存图片
         </Button>
         {isApproved ? (
-          <Button className='my-post-detail-page__btn-primary' openType='share'>
+          <Button
+            className='my-post-detail-page__btn-primary'
+            openType='share'
+            onClick={() => void claimShareReward()}
+          >
             分享图纸
           </Button>
         ) : isRejected ? (

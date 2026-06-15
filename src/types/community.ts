@@ -110,6 +110,7 @@ export interface AppRemoteConfig {
   publishReward: number
   registerReward: number
   inviteReward: number
+  shareReward: number
   feedbackWechatId: string
   feedbackQrUrl: string
   adminOpenIds?: string[]

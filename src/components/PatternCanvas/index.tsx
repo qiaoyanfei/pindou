@@ -20,6 +20,8 @@ interface PatternCanvasProps {
   /** 缩略图等场景固定不显示色号；全屏高清预览与导出按 config.showColorCode */
   hideColorCode?: boolean
   creatorNickname?: string
+  showSheetHeader?: boolean
+  showWatermark?: boolean
   onReady?: () => void
 }
 
@@ -32,6 +34,8 @@ export default function PatternCanvas({
   cellPx: cellPxOverride,
   hideColorCode = false,
   creatorNickname,
+  showSheetHeader = true,
+  showWatermark = true,
   onReady,
 }: PatternCanvasProps) {
   const readyRef = useRef(false)
@@ -43,7 +47,7 @@ export default function PatternCanvas({
     }, 120)
 
     return () => clearTimeout(timer)
-  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname])
+  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark])
 
   const drawPattern = (retry = 0) => {
     const query = Taro.createSelectorQuery()
@@ -79,6 +83,8 @@ export default function PatternCanvas({
           renderPatternSheetToCanvas(canvas, pattern, {
             ...renderOptions,
             creatorNickname,
+            showSheetHeader,
+            showWatermark,
           })
         } else {
           renderPatternToCanvas(canvas, pattern, renderOptions)
@@ -98,7 +104,7 @@ export default function PatternCanvas({
   const canvasStyle =
     mode === 'export'
       ? (() => {
-          const size = getExportSheetPixelSize(pattern, cellPx)
+          const size = getExportSheetPixelSize(pattern, cellPx, { showSheetHeader })
           return {
             width: `${size.width}px`,
             height: `${size.height}px`,

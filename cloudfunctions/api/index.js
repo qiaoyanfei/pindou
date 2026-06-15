@@ -10,6 +10,7 @@ const DEFAULT_CONFIG = {
   publishReward: 3,
   registerReward: 5,
   inviteReward: 5,
+  shareReward: 5,
   feedbackWechatId: 'doudou_shouzuo',
   feedbackQrUrl: '',
   adminOpenIds: [],
@@ -510,6 +511,25 @@ async function buildLoginResponse(openid, user, options = {}) {
     },
     config,
     registerReward: isNew ? config.registerReward : 0,
+  })
+}
+
+async function handleRewardShare(openid) {
+  const user = await getUser(openid)
+  if (!user) return fail('请先登录')
+
+  const config = await getConfig()
+  const amount = Number(config.shareReward)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return ok({ rewarded: false, amount: 0, beanBalance: user.beanBalance })
+  }
+
+  await addBeanTransaction(openid, 'income', amount, '分享奖励', '分享给好友')
+  const updated = await getUser(openid)
+  return ok({
+    rewarded: true,
+    amount,
+    beanBalance: updated?.beanBalance ?? user.beanBalance + amount,
   })
 }
 
@@ -1075,6 +1095,8 @@ exports.main = async (event) => {
         return await handleGetMyFavorites(openid)
       case 'getBeanLogs':
         return await handleGetBeanLogs(openid, data)
+      case 'rewardShare':
+        return await handleRewardShare(openid)
       case 'submitFeedback':
         return await handleSubmitFeedback(openid, data)
       case 'getCounts':
