@@ -7,7 +7,7 @@ import {
   isExteriorBackgroundPixel,
   isPortraitSubjectPixel,
 } from '@/services/backgroundMatting'
-import { BACKGROUND_LIGHT_LUMA, isExteriorBackgroundCell, PATTERN_MIXED_LIGHT_RATIO } from '@/utils/constants'
+import { BACKGROUND_LIGHT_LUMA, isExteriorBackgroundCell, PATTERN_MIXED_LIGHT_RATIO, PATTERN_MIXED_LIGHT_LUMA_MANGA, PATTERN_MIXED_LIGHT_RATIO_MANGA } from '@/utils/constants'
 import type { StyleMode } from '@/types'
 
 export interface GridSize {
@@ -127,11 +127,15 @@ function dominantRgbFromBlock(
   const darkRatio = darkCount / pixels.length
 
   if (styleMode === 'manga') {
-    const lightRatio = lightCount / pixels.length
+    let mangaLightCount = 0
+    for (const rgb of pixels) {
+      if (getLuma(rgb) >= PATTERN_MIXED_LIGHT_LUMA_MANGA) mangaLightCount += 1
+    }
+    const lightRatio = mangaLightCount / pixels.length
     const isMixedLightOutline =
-      darkRatio >= darkRatioThreshold && lightRatio >= PATTERN_MIXED_LIGHT_RATIO
+      darkRatio >= darkRatioThreshold && lightRatio >= PATTERN_MIXED_LIGHT_RATIO_MANGA
     if (isMixedLightOutline) {
-      const lightPixels = pixels.filter((rgb) => getLuma(rgb) >= BACKGROUND_LIGHT_LUMA)
+      const lightPixels = pixels.filter((rgb) => getLuma(rgb) >= PATTERN_MIXED_LIGHT_LUMA_MANGA)
       if (lightPixels.length > 0) {
         return dominantRgbFromPixels(lightPixels)
       }

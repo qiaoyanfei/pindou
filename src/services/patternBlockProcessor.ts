@@ -53,7 +53,7 @@ export async function processBlockPattern(
     intermediateHeight,
     sample.exteriorBackground,
   )
-  pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight)
+  pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight, styleMode)
 
   if (styleMode === 'portrait') {
     const exteriorAtTarget = downsampleExteriorBackground(

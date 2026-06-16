@@ -85,6 +85,12 @@ export const PATTERN_DARK_RATIO_MANGA = 0.3
 /** 块内同时有足够亮像素时视为白+描边混合，不整格强制判黑 */
 export const PATTERN_MIXED_LIGHT_RATIO = 0.35
 
+/** 漫画风混合白底：亮像素亮度（含抗锯齿浅灰，低于背景裁剪 235） */
+export const PATTERN_MIXED_LIGHT_LUMA_MANGA = 200
+
+/** 漫画风混合白底：亮像素占比（低于写实风，配合平滑采样） */
+export const PATTERN_MIXED_LIGHT_RATIO_MANGA = 0.28
+
 export const PATTERN_LIGHT_NEUTRAL_IDS = new Set(['H2', 'H13'])
 
 const PATTERN_DARK_IDS = new Set(['H16', 'H7', 'H17', 'H3', 'H18', 'H9'])

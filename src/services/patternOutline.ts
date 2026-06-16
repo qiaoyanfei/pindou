@@ -10,12 +10,13 @@ function isDarkId(id: string): boolean {
   return id === PRIMARY_DARK || SECONDARY_DARK_IDS.has(id)
 }
 
-function pickMajorityId(counts: Map<string, number>): string {
+function pickMajorityId(counts: Map<string, number>, preferDarkOnTie = true): string {
   let bestId = PATTERN_EMPTY_CELL
   let bestCount = -1
 
   counts.forEach((count, id) => {
     const preferDark =
+      preferDarkOnTie &&
       count === bestCount &&
       isDarkId(id) &&
       bestId !== PRIMARY_DARK &&
@@ -39,6 +40,7 @@ export function downsamplePatternMajority(
   pattern: PatternResult,
   targetWidth: number,
   targetHeight: number,
+  styleMode: StyleMode = 'portrait',
 ): PatternResult {
   const { width, height, grid } = pattern
   if (width === targetWidth && height === targetHeight) return pattern
@@ -61,7 +63,7 @@ export function downsamplePatternMajority(
           counts.set(id, (counts.get(id) ?? 0) + 1)
         }
       }
-      newGrid.push(pickMajorityId(counts))
+      newGrid.push(pickMajorityId(counts, styleMode !== 'manga'))
     }
   }
 
