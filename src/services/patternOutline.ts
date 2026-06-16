@@ -10,22 +10,28 @@ function isDarkId(id: string): boolean {
   return id === PRIMARY_DARK || SECONDARY_DARK_IDS.has(id)
 }
 
-function pickMajorityId(counts: Map<string, number>): string {
+function pickMajorityId(counts: Map<string, number>, styleMode: StyleMode = 'portrait'): string {
   let bestId = PATTERN_EMPTY_CELL
   let bestCount = -1
 
   counts.forEach((count, id) => {
     const preferDark =
+      styleMode !== 'manga' &&
       count === bestCount &&
       isDarkId(id) &&
       bestId !== PRIMARY_DARK &&
       id === PRIMARY_DARK
+    const preferLight =
+      styleMode === 'manga' &&
+      count === bestCount &&
+      isLightNeutralId(id) &&
+      isDarkId(bestId)
     const preferContent =
       count === bestCount &&
       isEmptyCell(bestId) &&
       !isEmptyCell(id)
 
-    if (count > bestCount || preferDark || preferContent) {
+    if (count > bestCount || preferDark || preferLight || preferContent) {
       bestCount = count
       bestId = id
     }
@@ -39,6 +45,7 @@ export function downsamplePatternMajority(
   pattern: PatternResult,
   targetWidth: number,
   targetHeight: number,
+  styleMode: StyleMode = 'portrait',
 ): PatternResult {
   const { width, height, grid } = pattern
   if (width === targetWidth && height === targetHeight) return pattern
@@ -61,7 +68,7 @@ export function downsamplePatternMajority(
           counts.set(id, (counts.get(id) ?? 0) + 1)
         }
       }
-      newGrid.push(pickMajorityId(counts))
+      newGrid.push(pickMajorityId(counts, styleMode))
     }
   }
 
@@ -105,16 +112,9 @@ export function consolidateDarkOutlines(
       const neighbors = getNeighborIds(newGrid, width, height, x, y)
       const hasPrimaryDark = neighbors.includes(PRIMARY_DARK)
 
-      if (styleMode === 'portrait') {
-        const lightNeighborCount = neighbors.filter((neighbor) => isLightNeutralId(neighbor)).length
-        if (hasPrimaryDark && lightNeighborCount < 2) {
-          newGrid[index] = PRIMARY_DARK
-        }
-      } else {
-        const darkNeighborCount = neighbors.filter((neighbor) => isDarkId(neighbor)).length
-        if (hasPrimaryDark || darkNeighborCount >= 2) {
-          newGrid[index] = PRIMARY_DARK
-        }
+      const lightNeighborCount = neighbors.filter((neighbor) => isLightNeutralId(neighbor)).length
+      if (hasPrimaryDark && lightNeighborCount < 2) {
+        newGrid[index] = PRIMARY_DARK
       }
     }
   }

@@ -125,12 +125,6 @@ function dominantRgbFromBlock(
   }
 
   const darkRatio = darkCount / pixels.length
-
-  if (styleMode === 'manga') {
-    if (darkRatio >= darkRatioThreshold) return [18, 18, 18]
-    return dominantRgbFromPixels(pixels)
-  }
-
   const lightRatio = lightCount / pixels.length
   const isMixedLightOutline =
     darkRatio >= darkRatioThreshold && lightRatio >= PATTERN_MIXED_LIGHT_RATIO
@@ -181,7 +175,7 @@ export async function extractBlockDominantColors(
   canvas.width = sampleWidth
   canvas.height = sampleHeight
   ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.imageSmoothingEnabled = styleMode !== 'portrait'
+  ctx.imageSmoothingEnabled = false
 
   const image = canvas.createImage()
   await new Promise<void>((resolve, reject) => {
