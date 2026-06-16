@@ -1,7 +1,6 @@
 import { View, Text, Button, Canvas, Image } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
-import AppTabBar from '@/components/AppTabBar'
 import ImageUploader from '@/components/ImageUploader'
 import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
@@ -14,7 +13,8 @@ import {
   syncGenerateDraftFromPage,
 } from '@/services/generateSession'
 import { requireAuthenticated } from '@/services/session'
-import { safeRedirect } from '@/utils/navigation'
+import { safeSwitchTab } from '@/utils/navigation'
+import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import {
   createDefaultConfigForStyleMode,
   getExportClarityLabel,
@@ -56,6 +56,7 @@ export default function GeneratePage() {
   }
 
   useDidShow(async () => {
+    updateTabBarSelected(TAB_INDEX.generate)
     const user = await requireAuthenticated('/pages/generate/index')
     if (!user) return
     setAuthed(true)
@@ -94,7 +95,7 @@ export default function GeneratePage() {
   }
 
   const handleBack = () => {
-    safeRedirect('/pages/home/index')
+    safeSwitchTab('/pages/home/index')
   }
 
   const handleGenerate = async () => {
@@ -183,8 +184,6 @@ export default function GeneratePage() {
         canvasId='process-canvas'
         className='generate-page__hidden-canvas'
       />
-
-      <AppTabBar active='generate' />
     </View>
   )
 }

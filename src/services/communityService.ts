@@ -25,6 +25,7 @@ import {
 } from '@/services/cloudClient'
 import { getSessionConfig, persistSession, setSessionConfig } from '@/services/session'
 import { resolveAuthorNickName } from '@/utils/userProfile'
+import { safeSwitchTab } from '@/utils/navigation'
 
 let cachedUser: UserProfile | null = null
 let loginPromise: Promise<LoginResult> | null = null
@@ -409,7 +410,7 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
     paletteId: post.paletteId,
   })
   Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config })
-  Taro.reLaunch({ url: '/pages/generate/index' })
+  safeSwitchTab('/pages/generate/index')
 }
 
 export function formatPostMeta(item: Pick<PostSummary, 'width' | 'height' | 'styleMode' | 'paletteId'>): string {

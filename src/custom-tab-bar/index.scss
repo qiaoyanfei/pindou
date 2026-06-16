@@ -7,7 +7,7 @@ $tabbar-icon-label-gap: 8px;
 $tabbar-bottom-padding: 10px;
 $tabbar-center-btn-size: 88px;
 
-.app-tabbar {
+.custom-tab-bar {
   position: fixed;
   left: 0;
   right: 0;
@@ -18,14 +18,14 @@ $tabbar-center-btn-size: 88px;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.app-tabbar__inner {
+.custom-tab-bar__inner {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   height: $tabbar-content-height;
   background: #fff;
 }
 
-.app-tabbar__col {
+.custom-tab-bar__col {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -36,7 +36,7 @@ $tabbar-center-btn-size: 88px;
   min-width: 0;
 }
 
-.app-tabbar__icon-slot {
+.custom-tab-bar__icon-slot {
   width: $tabbar-icon-slot;
   height: $tabbar-icon-slot;
   display: flex;
@@ -46,13 +46,13 @@ $tabbar-center-btn-size: 88px;
   position: relative;
 }
 
-.app-tabbar__icon {
+.custom-tab-bar__icon {
   width: $tabbar-icon-slot;
   height: $tabbar-icon-slot;
   flex-shrink: 0;
 }
 
-.app-tabbar__label {
+.custom-tab-bar__label {
   margin-top: $tabbar-icon-label-gap;
   height: $tabbar-label-height;
   line-height: $tabbar-label-height;
@@ -62,16 +62,16 @@ $tabbar-center-btn-size: 88px;
   flex-shrink: 0;
 }
 
-.app-tabbar__label.is-active {
+.custom-tab-bar__label.is-active {
   color: $color-primary;
   font-weight: 700;
 }
 
-.app-tabbar__col--center .app-tabbar__icon-slot {
+.custom-tab-bar__col--center .custom-tab-bar__icon-slot {
   overflow: visible;
 }
 
-.app-tabbar__center-btn {
+.custom-tab-bar__center-btn {
   position: absolute;
   left: 50%;
   bottom: 0;
@@ -86,7 +86,7 @@ $tabbar-center-btn-size: 88px;
   box-shadow: 0 8px 20px rgba(124, 58, 237, 0.28);
 }
 
-.app-tabbar__center-icon {
+.custom-tab-bar__center-icon {
   color: #fff;
   font-size: 48px;
   font-weight: 300;
@@ -94,7 +94,7 @@ $tabbar-center-btn-size: 88px;
   margin-top: -2px;
 }
 
-.app-tabbar__col--center.is-active .app-tabbar__label {
+.custom-tab-bar__col--center.is-active .custom-tab-bar__label {
   color: $color-primary;
   font-weight: 700;
 }

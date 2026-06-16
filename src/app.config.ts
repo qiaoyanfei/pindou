@@ -3,8 +3,8 @@ export default defineAppConfig({
   pages: [
     'pages/home/index',
     'pages/generate/index',
-    'pages/advanced-settings/index',
     'pages/mine/index',
+    'pages/advanced-settings/index',
     'pages/login/index',
     'pages/user-agreement/index',
     'pages/privacy-policy/index',
@@ -27,5 +27,26 @@ export default defineAppConfig({
     navigationBarBackgroundColor: '#fff',
     navigationBarTitleText: 'happy拼豆嘛',
     navigationBarTextStyle: 'black',
+  },
+  tabBar: {
+    custom: true,
+    color: '#9ca3af',
+    selectedColor: '#7c3aed',
+    backgroundColor: '#ffffff',
+    borderStyle: 'white',
+    list: [
+      {
+        pagePath: 'pages/home/index',
+        text: '首页',
+      },
+      {
+        pagePath: 'pages/generate/index',
+        text: '生成',
+      },
+      {
+        pagePath: 'pages/mine/index',
+        text: '我的',
+      },
+    ],
   },
 })

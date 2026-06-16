@@ -1,7 +1,6 @@
 import { View, Text, Image, Button, Input } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
-import AppTabBar from '@/components/AppTabBar'
 import UserAvatar from '@/components/UserAvatar'
 import mineBeanIcon from '@/assets/icons/mine-bean.svg'
 import mineLikeIcon from '@/assets/icons/mine-like.svg'
@@ -31,6 +30,7 @@ import {
   resolveNickNameForDisplay,
 } from '@/utils/userProfile'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
+import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import './index.scss'
 
 interface MenuItem {
@@ -64,6 +64,7 @@ export default function MinePage() {
   }
 
   useDidShow(async () => {
+    updateTabBarSelected(TAB_INDEX.mine)
     restoreSessionFromStorage()
     syncUser()
     try {
@@ -166,7 +167,7 @@ export default function MinePage() {
   }
 
   if (!user?.openid) {
-    return null
+    return <View className='mine-page mine-page--placeholder' style={{ paddingTop: `${pageTop}px` }} />
   }
 
   return (
@@ -252,7 +253,6 @@ export default function MinePage() {
         </View>
       </View>
 
-      <AppTabBar active='mine' />
     </View>
   )
 }

@@ -1,7 +1,6 @@
 import { View, Text, Switch, Slider, Image, Button, ScrollView, Canvas } from '@tarojs/components'
 import Taro, { useDidShow, useUnload } from '@tarojs/taro'
 import { useRef, useState } from 'react'
-import AppTabBar from '@/components/AppTabBar'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import { getGenerateDraft, updateGenerateConfig } from '@/services/generateSession'
 import {
@@ -226,8 +225,6 @@ export default function AdvancedSettingsPage() {
         canvasId={PROCESS_CANVAS_ID}
         className='advanced-settings-page__hidden-canvas'
       />
-
-      <AppTabBar active='generate' />
     </View>
   )
 }

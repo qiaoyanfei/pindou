@@ -1,7 +1,7 @@
 import { View, Text, Button } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
 import { getCachedConfig } from '@/services/communityService'
-import { reLaunchGeneratePage, safeRedirect } from '@/utils/navigation'
+import { reLaunchGeneratePage, safeRedirect, safeSwitchTab } from '@/utils/navigation'
 import type { PostReviewStatus } from '@/types/community'
 import { REVIEW_STATUS_LABELS } from '@/utils/postReview'
 import './index.scss'
@@ -50,7 +50,7 @@ export default function PublishSuccessPage() {
         </Button>
         <Button
           className='publish-success-page__btn publish-success-page__btn--ghost'
-          onClick={() => Taro.reLaunch({ url: '/pages/home/index' })}
+          onClick={() => safeSwitchTab('/pages/home/index')}
         >
           返回首页
         </Button>

@@ -1,8 +1,15 @@
 import Taro from '@tarojs/taro'
 import { clearGenerateDraft } from '@/services/generateSession'
 import { GENERATE_PAGE_RESET_KEY } from '@/types'
+import { isTabPage } from '@/utils/tabBar'
 
 const NAV_COOLDOWN_MS = 600
+
+const TAB_PAGE_SET = new Set([
+  '/pages/home/index',
+  '/pages/generate/index',
+  '/pages/mine/index',
+])
 
 let navigating = false
 let lastNavAt = 0
@@ -42,6 +49,29 @@ function finishNavigate(): void {
   }, NAV_COOLDOWN_MS)
 }
 
+export function safeSwitchTab(url: string): void {
+  const target = normalizePath(url.split('?')[0])
+  if (!TAB_PAGE_SET.has(target)) {
+    safeRedirect(url)
+    return
+  }
+  if (isOnPage(target)) return
+  if (!canNavigate()) return
+
+  Taro.switchTab({ url: target })
+    .catch(() => Taro.reLaunch({ url: target }))
+    .finally(finishNavigate)
+}
+
+export function navigateAfterAuth(url: string): void {
+  const path = url.split('?')[0]
+  if (isTabPage(path)) {
+    safeSwitchTab(path)
+    return
+  }
+  safeRedirect(url)
+}
+
 export function safeRedirect(url: string): void {
   const target = normalizePath(url)
   if (isOnPage(target)) return
@@ -57,7 +87,7 @@ export function redirectToGeneratePage(reset = true): void {
     Taro.setStorageSync(GENERATE_PAGE_RESET_KEY, '1')
     clearGenerateDraft()
   }
-  safeRedirect('/pages/generate/index')
+  safeSwitchTab('/pages/generate/index')
 }
 
 export function reLaunchGeneratePage(reset = true): void {
@@ -65,7 +95,7 @@ export function reLaunchGeneratePage(reset = true): void {
     Taro.setStorageSync(GENERATE_PAGE_RESET_KEY, '1')
     clearGenerateDraft()
   }
-  safeReLaunch('/pages/generate/index')
+  safeSwitchTab('/pages/generate/index')
 }
 
 export function safeReLaunch(url: string): void {
@@ -90,10 +120,21 @@ export function safeNavigateBack(fallbackUrl?: string): void {
     if (!canNavigate()) return
     Taro.navigateBack()
       .catch(() => {
-        if (fallbackUrl) safeRedirect(fallbackUrl)
+        if (!fallbackUrl) return
+        if (TAB_PAGE_SET.has(normalizePath(fallbackUrl.split('?')[0]))) {
+          safeSwitchTab(fallbackUrl)
+        } else {
+          safeRedirect(fallbackUrl)
+        }
       })
       .finally(finishNavigate)
     return
   }
-  if (fallbackUrl) safeRedirect(fallbackUrl)
+  if (fallbackUrl) {
+    if (TAB_PAGE_SET.has(normalizePath(fallbackUrl.split('?')[0]))) {
+      safeSwitchTab(fallbackUrl)
+    } else {
+      safeRedirect(fallbackUrl)
+    }
+  }
 }

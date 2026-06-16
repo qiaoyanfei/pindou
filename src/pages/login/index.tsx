@@ -9,7 +9,7 @@ import {
 } from '@/services/wechatAuth'
 import { getCachedUser } from '@/services/communityService'
 import { restoreSessionFromStorage } from '@/services/session'
-import { safeNavigateBack, safeRedirect } from '@/utils/navigation'
+import { safeNavigateBack, navigateAfterAuth } from '@/utils/navigation'
 import WechatLoginIcon from '@/components/WechatLoginIcon'
 import loginLogo from '@/assets/login-logo.jpg'
 import backIcon from '@/assets/icons/back-chevron.svg'
@@ -28,7 +28,7 @@ export default function LoginPage() {
     if (redirect) setRedirectUrl(target)
 
     if (isUserAuthenticated(getCachedUser())) {
-      safeRedirect(target)
+      navigateAfterAuth(target)
     }
   })
 
@@ -63,7 +63,7 @@ export default function LoginPage() {
         duration: toastDuration,
       })
       setTimeout(() => {
-        safeRedirect(redirectUrl)
+        navigateAfterAuth(redirectUrl)
       }, reward > 0 ? toastDuration : 400)
     } catch (error) {
       showAuthError(formatAuthError(error))

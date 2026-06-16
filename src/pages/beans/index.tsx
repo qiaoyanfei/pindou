@@ -8,6 +8,7 @@ import { fetchBeanLogs, getCachedUser } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { refreshSessionIfLoggedIn } from '@/services/session'
 import { goLogin } from '@/utils/authRoute'
+import { safeSwitchTab } from '@/utils/navigation'
 import { formatDateTime } from '@/utils/formatDate'
 import { getBeanLogIconStyle } from '@/utils/beanLogIcon'
 import type { BeanTransaction } from '@/types/community'
@@ -61,7 +62,7 @@ export default function BeansPage() {
   }
 
   const goSpend = () => {
-    Taro.reLaunch({ url: '/pages/home/index' })
+    safeSwitchTab('/pages/home/index')
   }
 
   return (

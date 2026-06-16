@@ -1,7 +1,6 @@
 import { View, Text, Input, Image } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useReachBottom, useLoad, useDidShow } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import AppTabBar from '@/components/AppTabBar'
 import {
   fetchFeed,
   formatCount,
@@ -12,7 +11,8 @@ import {
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
 import { restoreSessionFromStorage } from '@/services/session'
-import { safeNavigateTo, safeRedirect, redirectToGeneratePage } from '@/utils/navigation'
+import { safeNavigateTo, redirectToGeneratePage } from '@/utils/navigation'
+import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import heroBanner from '@/assets/home-hero-mascot.jpg'
 import searchIcon from '@/assets/icons/search.svg'
 import type { FeedTab, PostSummary } from '@/types/community'
@@ -227,6 +227,7 @@ export default function HomePage() {
   }, [updateFeeds])
 
   useDidShow(() => {
+    updateTabBarSelected(TAB_INDEX.home)
     updateFeeds((prev) => ({
       recommend: {
         ...prev.recommend,
@@ -379,8 +380,6 @@ export default function HomePage() {
       {!showInitialLoading && !searching && !isLoadingMore && !hasMore && posts.length > 0 ? (
         <View className='home-page__footer-tip'>· 没有更多啦 ·</View>
       ) : null}
-
-      <AppTabBar active='home' />
     </View>
   )
 }
