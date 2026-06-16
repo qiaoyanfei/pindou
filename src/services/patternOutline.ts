@@ -35,6 +35,35 @@ function pickMajorityId(counts: Map<string, number>, preferDarkOnTie = true): st
   return bestId
 }
 
+function pickMajorityIdForManga(counts: Map<string, number>): string {
+  let total = 0
+  counts.forEach((count) => {
+    total += count
+  })
+
+  const h16Count = counts.get(PRIMARY_DARK) ?? 0
+  if (total > 0 && h16Count === total) return PRIMARY_DARK
+
+  let bestId = PATTERN_EMPTY_CELL
+  let bestCount = -1
+
+  counts.forEach((count, id) => {
+    if (id === PRIMARY_DARK) return
+    const preferContent =
+      count === bestCount &&
+      isEmptyCell(bestId) &&
+      !isEmptyCell(id)
+    if (count > bestCount || preferContent) {
+      bestCount = count
+      bestId = id
+    }
+  })
+
+  if (!isEmptyCell(bestId)) return bestId
+  if (h16Count > 0) return PRIMARY_DARK
+  return PATTERN_EMPTY_CELL
+}
+
 /** 2× 中间网格众数下采样到目标格数，保留描边连续性 */
 export function downsamplePatternMajority(
   pattern: PatternResult,
@@ -63,7 +92,7 @@ export function downsamplePatternMajority(
           counts.set(id, (counts.get(id) ?? 0) + 1)
         }
       }
-      newGrid.push(pickMajorityId(counts, styleMode !== 'manga'))
+      newGrid.push(styleMode === 'manga' ? pickMajorityIdForManga(counts) : pickMajorityId(counts))
     }
   }
 

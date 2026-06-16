@@ -79,8 +79,11 @@ export const PATTERN_DARK_LUMA = 48
 /** 块内暗像素占比阈值（描边保护，写实风） */
 export const PATTERN_DARK_RATIO = 0.22
 
-/** 块内暗像素占比阈值（描边保护，漫画风；略高以减少白底粗线稿整格判黑） */
+/** 块内暗像素占比阈值（漫画风混合白底判定：格内已有描边） */
 export const PATTERN_DARK_RATIO_MANGA = 0.3
+
+/** 块内暗像素占比阈值（漫画风整格强制 H16，需过半格为暗像素） */
+export const PATTERN_DARK_FORCE_RATIO_MANGA = 0.5
 
 /** 块内同时有足够亮像素时视为白+描边混合，不整格强制判黑 */
 export const PATTERN_MIXED_LIGHT_RATIO = 0.35

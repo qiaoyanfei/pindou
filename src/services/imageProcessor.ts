@@ -7,7 +7,7 @@ import {
   isExteriorBackgroundPixel,
   isPortraitSubjectPixel,
 } from '@/services/backgroundMatting'
-import { BACKGROUND_LIGHT_LUMA, isExteriorBackgroundCell, PATTERN_MIXED_LIGHT_RATIO, PATTERN_MIXED_LIGHT_LUMA_MANGA, PATTERN_MIXED_LIGHT_RATIO_MANGA } from '@/utils/constants'
+import { BACKGROUND_LIGHT_LUMA, isExteriorBackgroundCell, PATTERN_DARK_FORCE_RATIO_MANGA, PATTERN_MIXED_LIGHT_RATIO, PATTERN_MIXED_LIGHT_LUMA_MANGA, PATTERN_MIXED_LIGHT_RATIO_MANGA } from '@/utils/constants'
 import type { StyleMode } from '@/types'
 
 export interface GridSize {
@@ -140,7 +140,7 @@ function dominantRgbFromBlock(
         return dominantRgbFromPixels(lightPixels)
       }
     }
-    if (darkRatio >= darkRatioThreshold) return [18, 18, 18]
+    if (darkRatio >= PATTERN_DARK_FORCE_RATIO_MANGA) return [18, 18, 18]
     return dominantRgbFromPixels(pixels)
   }
 
