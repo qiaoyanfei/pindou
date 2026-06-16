@@ -14,7 +14,6 @@ import { extractBlockDominantColors } from '@/services/imageProcessor'
 import {
   PATTERN_DARK_LUMA,
   PATTERN_DARK_RATIO,
-  PATTERN_DARK_RATIO_MANGA,
   PATTERN_INTERMEDIATE_SCALE,
   PATTERN_SAMPLES_PER_CELL,
   PATTERN_SPECKLE_MAX_COUNT,
@@ -42,7 +41,7 @@ export async function processBlockPattern(
     cropRect,
     {
       darkLumaThreshold: PATTERN_DARK_LUMA,
-      darkRatioThreshold: styleMode === 'manga' ? PATTERN_DARK_RATIO_MANGA : PATTERN_DARK_RATIO,
+      darkRatioThreshold: PATTERN_DARK_RATIO,
       styleMode,
     },
   )

@@ -76,23 +76,11 @@ export const PATTERN_INTERMEDIATE_SCALE = 2
 /** 块内暗像素亮度阈值（描边保护） */
 export const PATTERN_DARK_LUMA = 48
 
-/** 块内暗像素占比阈值（描边保护，写实风） */
+/** 块内暗像素占比阈值（描边保护） */
 export const PATTERN_DARK_RATIO = 0.22
-
-/** 块内暗像素占比阈值（漫画风混合白底判定：格内已有描边） */
-export const PATTERN_DARK_RATIO_MANGA = 0.3
-
-/** 块内暗像素占比阈值（漫画风整格强制 H16，需过半格为暗像素） */
-export const PATTERN_DARK_FORCE_RATIO_MANGA = 0.5
 
 /** 块内同时有足够亮像素时视为白+描边混合，不整格强制判黑 */
 export const PATTERN_MIXED_LIGHT_RATIO = 0.35
-
-/** 漫画风混合白底：亮像素亮度（含抗锯齿浅灰，低于背景裁剪 235） */
-export const PATTERN_MIXED_LIGHT_LUMA_MANGA = 200
-
-/** 漫画风混合白底：亮像素占比（低于写实风，配合平滑采样） */
-export const PATTERN_MIXED_LIGHT_RATIO_MANGA = 0.28
 
 export const PATTERN_LIGHT_NEUTRAL_IDS = new Set(['H2', 'H13'])
 
@@ -117,6 +105,15 @@ export const BACKGROUND_RGB_TOLERANCE = 30
 
 /** 浅白背景：最低亮度 */
 export const BACKGROUND_LIGHT_LUMA = 235
+
+/** 漫画风填色采样：优先取白的亮度下限（含抗锯齿，低于背景裁剪 235） */
+export const PATTERN_MANGA_FILL_LIGHT_LUMA = 200
+
+/** 漫画风整格强制 H16 的暗像素占比下限 */
+export const PATTERN_MANGA_FORCE_DARK_RATIO = 0.5
+
+/** 漫画风 2×2 下采样：H16 占块比例 ≥ 该值则输出 H16（4/4 全黑） */
+export const PATTERN_MANGA_DOWNSAMPLE_DARK_MAJORITY = 1
 
 /** 浅白背景：RGB 通道最大差值（低饱和度） */
 export const BACKGROUND_LIGHT_CHROMA = 36

@@ -1,6 +1,6 @@
 import type { PatternResult } from '@/types'
 import type { StyleMode } from '@/types'
-import { PATTERN_EMPTY_CELL, isLightNeutralId } from '@/utils/constants'
+import { PATTERN_EMPTY_CELL, PATTERN_MANGA_DOWNSAMPLE_DARK_MAJORITY, isLightNeutralId } from '@/utils/constants'
 import { finalizePattern, isEmptyCell } from '@/services/patternStats'
 
 const PRIMARY_DARK = 'H16'
@@ -10,13 +10,12 @@ function isDarkId(id: string): boolean {
   return id === PRIMARY_DARK || SECONDARY_DARK_IDS.has(id)
 }
 
-function pickMajorityId(counts: Map<string, number>, preferDarkOnTie = true): string {
+function pickMajorityId(counts: Map<string, number>): string {
   let bestId = PATTERN_EMPTY_CELL
   let bestCount = -1
 
   counts.forEach((count, id) => {
     const preferDark =
-      preferDarkOnTie &&
       count === bestCount &&
       isDarkId(id) &&
       bestId !== PRIMARY_DARK &&
@@ -42,7 +41,9 @@ function pickMajorityIdForManga(counts: Map<string, number>): string {
   })
 
   const h16Count = counts.get(PRIMARY_DARK) ?? 0
-  if (total > 0 && h16Count === total) return PRIMARY_DARK
+  if (total > 0 && h16Count / total >= PATTERN_MANGA_DOWNSAMPLE_DARK_MAJORITY) {
+    return PRIMARY_DARK
+  }
 
   let bestId = PATTERN_EMPTY_CELL
   let bestCount = -1
@@ -135,17 +136,10 @@ export function consolidateDarkOutlines(
 
       const neighbors = getNeighborIds(newGrid, width, height, x, y)
       const hasPrimaryDark = neighbors.includes(PRIMARY_DARK)
+      const lightNeighborCount = neighbors.filter((neighbor) => isLightNeutralId(neighbor)).length
 
-      if (styleMode === 'portrait') {
-        const lightNeighborCount = neighbors.filter((neighbor) => isLightNeutralId(neighbor)).length
-        if (hasPrimaryDark && lightNeighborCount < 2) {
-          newGrid[index] = PRIMARY_DARK
-        }
-      } else {
-        const darkNeighborCount = neighbors.filter((neighbor) => isDarkId(neighbor)).length
-        if (hasPrimaryDark || darkNeighborCount >= 2) {
-          newGrid[index] = PRIMARY_DARK
-        }
+      if (hasPrimaryDark && lightNeighborCount < 2) {
+        newGrid[index] = PRIMARY_DARK
       }
     }
   }
