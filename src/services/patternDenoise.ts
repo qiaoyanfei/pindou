@@ -1,6 +1,6 @@
 import type { PatternResult } from '@/types'
 import type { StyleMode } from '@/types'
-import { isDarkBeadId, isLightNeutralId } from '@/utils/constants'
+import { isDarkBeadId } from '@/utils/constants'
 import { finalizePattern, isEmptyCell } from '@/services/patternStats'
 
 function getNeighborColors(
@@ -62,7 +62,6 @@ export function removeIsolatedSpeckles(
       .filter(([id, count]) => {
         if (count > maxCount) return false
         if (styleMode === 'portrait' && isDarkBeadId(id)) return false
-        if (styleMode === 'manga' && isLightNeutralId(id)) return false
         return true
       })
       .map(([id]) => id),

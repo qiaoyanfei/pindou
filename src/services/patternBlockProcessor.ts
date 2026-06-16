@@ -53,16 +53,18 @@ export async function processBlockPattern(
     intermediateHeight,
     sample.exteriorBackground,
   )
-  pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight, styleMode)
+  pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight)
 
-  const exteriorAtTarget = downsampleExteriorBackground(
-    sample.exteriorBackground,
-    intermediateWidth,
-    intermediateHeight,
-    targetWidth,
-    targetHeight,
-  )
-  pattern = applyExteriorBackgroundMask(pattern, exteriorAtTarget)
+  if (styleMode === 'portrait') {
+    const exteriorAtTarget = downsampleExteriorBackground(
+      sample.exteriorBackground,
+      intermediateWidth,
+      intermediateHeight,
+      targetWidth,
+      targetHeight,
+    )
+    pattern = applyExteriorBackgroundMask(pattern, exteriorAtTarget)
+  }
 
   pattern = consolidateDarkOutlines(pattern, styleMode)
   pattern = removeIsolatedSpeckles(pattern, PATTERN_SPECKLE_MAX_COUNT, styleMode)
