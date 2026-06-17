@@ -8,7 +8,6 @@ import {
 import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
 import { requireAuthenticated } from '@/services/session'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
-import { resolveErrorMessage } from '@/utils/errorMessage'
 import { cleanupAfterPublishSuccess, notifyOperationError } from '@/utils/localCache'
 import { readPublishWorkflow } from '@/utils/publishWorkflow'
 import { invalidateMyListCache } from '@/utils/myListCache'
