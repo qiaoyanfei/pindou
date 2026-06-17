@@ -9,6 +9,7 @@ import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
 import { requireAuthenticated } from '@/services/session'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { resolveErrorMessage } from '@/utils/errorMessage'
+import { invalidateMyListCache } from '@/utils/myListCache'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
 import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
 import type { PostCategory } from '@/types/community'
@@ -68,6 +69,7 @@ export default function PublishPage() {
       })
 
       Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
+      invalidateMyListCache(['my-posts', 'drafts'])
       Taro.hideLoading()
       Taro.redirectTo({
         url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}&visibility=${isPublic ? 'public' : 'private'}&reviewStatus=${result.reviewStatus || (isPublic ? 'pending' : 'draft')}`,

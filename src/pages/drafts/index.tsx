@@ -1,8 +1,8 @@
 import { View, Text, ScrollView } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useState } from 'react'
+import Taro from '@tarojs/taro'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
+import { useCachedPostList } from '@/hooks/useCachedPostList'
 import {
   fetchPendingPosts,
   prepareRegenerateFromPost,
@@ -10,31 +10,12 @@ import {
 } from '@/services/communityService'
 import { showModal } from '@/utils/dialog'
 import { resolveErrorMessage } from '@/utils/errorMessage'
-import type { PostSummary } from '@/types/community'
+import { invalidateMyListCache } from '@/utils/myListCache'
 import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function DraftsPage() {
-  const [list, setList] = useState<PostSummary[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const loadPending = useCallback(async () => {
-    setLoading(true)
-    try {
-      setList(await fetchPendingPosts())
-    } catch (error) {
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useDidShow(() => {
-    loadPending()
-  })
+  const { list, loading, reload } = useCachedPostList('drafts', fetchPendingPosts)
 
   const handleGoPublic = async (postId: string) => {
     const res = await showModal({
@@ -45,8 +26,9 @@ export default function DraftsPage() {
     if (!res?.confirm) return
     try {
       await updatePostVisibility(postId, 'public')
+      invalidateMyListCache(['my-posts', 'drafts'])
       Taro.showToast({ title: '已提交审核', icon: 'success' })
-      loadPending()
+      await reload()
     } catch (error) {
       Taro.showToast({
         title: resolveErrorMessage(error, '操作失败'),

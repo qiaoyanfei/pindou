@@ -164,15 +164,20 @@ export async function getTempFileUrl(fileId: string): Promise<string> {
   return response.fileList[0]?.tempFileURL || ''
 }
 
+const TEMP_FILE_URL_BATCH_SIZE = 50
+
 export async function getTempFileUrls(fileIds: string[]): Promise<Record<string, string>> {
-  const ids = fileIds.filter((id) => id && id.startsWith('cloud://'))
+  const ids = [...new Set(fileIds.filter((id) => id && id.startsWith('cloud://')))]
   if (ids.length === 0) return {}
   ensureCloudReady()
-  const response = await Taro.cloud.getTempFileURL({ fileList: ids })
   const map: Record<string, string> = {}
-  response.fileList.forEach((item) => {
-    if (item.fileID && item.tempFileURL) map[item.fileID] = item.tempFileURL
-  })
+  for (let i = 0; i < ids.length; i += TEMP_FILE_URL_BATCH_SIZE) {
+    const chunk = ids.slice(i, i + TEMP_FILE_URL_BATCH_SIZE)
+    const response = await Taro.cloud.getTempFileURL({ fileList: chunk })
+    response.fileList.forEach((item) => {
+      if (item.fileID && item.tempFileURL) map[item.fileID] = item.tempFileURL
+    })
+  }
   return map
 }
 

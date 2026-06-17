@@ -1,0 +1,38 @@
+import type { PostSummary } from '@/types/community'
+
+export type MyListCacheKey = 'my-posts' | 'drafts' | 'my-likes' | 'my-favorites'
+
+const listCaches = new Map<MyListCacheKey, PostSummary[]>()
+const invalidatedKeys = new Set<MyListCacheKey>()
+
+export function readMyListCache(key: MyListCacheKey): PostSummary[] | null {
+  return listCaches.get(key) ?? null
+}
+
+export function writeMyListCache(key: MyListCacheKey, list: PostSummary[]): void {
+  listCaches.set(key, list)
+  invalidatedKeys.delete(key)
+}
+
+export function hasMyListCache(key: MyListCacheKey): boolean {
+  return listCaches.has(key)
+}
+
+export function invalidateMyListCache(keys: MyListCacheKey | MyListCacheKey[]): void {
+  const list = Array.isArray(keys) ? keys : [keys]
+  list.forEach((key) => invalidatedKeys.add(key))
+}
+
+export function isMyListCacheStale(key: MyListCacheKey): boolean {
+  return invalidatedKeys.has(key)
+}
+
+export function clearMyListCacheStale(key: MyListCacheKey): void {
+  invalidatedKeys.delete(key)
+}
+
+/** 离开列表页（返回上一级）时清除，下次从「我的」进入会重新加载 */
+export function clearMyListCache(key: MyListCacheKey): void {
+  listCaches.delete(key)
+  invalidatedKeys.delete(key)
+}

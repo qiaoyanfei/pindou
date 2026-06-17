@@ -492,6 +492,14 @@ async function repairOrphanPosts(openid, user) {
   )
 }
 
+async function queryUserPostsByVisibility(openid, visibility) {
+  const res = await db.collection('posts')
+    .where({ _openid: openid, visibility })
+    .orderBy('publishedAt', 'desc')
+    .get()
+  return res.data
+}
+
 async function buildLoginResponse(openid, user, options = {}) {
   const synced = await syncBeanBalanceFromLogs(openid, user)
   await repairOrphanPosts(openid, synced)
@@ -561,7 +569,7 @@ async function handleGetFeed(openid, data) {
   if (tab === 'latest') {
     query = query.orderBy('publishedAt', 'desc')
   } else {
-    query = query.orderBy('likeCount', 'desc')
+    query = query.orderBy('likeCount', 'desc').orderBy('publishedAt', 'desc')
   }
 
   const res = await query.skip(skip).limit(pageSize).get()
@@ -957,22 +965,14 @@ async function handleReviewPost(openid, data) {
 async function handleGetMyPosts(openid) {
   const user = await getUser(openid)
   await repairOrphanPosts(openid, user)
-  const res = await db.collection('posts')
-    .where({ _openid: openid, visibility: 'public' })
-    .orderBy('publishedAt', 'desc')
-    .get()
-  const list = res.data.map(mapPostSummary)
+  const list = (await queryUserPostsByVisibility(openid, 'public')).map(mapPostSummary)
   return ok({ list })
 }
 
 async function handleGetPendingPosts(openid) {
   const user = await getUser(openid)
   await repairOrphanPosts(openid, user)
-  const res = await db.collection('posts')
-    .where({ _openid: openid, visibility: 'private' })
-    .orderBy('publishedAt', 'desc')
-    .get()
-  const list = res.data.map(mapPostSummary)
+  const list = (await queryUserPostsByVisibility(openid, 'private')).map(mapPostSummary)
   return ok({ list })
 }
 

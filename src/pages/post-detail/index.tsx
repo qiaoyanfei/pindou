@@ -18,6 +18,7 @@ import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
 import { safeNavigateTo } from '@/utils/navigation'
 import { patchPostInteraction } from '@/utils/postInteractionSync'
+import { invalidateMyListCache } from '@/utils/myListCache'
 import { getColorById } from '@/services/palette'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
 import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
@@ -132,6 +133,7 @@ export default function PostDetailPage() {
         liked: result.liked,
         likeCount: result.likeCount,
       })
+      if (!result.liked) invalidateMyListCache('my-likes')
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '操作失败',
@@ -155,6 +157,7 @@ export default function PostDetailPage() {
         favorited: result.favorited,
         favoriteCount: result.favoriteCount,
       })
+      if (!result.favorited) invalidateMyListCache('my-favorites')
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '操作失败',

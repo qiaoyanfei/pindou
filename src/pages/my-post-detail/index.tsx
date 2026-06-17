@@ -14,6 +14,7 @@ import { STYLE_MODE_LABELS } from '@/utils/constants'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
 import { resolveErrorMessage } from '@/utils/errorMessage'
+import { invalidateMyListCache } from '@/utils/myListCache'
 import { formatDateTime } from '@/utils/formatDate'
 import {
   formatReviewHistory,
@@ -238,6 +239,7 @@ export default function MyPostDetailPage() {
     if (!res?.confirm) return
     try {
       await updatePostVisibility(source.id, 'public')
+      invalidateMyListCache(['my-posts', 'drafts'])
       Taro.showToast({ title: '已提交审核', icon: 'success' })
       loadDetail()
     } catch (error) {
@@ -260,6 +262,7 @@ export default function MyPostDetailPage() {
     if (!res || res.tapIndex !== 1) return
     try {
       await updatePostVisibility(source.id, 'private')
+      invalidateMyListCache(['my-posts', 'drafts'])
       Taro.showToast({ title: '已转为待发布', icon: 'success' })
       loadDetail()
     } catch (error) {

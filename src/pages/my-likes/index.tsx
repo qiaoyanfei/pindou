@@ -1,8 +1,8 @@
 import { View, Text, ScrollView } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useState } from 'react'
+import Taro from '@tarojs/taro'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
+import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { buildPostDetailUrl, fetchMyLikes } from '@/services/communityService'
 import { restoreSessionFromStorage } from '@/services/session'
 import type { PostSummary } from '@/types/community'
@@ -10,26 +10,7 @@ import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyLikesPage() {
-  const [list, setList] = useState<PostSummary[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      setList(await fetchMyLikes())
-    } catch (error) {
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useDidShow(() => {
-    load()
-  })
+  const { list, loading } = useCachedPostList('my-likes', fetchMyLikes)
 
   const openPost = (item: PostSummary) => {
     restoreSessionFromStorage()

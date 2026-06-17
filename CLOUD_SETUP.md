@@ -68,9 +68,10 @@ export const CLOUD_ENV_ID = '你的环境ID'
 
 | 集合 | 索引字段 |
 |------|----------|
-| `posts` | `visibility` + `publishedAt`（降序） |
-| `posts` | `visibility` + `likeCount`（降序） |
-| `posts` | `_openid` + `createdAt`（降序，用于每日发布次数统计） |
+| `posts` | `visibility` + `publishedAt`（降序，首页 feed） |
+| `posts` | `visibility` + `likeCount`（降序）+ `publishedAt`（降序，推荐 Tab） |
+| `posts` | `_openid` + `createdAt`（降序，我的作品列表） |
+| `posts` | `_openid` + `visibility` + `publishedAt`（降序，我的已发布/待发布） |
 | `drafts` | `_openid` + `updatedAt`（降序） |
 | `likes` | `_openid` + `postId` |
 | `favorites` | `_openid` + `postId` |
