@@ -116,12 +116,21 @@ export default function HomePage() {
   const [searchResults, setSearchResults] = useState<PostSummary[]>([])
   const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null)
   const [searching, setSearching] = useState(false)
+  const runtimeRef = useRef({
+    tab: 'recommend' as FeedTab,
+    searchKeyword: '',
+    isSearching: false,
+    hasMore: false,
+    loadingTab: null as FeedTab | null,
+    page: 1,
+  })
 
   const isSearching = searchKeyword.length > 0
   const currentFeed = feeds[tab]
   const posts = isSearching ? searchResults : currentFeed.posts
   const hasMore = isSearching ? false : currentFeed.hasMore
   const page = currentFeed.page
+  runtimeRef.current = { tab, searchKeyword, isSearching, hasMore, loadingTab, page }
   const showInitialLoading = !isSearching
     && posts.length === 0
     && loadingTab === tab
@@ -171,7 +180,7 @@ export default function HomePage() {
     }
   }, [updateFeeds])
 
-  const loadSearch = useCallback(async (value: string) => {
+  const loadSearch = useCallback(async (value: string, options?: { silent?: boolean }) => {
     const trimmed = value.trim()
     if (!trimmed) {
       setSearchKeyword('')
@@ -182,7 +191,8 @@ export default function HomePage() {
       return
     }
 
-    setSearching(true)
+    const silent = options?.silent ?? false
+    if (!silent) setSearching(true)
     try {
       const list = await searchPosts(trimmed)
       setSearchKeyword(trimmed)
@@ -193,7 +203,7 @@ export default function HomePage() {
         icon: 'none',
       })
     } finally {
-      setSearching(false)
+      if (!silent) setSearching(false)
       Taro.stopPullDownRefresh()
     }
   }, [feeds, loadFeed, tab])
@@ -242,16 +252,24 @@ export default function HomePage() {
   })
 
   usePullDownRefresh(() => {
-    if (isSearching) {
-      void loadSearch(searchKeyword)
+    const { isSearching: searchingNow, searchKeyword: keywordNow, tab: currentTab } = runtimeRef.current
+    if (searchingNow && keywordNow) {
+      void loadSearch(keywordNow, { silent: true })
       return
     }
-    void loadFeed(tab, 1, true)
+    void loadFeed(currentTab, 1, true)
   })
 
   useReachBottom(() => {
-    if (isSearching || !hasMore || loadingTab === tab) return
-    void loadFeed(tab, page + 1)
+    const {
+      isSearching: searchingNow,
+      tab: currentTab,
+      hasMore: canLoadMore,
+      loadingTab: loadingNow,
+      page: currentPage,
+    } = runtimeRef.current
+    if (searchingNow || !canLoadMore || loadingNow === currentTab) return
+    void loadFeed(currentTab, currentPage + 1)
   })
 
   const handleTabChange = (nextTab: FeedTab) => {
