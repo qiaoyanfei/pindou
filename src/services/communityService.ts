@@ -26,6 +26,7 @@ import {
 import { getSessionConfig, persistSession, setSessionConfig } from '@/services/session'
 import { resolveAuthorNickName } from '@/utils/userProfile'
 import { safeSwitchTab } from '@/utils/navigation'
+import { setStorageSafe } from '@/utils/localCache'
 
 let cachedUser: UserProfile | null = null
 let loginPromise: Promise<LoginResult> | null = null
@@ -409,7 +410,7 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
     styleMode: post.styleMode,
     paletteId: post.paletteId,
   })
-  Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config })
+  setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config })
   safeSwitchTab('/pages/generate/index')
 }
 

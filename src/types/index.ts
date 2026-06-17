@@ -54,10 +54,12 @@ export interface AdvancedSettingsSession {
 export const PUBLISH_STORAGE_KEY = 'pindou_publish_payload'
 
 export interface PublishStoragePayload {
-  pattern: PatternResult
-  config: PatternConfig
+  /** 封面本地路径；pattern 仅存于 PATTERN_STORAGE_KEY，避免重复占用 storage */
   coverPath?: string
+  config?: PatternConfig
   title?: string
+  /** 兼容旧版：曾在此冗余存 pattern */
+  pattern?: PatternResult
 }
 
 /** 兼容旧版缓存中的 original */

@@ -13,6 +13,7 @@ import {
   syncGenerateDraftFromPage,
 } from '@/services/generateSession'
 import { requireAuthenticated } from '@/services/session'
+import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { safeSwitchTab } from '@/utils/navigation'
 import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import {
@@ -110,15 +111,12 @@ export default function GeneratePage() {
 
     try {
       const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas')
-      Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config })
+      setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config })
       Taro.hideLoading()
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       Taro.hideLoading()
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '生成失败',
-        icon: 'none',
-      })
+      notifyOperationError(error, '生成失败')
     } finally {
       setLoading(false)
     }

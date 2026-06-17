@@ -10,6 +10,7 @@ import {
   normalizeConfig,
 } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig } from '@/types'
+import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import bannerImage from '@/assets/advanced-settings-banner.jpg'
 import './index.scss'
 
@@ -77,15 +78,12 @@ export default function AdvancedSettingsPage() {
 
     try {
       const pattern = await generatePatternFromImage(imagePath, configRef.current, PROCESS_CANVAS_ID)
-      Taro.setStorageSync(PATTERN_STORAGE_KEY, { pattern, config: configRef.current })
+      setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config: configRef.current })
       Taro.hideLoading()
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       Taro.hideLoading()
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '生成失败',
-        icon: 'none',
-      })
+      notifyOperationError(error, '生成失败')
     } finally {
       setLoading(false)
     }

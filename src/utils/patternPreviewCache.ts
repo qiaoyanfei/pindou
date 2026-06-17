@@ -10,6 +10,20 @@ interface CachedPreviewData {
 
 const previewCache = new Map<string, CachedPreviewData>()
 const inflight = new Map<string, Promise<CachedPreviewData>>()
+const PREVIEW_CACHE_LIMIT = 5
+
+function trimPreviewCache(): void {
+  while (previewCache.size > PREVIEW_CACHE_LIMIT) {
+    const oldestKey = previewCache.keys().next().value
+    if (!oldestKey) break
+    previewCache.delete(oldestKey)
+  }
+}
+
+export function clearPatternPreviewCache(): void {
+  previewCache.clear()
+  inflight.clear()
+}
 
 export function getCachedPattern(postId: string): PatternResult | undefined {
   return previewCache.get(postId)?.pattern
@@ -48,6 +62,7 @@ export async function resolvePreviewData(post: PostDetail): Promise<CachedPrevie
         config: buildPreviewConfigFromPost(post),
       }
       previewCache.set(post._id, data)
+      trimPreviewCache()
       inflight.delete(post._id)
       return data
     })

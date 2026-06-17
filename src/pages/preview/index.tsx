@@ -5,6 +5,7 @@ import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
+import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
@@ -75,12 +76,7 @@ export default function PreviewPage() {
       if (job === 'cover') {
         setPublishing(true)
         const coverPath = await canvasToTempFile('cover-canvas')
-        const payload: PublishStoragePayload = {
-          pattern,
-          config,
-          coverPath,
-        }
-        Taro.setStorageSync(PUBLISH_STORAGE_KEY, payload)
+        setStorageSafe(PUBLISH_STORAGE_KEY, { config, coverPath } satisfies PublishStoragePayload)
         Taro.navigateTo({ url: '/pages/publish/index' })
         return
       }
@@ -113,10 +109,7 @@ export default function PreviewPage() {
           },
         })
       } else {
-        Taro.showToast({
-          title: job === 'save' ? '保存失败' : '准备发布失败',
-          icon: 'none',
-        })
+        notifyOperationError(error, job === 'save' ? '保存失败' : '准备发布失败')
       }
     } finally {
       if (job === 'save') setSaving(false)

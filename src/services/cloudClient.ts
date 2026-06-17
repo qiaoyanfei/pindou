@@ -1,10 +1,14 @@
 import Taro from '@tarojs/taro'
 import { CLOUD_API_FUNCTION, CLOUD_ENV_ID } from '@/config/cloud'
+import {
+  cleanupDisposableLocalFiles,
+  isLocalStorageLimitError,
+  LOCAL_STORAGE_LIMIT_TOAST,
+} from '@/utils/localCache'
 
 let initialized = false
 
-const UPLOAD_JSON_PREFIX = 'pindou_upload_'
-const UPLOAD_JSON_PATH = `${Taro.env.USER_DATA_PATH}/${UPLOAD_JSON_PREFIX}latest.json`
+const UPLOAD_JSON_PATH = `${Taro.env.USER_DATA_PATH}/pindou_upload_latest.json`
 
 function getFileSystemManager() {
   return Taro.getFileSystemManager()
@@ -19,32 +23,14 @@ function removeFileQuietly(filePath: string): void {
 }
 
 export function cleanupUploadJsonCache(): void {
-  const fs = getFileSystemManager()
-  try {
-    const files = fs.readdirSync(Taro.env.USER_DATA_PATH) as string[]
-    files.forEach((name) => {
-      if (name.startsWith(UPLOAD_JSON_PREFIX) || name.endsWith('_payload.json')) {
-        removeFileQuietly(`${Taro.env.USER_DATA_PATH}/${name}`)
-      }
-    })
-  } catch {
-    // ignore unreadable cache dir
-  }
-}
-
-function isLocalStorageLimitError(message: string): boolean {
-  return (
-    message.includes('maximum size of the file storage limit') ||
-    message.includes('storage limit is exceeded') ||
-    message.includes('file storage limit')
-  )
+  cleanupDisposableLocalFiles()
 }
 
 function toUploadError(error: unknown, fallback: string): Error {
   const errMsg = (error as { errMsg?: string })?.errMsg || ''
   const message = (error instanceof Error ? error.message : '') || errMsg || fallback
   if (isLocalStorageLimitError(message)) {
-    return new Error('本地缓存已满，请关闭并重新打开小程序后再试')
+    return new Error(LOCAL_STORAGE_LIMIT_TOAST)
   }
   return error instanceof Error ? error : new Error(message)
 }

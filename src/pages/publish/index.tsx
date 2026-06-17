@@ -9,14 +9,15 @@ import { uploadCloudFile, uploadJsonCloudFile } from '@/services/cloudClient'
 import { requireAuthenticated } from '@/services/session'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { resolveErrorMessage } from '@/utils/errorMessage'
+import { cleanupAfterPublishSuccess, notifyOperationError } from '@/utils/localCache'
+import { readPublishWorkflow } from '@/utils/publishWorkflow'
 import { invalidateMyListCache } from '@/utils/myListCache'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
-import { PUBLISH_STORAGE_KEY, type PublishStoragePayload } from '@/types'
 import type { PostCategory } from '@/types/community'
 import './index.scss'
 
 export default function PublishPage() {
-  const [payload, setPayload] = useState<PublishStoragePayload | null>(null)
+  const [payload, setPayload] = useState<ReturnType<typeof readPublishWorkflow>>(null)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<PostCategory>(CATEGORY_OPTIONS[0])
   const [description, setDescription] = useState('')
@@ -28,15 +29,15 @@ export default function PublishPage() {
     const user = await requireAuthenticated('/pages/publish/index')
     if (!user) return
 
-    const stored = Taro.getStorageSync(PUBLISH_STORAGE_KEY) as PublishStoragePayload | undefined
-    if (!stored?.pattern) {
+    const workflow = readPublishWorkflow()
+    if (!workflow?.pattern) {
       Taro.showToast({ title: '请先准备图纸', icon: 'none' })
       setTimeout(() => Taro.navigateBack(), 800)
       return
     }
-    setPayload(stored)
-    setTitle(stored.title || '')
-    setCoverPreview(stored.coverPath || '')
+    setPayload(workflow)
+    setTitle(workflow.title || '')
+    setCoverPreview(workflow.coverPath || '')
   })
 
   const handleSubmit = async () => {
@@ -68,7 +69,7 @@ export default function PublishPage() {
         config: payload.config,
       })
 
-      Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
+      cleanupAfterPublishSuccess()
       invalidateMyListCache(['my-posts', 'drafts'])
       Taro.hideLoading()
       Taro.redirectTo({
@@ -76,11 +77,7 @@ export default function PublishPage() {
       })
     } catch (error) {
       Taro.hideLoading()
-      Taro.showToast({
-        title: resolveErrorMessage(error, '发布失败'),
-        icon: 'none',
-        duration: 3000,
-      })
+      notifyOperationError(error, '发布失败')
     } finally {
       setSubmitting(false)
     }
