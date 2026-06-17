@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro'
 import {
   getExportSheetPixelSize,
   getPreviewCellPx,
+  getSafeExportCellPx,
   renderPatternSheetToCanvas,
   renderPatternToCanvas,
 } from '@/services/patternRenderer'
@@ -23,6 +24,20 @@ interface PatternCanvasProps {
   showSheetHeader?: boolean
   showWatermark?: boolean
   onReady?: () => void
+}
+
+function resolveCellPx(
+  pattern: PatternResult,
+  config: PatternConfig,
+  mode: 'preview' | 'export',
+  showSheetHeader: boolean,
+  cellPxOverride?: number,
+): number {
+  if (mode === 'export') {
+    const exportCellPx = cellPxOverride ?? config.exportCellPx
+    return getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader })
+  }
+  return cellPxOverride ?? getPreviewCellPx(pattern)
 }
 
 export default function PatternCanvas({
@@ -68,9 +83,7 @@ export default function PatternCanvas({
           return
         }
 
-        const cellPx =
-          cellPxOverride ??
-          (mode === 'export' ? config.exportCellPx : getPreviewCellPx(pattern))
+        const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride)
 
         const renderOptions = {
           cellPx,
@@ -97,9 +110,7 @@ export default function PatternCanvas({
       })
   }
 
-  const cellPx =
-    cellPxOverride ??
-    (mode === 'export' ? config.exportCellPx : getPreviewCellPx(pattern))
+  const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride)
 
   const canvasStyle =
     mode === 'export'

@@ -173,7 +173,6 @@ export default function HdPatternPreviewHost() {
           config={payload.config}
           mode='export'
           hidden
-          cellPx={payload.config.exportCellPx}
           creatorNickname={payload.creatorNickname}
           showSheetHeader={false}
           showWatermark={false}

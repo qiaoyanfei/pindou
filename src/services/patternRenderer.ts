@@ -478,6 +478,26 @@ export function buildStatsTsv(stats: Record<string, number>): string {
   return ['色号\t数量', ...rows].join('\n')
 }
 
+/** 微信小程序 Canvas 2d 单边像素上限 */
+export const WEAPP_CANVAS_MAX_DIMENSION_PX = 4096
+
+export function getSafeExportCellPx(
+  pattern: PatternResult,
+  exportCellPx: number,
+  options: Pick<RenderOptions, 'showSheetHeader'> = {},
+  maxDimension = WEAPP_CANVAS_MAX_DIMENSION_PX,
+): number {
+  let cellPx = Math.max(1, Math.floor(exportCellPx))
+  while (cellPx > 1) {
+    const { width, height } = getExportSheetPixelSize(pattern, cellPx, options)
+    if (width <= maxDimension && height <= maxDimension) {
+      return cellPx
+    }
+    cellPx -= 1
+  }
+  return 1
+}
+
 export function getCoverCellPx(pattern: PatternResult, maxLongEdgePx = 640): number {
   const longEdge = Math.max(pattern.width, pattern.height)
   return Math.max(4, Math.min(12, Math.floor(maxLongEdgePx / longEdge)))
