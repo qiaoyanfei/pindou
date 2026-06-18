@@ -20,11 +20,18 @@ import type { PatternConfig, PatternResult } from '@/types'
 import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
+const IMAGE_WRAP_ID = 'pattern-editor-image-wrap'
 const TOOLBAR_HEIGHT = 72
 const VIEW_PADDING = 16
 const MAX_UNDO = 40
 const DOUBLE_TAP_MS = 400
-const TAP_MOVE_TOLERANCE = 20
+const TAP_MOVE_TOLERANCE = 12
+const DOUBLE_TAP_SCREEN_TOLERANCE = 24
+
+interface ScreenTouch {
+  clientX: number
+  clientY: number
+}
 
 interface PatternEditorProps {
   pattern: PatternResult
@@ -78,13 +85,14 @@ export default function PatternEditor({
   const undoStackRef = useRef<PatternCellEdit[]>([])
   const tapGestureRef = useRef({
     lastTapTime: 0,
-    lastTapX: 0,
-    lastTapY: 0,
-    touchStartX: 0,
-    touchStartY: 0,
+    lastClientX: 0,
+    lastClientY: 0,
+    touchStartClientX: 0,
+    touchStartClientY: 0,
   })
   const refreshTokenRef = useRef(0)
   const lastTapEventRef = useRef(0)
+  const imageSizeRef = useRef({ width: 0, height: 0 })
 
   const [imageSrc, setImageSrc] = useState('')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
@@ -94,6 +102,7 @@ export default function PatternEditor({
   const [canUndo, setCanUndo] = useState(false)
 
   patternRef.current = pattern
+  imageSizeRef.current = imageSize
 
   const initialScale = useMemo(() => {
     if (!imageSize.width) return 1
@@ -204,9 +213,38 @@ export default function PatternEditor({
     return () => clearTimeout(timer)
   }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
-  const openCellEditorAt = (x: number, y: number) => {
-    const touchCellPx = imageSize.width > 0
-      ? imageSize.width / patternRef.current.width
+  const resolveLogicalPoint = useCallback((touch: ScreenTouch): Promise<{ x: number; y: number } | null> => {
+    return new Promise((resolve) => {
+      Taro.createSelectorQuery()
+        .select(`#${IMAGE_WRAP_ID}`)
+        .boundingClientRect((rect) => {
+          const box = rect as { left: number; top: number; width: number; height: number } | null
+          const size = imageSizeRef.current
+          if (!box?.width || !box.height || !size.width || !size.height) {
+            resolve(null)
+            return
+          }
+
+          const localX = touch.clientX - box.left
+          const localY = touch.clientY - box.top
+          if (localX < 0 || localY < 0 || localX > box.width || localY > box.height) {
+            resolve(null)
+            return
+          }
+
+          resolve({
+            x: localX * size.width / box.width,
+            y: localY * size.height / box.height,
+          })
+        })
+        .exec()
+    })
+  }, [])
+
+  const openCellEditorAt = useCallback((x: number, y: number) => {
+    const size = imageSizeRef.current
+    const touchCellPx = size.width > 0
+      ? size.width / patternRef.current.width
       : cellPx
     const coord = coordFromTouch(x, y, touchCellPx, patternRef.current)
     if (!coord) return
@@ -214,10 +252,15 @@ export default function PatternEditor({
     selectionRef.current = coord
     setSelectedColorId(patternRef.current.grid[index] ?? '')
     setPickerVisible(true)
-  }
+  }, [cellPx])
 
-  const handleTapAt = (x: number, y: number) => {
-    if (typeof x !== 'number' || typeof y !== 'number' || Number.isNaN(x) || Number.isNaN(y)) {
+  const handleScreenTap = useCallback((touch: ScreenTouch) => {
+    if (
+      typeof touch.clientX !== 'number'
+      || typeof touch.clientY !== 'number'
+      || Number.isNaN(touch.clientX)
+      || Number.isNaN(touch.clientY)
+    ) {
       return
     }
 
@@ -228,43 +271,60 @@ export default function PatternEditor({
     const gesture = tapGestureRef.current
     const isDoubleTap =
       now - gesture.lastTapTime < DOUBLE_TAP_MS
-      && Math.hypot(x - gesture.lastTapX, y - gesture.lastTapY) < TAP_MOVE_TOLERANCE
+      && Math.hypot(
+        touch.clientX - gesture.lastClientX,
+        touch.clientY - gesture.lastClientY,
+      ) < DOUBLE_TAP_SCREEN_TOLERANCE
 
     if (isDoubleTap) {
       tapGestureRef.current.lastTapTime = 0
-      openCellEditorAt(x, y)
+      void resolveLogicalPoint(touch).then((point) => {
+        if (point) openCellEditorAt(point.x, point.y)
+      })
       return
     }
 
     tapGestureRef.current.lastTapTime = now
-    tapGestureRef.current.lastTapX = x
-    tapGestureRef.current.lastTapY = y
+    tapGestureRef.current.lastClientX = touch.clientX
+    tapGestureRef.current.lastClientY = touch.clientY
+  }, [openCellEditorAt, resolveLogicalPoint])
+
+  const readScreenTouch = (touch: {
+    clientX?: number
+    clientY?: number
+    x?: number
+    y?: number
+  }): ScreenTouch | null => {
+    const clientX = touch.clientX ?? touch.x
+    const clientY = touch.clientY ?? touch.y
+    if (typeof clientX !== 'number' || typeof clientY !== 'number') return null
+    return { clientX, clientY }
   }
 
-  const handleImageTap = (event: { detail: { x: number; y: number } }) => {
-    handleTapAt(event.detail.x, event.detail.y)
-  }
-
-  const handleWrapTouchStart = (event: { touches?: Array<{ x: number; y: number }> }) => {
-    const touch = event.touches?.[0]
+  const handleWrapTouchStart = (event: {
+    touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
+  }) => {
+    const touch = readScreenTouch(event.touches?.[0] ?? {})
     if (!touch) return
-    tapGestureRef.current.touchStartX = touch.x
-    tapGestureRef.current.touchStartY = touch.y
+    tapGestureRef.current.touchStartClientX = touch.clientX
+    tapGestureRef.current.touchStartClientY = touch.clientY
   }
 
   const handleWrapTouchEnd = (event: {
-    changedTouches?: Array<{ x: number; y: number }>
-    touches?: Array<{ x: number; y: number }>
+    changedTouches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
+    touches?: Array<unknown>
   }) => {
     if ((event.touches?.length ?? 0) > 0) return
     if (event.changedTouches?.length !== 1) return
-    const touch = event.changedTouches[0]
+    const touch = readScreenTouch(event.changedTouches[0])
+    if (!touch) return
+
     const moved = Math.hypot(
-      touch.x - tapGestureRef.current.touchStartX,
-      touch.y - tapGestureRef.current.touchStartY,
+      touch.clientX - tapGestureRef.current.touchStartClientX,
+      touch.clientY - tapGestureRef.current.touchStartClientY,
     )
     if (moved > TAP_MOVE_TOLERANCE) return
-    handleTapAt(touch.x, touch.y)
+    handleScreenTap(touch)
   }
 
   const pushUndo = (edit: PatternCellEdit) => {
@@ -356,13 +416,12 @@ export default function PatternEditor({
               }}
             >
               <View
+                id={IMAGE_WRAP_ID}
                 className='pattern-editor__image-wrap'
                 style={{
                   width: `${imageSize.width}px`,
                   height: `${imageSize.height}px`,
                 }}
-                onClick={handleImageTap}
-                onTap={handleImageTap}
                 onTouchStart={handleWrapTouchStart}
                 onTouchEnd={handleWrapTouchEnd}
               >
