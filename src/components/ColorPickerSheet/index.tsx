@@ -1,5 +1,6 @@
 import { View, Text, ScrollView, Input } from '@tarojs/components'
 import { useMemo, useState } from 'react'
+import { isEmptyCell } from '@/services/patternStats'
 import { getColorById, getPalette } from '@/services/palette'
 import { getColorDisplayName } from '@/utils/colorDisplayName'
 import { getPatternColorIds } from '@/utils/patternEdit'
@@ -35,6 +36,9 @@ export default function ColorPickerSheet({
   }, [query])
 
   const visibleColorIds = showAll ? filteredPaletteIds : patternColorIds
+  const isEmpty = isEmptyCell(currentColorId)
+  const currentHex = isEmpty ? '#f3f4f6' : (getColorById(currentColorId)?.hex ?? '#ccc')
+  const currentLabel = isEmpty ? '背景格（未填色）' : currentColorId
 
   if (!visible) return null
 
@@ -53,9 +57,9 @@ export default function ColorPickerSheet({
           <Text className='color-picker-sheet__current-label'>当前格子</Text>
           <View
             className='color-picker-sheet__current-swatch'
-            style={{ backgroundColor: getColorById(currentColorId)?.hex ?? '#ccc' }}
+            style={{ backgroundColor: currentHex }}
           />
-          <Text className='color-picker-sheet__current-id'>{currentColorId || '空'}</Text>
+          <Text className='color-picker-sheet__current-id'>{currentLabel}</Text>
         </View>
 
         <View className='color-picker-sheet__search'>

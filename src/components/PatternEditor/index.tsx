@@ -100,7 +100,7 @@ export default function PatternEditor({
   const selectionRef = useRef<GridCoord | null>(null)
   const scaleRef = useRef(initialScale)
   const undoStackRef = useRef<PatternCellEdit[]>([])
-  const [selectedCell, setSelectedCell] = useState<GridCoord | null>(null)
+  const [selectedColorId, setSelectedColorId] = useState('')
   const [pickerVisible, setPickerVisible] = useState(false)
   const [ready, setReady] = useState(false)
   const [canUndo, setCanUndo] = useState(false)
@@ -158,7 +158,7 @@ export default function PatternEditor({
     undoStackRef.current = []
     setCanUndo(false)
     selectionRef.current = null
-    setSelectedCell(null)
+    setSelectedColorId('')
     setPickerVisible(false)
   }, [pattern.width, pattern.height])
 
@@ -180,13 +180,11 @@ export default function PatternEditor({
   }
 
   const handleTouchStart = (event: { detail: { x: number; y: number } }) => {
-    const scale = scaleRef.current || initialScale
-    const x = event.detail.x / scale
-    const y = event.detail.y / scale
-    const coord = coordFromTouch(x, y, cellPx, patternRef.current)
+    const coord = coordFromTouch(event.detail.x, event.detail.y, cellPx, patternRef.current)
     if (!coord) return
+    const index = coordToCellIndex(patternRef.current, coord.col, coord.row)
     selectionRef.current = coord
-    setSelectedCell(coord)
+    setSelectedColorId(patternRef.current.grid[index] ?? '')
     setPickerVisible(true)
   }
 
@@ -219,8 +217,9 @@ export default function PatternEditor({
   }
 
   const handleColorSelect = (colorId: string) => {
-    if (!selectedCell) return
-    const index = coordToCellIndex(patternRef.current, selectedCell.col, selectedCell.row)
+    const cell = selectionRef.current
+    if (!cell) return
+    const index = coordToCellIndex(patternRef.current, cell.col, cell.row)
     const prevColorId = patternRef.current.grid[index]
     if (prevColorId === colorId) {
       setPickerVisible(false)
@@ -235,9 +234,9 @@ export default function PatternEditor({
     setPickerVisible(false)
   }
 
-  const selectedColorId = selectedCell
-    ? pattern.grid[coordToCellIndex(pattern, selectedCell.col, selectedCell.row)] ?? ''
-    : ''
+  const handlePickerClose = () => {
+    setPickerVisible(false)
+  }
 
   return (
     <View className='pattern-editor pattern-editor--fullscreen'>
@@ -310,7 +309,7 @@ export default function PatternEditor({
           pattern={pattern}
           currentColorId={selectedColorId}
           onSelect={handleColorSelect}
-          onClose={() => setPickerVisible(false)}
+          onClose={handlePickerClose}
         />
       )}
     </View>
