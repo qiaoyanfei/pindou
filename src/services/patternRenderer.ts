@@ -561,8 +561,32 @@ export function getSafeExportCellPx(
   return 1
 }
 
-export function getEditCellPx(pattern: PatternResult, exportCellPx: number): number {
-  return Math.max(4, getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader: false }))
+export function getEditCellPx(
+  pattern: PatternResult,
+  exportCellPx: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  padding = 32,
+): number {
+  const hdCap = getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader: false })
+  const fitPx = Math.min(
+    Math.floor((viewportWidth - padding) / pattern.width),
+    Math.floor((viewportHeight - padding) / pattern.height),
+  )
+  let cellPx = Math.max(1, Math.min(hdCap, fitPx))
+  while (
+    cellPx > 1
+    && (pattern.width * cellPx > viewportWidth - padding
+      || pattern.height * cellPx > viewportHeight - padding)
+  ) {
+    cellPx -= 1
+  }
+  return cellPx
+}
+
+/** 编辑画布可放大到的最高清每格像素（exportCellPx 且受 Canvas 上限约束） */
+export function getEditHdCellPx(pattern: PatternResult, exportCellPx: number): number {
+  return Math.max(1, getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader: false }))
 }
 
 export function getCoverCellPx(pattern: PatternResult, maxLongEdgePx = 640): number {

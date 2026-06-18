@@ -1,9 +1,10 @@
-import { View, Text, Canvas, ScrollView } from '@tarojs/components'
+import { View, Text, Canvas, MovableArea, MovableView } from '@tarojs/components'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
 import {
   getEditCellPx,
+  getEditHdCellPx,
   paintCellSelectionOutline,
   paintPatternCell,
   paintPatternGrid,
@@ -21,6 +22,7 @@ import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
 const TOOLBAR_HEIGHT = 72
+const VIEW_PADDING = 24
 const MAX_UNDO = 40
 
 interface PatternEditorProps {
@@ -44,19 +46,44 @@ export default function PatternEditor({
   const viewportWidth = sys.windowWidth
   const viewportHeight = sys.windowHeight
 
-  const cellPx = useMemo(
-    () => getEditCellPx(pattern, config.exportCellPx),
-    [pattern.width, pattern.height, config.exportCellPx],
-  )
-
-  const canvasWidth = pattern.width * cellPx
-  const canvasHeight = pattern.height * cellPx
-
   const scrollHeight = useMemo(() => {
     const menu = Taro.getMenuButtonBoundingClientRect()
     const navHeight = menu.top + menu.height + 8
     return viewportHeight - navHeight - TOOLBAR_HEIGHT
   }, [viewportHeight])
+
+  const hdCellPx = useMemo(
+    () => getEditHdCellPx(pattern, config.exportCellPx),
+    [pattern.width, pattern.height, config.exportCellPx],
+  )
+
+  const cellPx = useMemo(
+    () => getEditCellPx(pattern, config.exportCellPx, viewportWidth, scrollHeight, VIEW_PADDING * 2),
+    [pattern.width, pattern.height, config.exportCellPx, viewportWidth, scrollHeight],
+  )
+
+  const canvasWidth = pattern.width * cellPx
+  const canvasHeight = pattern.height * cellPx
+
+  const maxScale = useMemo(
+    () => Math.max(1, Math.min(6, hdCellPx / cellPx)),
+    [hdCellPx, cellPx],
+  )
+
+  const initialScale = useMemo(() => {
+    const horizontalFit = (viewportWidth - VIEW_PADDING) / canvasWidth
+    const verticalFit = (scrollHeight - VIEW_PADDING) / canvasHeight
+    return Math.max(0.3, Math.min(horizontalFit, verticalFit, 1))
+  }, [viewportWidth, scrollHeight, canvasWidth, canvasHeight])
+
+  const initialPosition = useMemo(() => {
+    const scaledW = canvasWidth * initialScale
+    const scaledH = canvasHeight * initialScale
+    return {
+      x: Math.max(0, Math.round((viewportWidth - scaledW) / 2)),
+      y: Math.max(0, Math.round((scrollHeight - scaledH) / 2)),
+    }
+  }, [canvasWidth, canvasHeight, initialScale, viewportWidth, scrollHeight])
 
   const paintOptions = useMemo(
     () => ({
@@ -72,6 +99,7 @@ export default function PatternEditor({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const patternRef = useRef(pattern)
   const selectionRef = useRef<GridCoord | null>(null)
+  const scaleRef = useRef(initialScale)
   const undoStackRef = useRef<PatternCellEdit[]>([])
   const [selectedCell, setSelectedCell] = useState<GridCoord | null>(null)
   const [pickerVisible, setPickerVisible] = useState(false)
@@ -79,6 +107,7 @@ export default function PatternEditor({
   const [canUndo, setCanUndo] = useState(false)
 
   patternRef.current = pattern
+  scaleRef.current = initialScale
 
   const fullRedraw = useCallback((node: CanvasNode, nextPattern: PatternResult, selection: GridCoord | null) => {
     node.width = canvasWidth
@@ -140,8 +169,15 @@ export default function PatternEditor({
     return () => clearTimeout(timer)
   }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
+  const handleScale = (event: { detail: { scale: number } }) => {
+    scaleRef.current = event.detail.scale
+  }
+
   const handleTouchStart = (event: { detail: { x: number; y: number } }) => {
-    const coord = coordFromTouch(event.detail.x, event.detail.y, cellPx, patternRef.current)
+    const scale = scaleRef.current || initialScale
+    const x = event.detail.x / scale
+    const y = event.detail.y / scale
+    const coord = coordFromTouch(x, y, cellPx, patternRef.current)
     if (!coord) return
     updateSelection(coord)
     setPickerVisible(true)
@@ -212,38 +248,58 @@ export default function PatternEditor({
         >
           撤销
         </Text>
-        <Text className='pattern-editor__hint'>{cellPx}px/格 · 点击格子改色</Text>
+        <Text className='pattern-editor__hint'>双指缩放 · 点击改色</Text>
         <Text className='pattern-editor__meta'>
           {pattern.width}×{pattern.height}
         </Text>
       </View>
 
-      <ScrollView
-        scrollX
-        scrollY
-        className='pattern-editor__scroll'
+      <View
+        className='pattern-editor__viewport'
         style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
-        <View
-          className='pattern-editor__canvas-wrap'
-          style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-          onTouchStart={handleTouchStart}
-        >
-          <Canvas
-            type='2d'
-            id={CANVAS_ID}
-            canvasId={CANVAS_ID}
-            className='pattern-editor__canvas'
-            style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-          />
-        </View>
-      </ScrollView>
+        {!ready && (
+          <View className='pattern-editor__loading'>
+            <Text>加载画布...</Text>
+          </View>
+        )}
 
-      {!ready && (
-        <View className='pattern-editor__loading'>
-          <Text>加载高清画布...</Text>
-        </View>
-      )}
+        {ready && (
+          <MovableArea
+            className='pattern-editor__area'
+            style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
+          >
+            <MovableView
+              key={`${pattern.width}x${pattern.height}-${cellPx}`}
+              className='pattern-editor__content'
+              direction='all'
+              inertia
+              scale
+              scaleMin={Math.min(initialScale, 0.3)}
+              scaleMax={maxScale}
+              scaleValue={initialScale}
+              x={initialPosition.x}
+              y={initialPosition.y}
+              style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+              onScale={handleScale}
+            >
+              <View
+                className='pattern-editor__canvas-wrap'
+                style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+                onTouchStart={handleTouchStart}
+              >
+                <Canvas
+                  type='2d'
+                  id={CANVAS_ID}
+                  canvasId={CANVAS_ID}
+                  className='pattern-editor__canvas'
+                  style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+                />
+              </View>
+            </MovableView>
+          </MovableArea>
+        )}
+      </View>
 
       <ColorPickerSheet
         visible={pickerVisible}

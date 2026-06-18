@@ -54,6 +54,23 @@
   font-weight: 500;
 }
 
+.pattern-editor__viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #eef0f3;
+}
+
+.pattern-editor__area {
+  overflow: hidden;
+}
+
+.pattern-editor__content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .pattern-editor__scroll {
   flex: 1;
   background: #eef0f3;
@@ -69,10 +86,7 @@
 
 .pattern-editor__loading {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 72px;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,8 +94,5 @@
   font-size: 28px;
   pointer-events: none;
   background: rgba(238, 240, 243, 0.72);
-}
-
-.pattern-editor--fullscreen .pattern-editor__loading {
-  top: 72px;
+  z-index: 2;
 }
