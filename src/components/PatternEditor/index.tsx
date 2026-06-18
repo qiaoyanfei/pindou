@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
 import {
-  getPreviewCellPxForArea,
+  getEditCellPx,
   paintCellSelectionOutline,
   paintPatternCell,
   paintPatternGrid,
@@ -20,7 +20,6 @@ import type { PatternConfig, PatternResult } from '@/types'
 import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
-const PAGE_PADDING = 64
 const TOOLBAR_HEIGHT = 72
 const MAX_UNDO = 40
 
@@ -28,7 +27,6 @@ interface PatternEditorProps {
   pattern: PatternResult
   config: PatternConfig
   onPatternChange: (pattern: PatternResult) => void
-  onDone: () => void
 }
 
 type CanvasNode = {
@@ -41,28 +39,33 @@ export default function PatternEditor({
   pattern,
   config,
   onPatternChange,
-  onDone,
 }: PatternEditorProps) {
   const sys = Taro.getWindowInfo()
-  const areaWidth = sys.windowWidth - PAGE_PADDING
-  const areaHeight = Math.floor(sys.windowHeight * 0.38)
+  const viewportWidth = sys.windowWidth
+  const viewportHeight = sys.windowHeight
 
   const cellPx = useMemo(
-    () => getPreviewCellPxForArea(pattern, areaWidth, areaHeight - TOOLBAR_HEIGHT),
-    [pattern, areaWidth, areaHeight],
+    () => getEditCellPx(pattern, config.exportCellPx),
+    [pattern.width, pattern.height, config.exportCellPx],
   )
 
   const canvasWidth = pattern.width * cellPx
   const canvasHeight = pattern.height * cellPx
 
+  const scrollHeight = useMemo(() => {
+    const menu = Taro.getMenuButtonBoundingClientRect()
+    const navHeight = menu.top + menu.height + 8
+    return viewportHeight - navHeight - TOOLBAR_HEIGHT
+  }, [viewportHeight])
+
   const paintOptions = useMemo(
     () => ({
       cellPx,
       showGrid: config.showGrid,
-      showColorCode: false,
-      minCellPxForLabel: 16,
+      showColorCode: config.showColorCode && cellPx >= 10,
+      minCellPxForLabel: 10,
     }),
-    [cellPx, config.showGrid],
+    [cellPx, config.showGrid, config.showColorCode],
   )
 
   const canvasRef = useRef<CanvasNode | null>(null)
@@ -135,7 +138,7 @@ export default function PatternEditor({
     setCanUndo(false)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
-  }, [pattern.width, pattern.height, cellPx, config.showGrid, initCanvas])
+  }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
   const handleTouchStart = (event: { detail: { x: number; y: number } }) => {
     const coord = coordFromTouch(event.detail.x, event.detail.y, cellPx, patternRef.current)
@@ -150,6 +153,26 @@ export default function PatternEditor({
       undoStackRef.current.shift()
     }
     setCanUndo(true)
+  }
+
+  const handleUndo = () => {
+    if (!canUndo) return
+    const edit = undoStackRef.current.pop()
+    if (!edit) {
+      setCanUndo(false)
+      return
+    }
+
+    const nextPattern = revertPatternCellEdit(patternRef.current, edit)
+    patternRef.current = nextPattern
+    onPatternChange(nextPattern)
+    setCanUndo(undoStackRef.current.length > 0)
+
+    const node = canvasRef.current
+    if (node) {
+      const ctx = fullRedraw(node, nextPattern, selectionRef.current)
+      ctxRef.current = ctx
+    }
   }
 
   const handleColorSelect = (colorId: string) => {
@@ -176,65 +199,49 @@ export default function PatternEditor({
     setPickerVisible(false)
   }
 
-  const handleUndo = () => {
-    const edit = undoStackRef.current.pop()
-    if (!edit) {
-      setCanUndo(false)
-      return
-    }
-
-    const nextPattern = revertPatternCellEdit(patternRef.current, edit)
-    patternRef.current = nextPattern
-    onPatternChange(nextPattern)
-    setCanUndo(undoStackRef.current.length > 0)
-
-    const node = canvasRef.current
-    if (node) {
-      const ctx = fullRedraw(node, nextPattern, selectionRef.current)
-      ctxRef.current = ctx
-    }
-  }
-
   const selectedColorId = selectedCell
     ? pattern.grid[coordToCellIndex(pattern, selectedCell.col, selectedCell.row)] ?? ''
     : ''
 
   return (
-    <View className='pattern-editor'>
+    <View className='pattern-editor pattern-editor--fullscreen'>
       <View className='pattern-editor__toolbar'>
         <Text
           className={`pattern-editor__action${canUndo ? '' : ' pattern-editor__action--disabled'}`}
-          onClick={canUndo ? handleUndo : undefined}
+          onClick={handleUndo}
         >
           撤销
         </Text>
-        <Text className='pattern-editor__hint'>点击格子选择色号</Text>
-        <Text className='pattern-editor__action pattern-editor__action--primary' onClick={onDone}>
-          完成
+        <Text className='pattern-editor__hint'>{cellPx}px/格 · 点击格子改色</Text>
+        <Text className='pattern-editor__meta'>
+          {pattern.width}×{pattern.height}
         </Text>
       </View>
 
       <ScrollView
         scrollX
         scrollY
-        enhanced
-        showScrollbar={false}
         className='pattern-editor__scroll'
-        style={{ width: `${areaWidth}px`, height: `${areaHeight - TOOLBAR_HEIGHT}px` }}
+        style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
-        <Canvas
-          type='2d'
-          id={CANVAS_ID}
-          canvasId={CANVAS_ID}
-          className='pattern-editor__canvas'
+        <View
+          className='pattern-editor__canvas-wrap'
           style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
           onTouchStart={handleTouchStart}
-        />
+        >
+          <Canvas
+            type='2d'
+            id={CANVAS_ID}
+            canvasId={CANVAS_ID}
+            className='pattern-editor__canvas'
+            style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+          />
+        </View>
       </ScrollView>
 
       {!ready && (
         <View className='pattern-editor__loading'>
-          <Text>加载编辑画布...</Text>
+          <Text>加载高清画布...</Text>
         </View>
       )}
 

@@ -561,6 +561,10 @@ export function getSafeExportCellPx(
   return 1
 }
 
+export function getEditCellPx(pattern: PatternResult, exportCellPx: number): number {
+  return Math.max(4, getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader: false }))
+}
+
 export function getCoverCellPx(pattern: PatternResult, maxLongEdgePx = 640): number {
   const longEdge = Math.max(pattern.width, pattern.height)
   return Math.max(4, Math.min(12, Math.floor(maxLongEdgePx / longEdge)))

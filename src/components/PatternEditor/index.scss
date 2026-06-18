@@ -7,6 +7,15 @@
   position: relative;
 }
 
+.pattern-editor--fullscreen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 0;
+  background: #eef0f3;
+}
+
 .pattern-editor__toolbar {
   display: flex;
   align-items: center;
@@ -15,6 +24,8 @@
   padding: 0 24px;
   border-bottom: 1px solid #f3f4f6;
   box-sizing: border-box;
+  background: #fff;
+  flex-shrink: 0;
 }
 
 .pattern-editor__action {
@@ -28,10 +39,6 @@
   color: #c4b5fd;
 }
 
-.pattern-editor__action--primary {
-  text-align: right;
-}
-
 .pattern-editor__hint {
   flex: 1;
   text-align: center;
@@ -39,8 +46,21 @@
   color: $color-text-secondary;
 }
 
+.pattern-editor__meta {
+  min-width: 72px;
+  text-align: right;
+  font-size: 24px;
+  color: $color-text-secondary;
+  font-weight: 500;
+}
+
 .pattern-editor__scroll {
+  flex: 1;
   background: #eef0f3;
+}
+
+.pattern-editor__canvas-wrap {
+  position: relative;
 }
 
 .pattern-editor__canvas {
@@ -59,4 +79,9 @@
   color: $color-text-secondary;
   font-size: 28px;
   pointer-events: none;
+  background: rgba(238, 240, 243, 0.72);
+}
+
+.pattern-editor--fullscreen .pattern-editor__loading {
+  top: 72px;
 }

@@ -9,6 +9,7 @@ export default defineAppConfig({
     'pages/user-agreement/index',
     'pages/privacy-policy/index',
     'pages/preview/index',
+    'pages/pattern-edit/index',
     'pages/post-detail/index',
     'pages/my-post-detail/index',
     'pages/publish/index',
