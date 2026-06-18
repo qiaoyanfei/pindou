@@ -6,7 +6,6 @@ import {
   getEditCellPx,
   getEditHdCellPx,
   paintCellSelectionOutline,
-  paintPatternCell,
   paintPatternGrid,
 } from '@/services/patternRenderer'
 import {
@@ -125,19 +124,6 @@ export default function PatternEditor({
     return ctx
   }, [canvasWidth, canvasHeight, cellPx, paintOptions])
 
-  const updateSelection = useCallback((coord: GridCoord) => {
-    const ctx = ctxRef.current
-    const prev = selectionRef.current
-    if (ctx && prev) {
-      paintPatternCell(ctx, patternRef.current, prev.col, prev.row, paintOptions)
-    }
-    selectionRef.current = coord
-    setSelectedCell(coord)
-    if (ctx) {
-      paintCellSelectionOutline(ctx, coord.col, coord.row, cellPx)
-    }
-  }, [cellPx, paintOptions])
-
   const initCanvas = useCallback((retry = 0) => {
     Taro.createSelectorQuery()
       .select(`#${CANVAS_ID}`)
@@ -169,15 +155,25 @@ export default function PatternEditor({
   }, [fullRedraw])
 
   useEffect(() => {
-    setReady(false)
+    undoStackRef.current = []
+    setCanUndo(false)
     selectionRef.current = null
     setSelectedCell(null)
     setPickerVisible(false)
-    undoStackRef.current = []
-    setCanUndo(false)
+  }, [pattern.width, pattern.height])
+
+  useEffect(() => {
+    if (pickerVisible) {
+      setReady(false)
+      canvasRef.current = null
+      ctxRef.current = null
+      return undefined
+    }
+
+    setReady(false)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
-  }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
+  }, [pickerVisible, pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
   const handleScale = (event: { detail: { scale: number } }) => {
     scaleRef.current = event.detail.scale
@@ -189,7 +185,8 @@ export default function PatternEditor({
     const y = event.detail.y / scale
     const coord = coordFromTouch(x, y, cellPx, patternRef.current)
     if (!coord) return
-    updateSelection(coord)
+    selectionRef.current = coord
+    setSelectedCell(coord)
     setPickerVisible(true)
   }
 
@@ -235,13 +232,6 @@ export default function PatternEditor({
     patternRef.current = nextPattern
     pushUndo(edit)
     onPatternChange(nextPattern)
-
-    const ctx = ctxRef.current
-    if (ctx) {
-      paintPatternCell(ctx, nextPattern, selectedCell.col, selectedCell.row, paintOptions)
-      paintCellSelectionOutline(ctx, selectedCell.col, selectedCell.row, cellPx)
-    }
-
     setPickerVisible(false)
   }
 
@@ -268,57 +258,61 @@ export default function PatternEditor({
         className='pattern-editor__viewport'
         style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
-        {!ready && (
+        {!ready && !pickerVisible && (
           <View className='pattern-editor__loading'>
             <Text>加载画布...</Text>
           </View>
         )}
 
-        <MovableArea
-          className={`pattern-editor__area${ready ? '' : ' pattern-editor__area--hidden'}`}
-          style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
-        >
-          <MovableView
-            key={`${pattern.width}x${pattern.height}-${cellPx}`}
-            className='pattern-editor__content'
-            direction='all'
-            inertia
-            scale
-            scaleMin={Math.min(initialScale, 0.3)}
-            scaleMax={maxScale}
-            scaleValue={initialScale}
-            x={initialPosition.x}
-            y={initialPosition.y}
-            style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-            onScale={handleScale}
+        {!pickerVisible && (
+          <MovableArea
+            className={`pattern-editor__area${ready ? '' : ' pattern-editor__area--hidden'}`}
+            style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
           >
-            <View
-              className='pattern-editor__canvas-wrap'
+            <MovableView
+              key={`${pattern.width}x${pattern.height}-${cellPx}`}
+              className='pattern-editor__content'
+              direction='all'
+              inertia
+              scale
+              scaleMin={Math.min(initialScale, 0.3)}
+              scaleMax={maxScale}
+              scaleValue={initialScale}
+              x={initialPosition.x}
+              y={initialPosition.y}
               style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-              onTouchStart={(event) => {
-                if (!ready) return
-                handleTouchStart(event)
-              }}
+              onScale={handleScale}
             >
-              <Canvas
-                type='2d'
-                id={CANVAS_ID}
-                canvasId={CANVAS_ID}
-                className='pattern-editor__canvas'
+              <View
+                className='pattern-editor__canvas-wrap'
                 style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-              />
-            </View>
-          </MovableView>
-        </MovableArea>
+                onTouchStart={(event) => {
+                  if (!ready) return
+                  handleTouchStart(event)
+                }}
+              >
+                <Canvas
+                  type='2d'
+                  id={CANVAS_ID}
+                  canvasId={CANVAS_ID}
+                  className='pattern-editor__canvas'
+                  style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+                />
+              </View>
+            </MovableView>
+          </MovableArea>
+        )}
       </View>
 
-      <ColorPickerSheet
-        visible={pickerVisible}
-        pattern={pattern}
-        currentColorId={selectedColorId}
-        onSelect={handleColorSelect}
-        onClose={() => setPickerVisible(false)}
-      />
+      {pickerVisible && (
+        <ColorPickerSheet
+          visible={pickerVisible}
+          pattern={pattern}
+          currentColorId={selectedColorId}
+          onSelect={handleColorSelect}
+          onClose={() => setPickerVisible(false)}
+        />
+      )}
     </View>
   )
 }

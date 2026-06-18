@@ -7,6 +7,8 @@
   background: #eef0f3;
   box-sizing: border-box;
   overflow: hidden;
+  position: relative;
+  isolation: isolate;
 }
 
 .pattern-edit-page--empty {
