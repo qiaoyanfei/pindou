@@ -212,7 +212,7 @@ export function renderPatternToCanvas(
   pattern: PatternResult,
   options: RenderOptions,
 ): void {
-  const { width, height, grid } = pattern
+  const { width, height } = pattern
   const { cellPx, showGrid, showColorCode, minCellPxForLabel = 16 } = options
   const canvasWidth = width * cellPx
   const canvasHeight = height * cellPx
@@ -226,6 +226,29 @@ export function renderPatternToCanvas(
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+
+  paintPatternGrid(ctx, pattern, {
+    cellPx,
+    showGrid,
+    showColorCode,
+    minCellPxForLabel,
+  })
+}
+
+export interface PatternGridPaintOptions {
+  cellPx: number
+  showGrid: boolean
+  showColorCode: boolean
+  minCellPxForLabel?: number
+}
+
+export function paintPatternGrid(
+  ctx: CanvasRenderingContext2D,
+  pattern: PatternResult,
+  options: PatternGridPaintOptions,
+): void {
+  const { width, height, grid } = pattern
+  const { cellPx, showGrid, showColorCode, minCellPxForLabel = 16 } = options
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -244,6 +267,46 @@ export function renderPatternToCanvas(
   if (showGrid) {
     drawGridLines(ctx, 0, 0, width, height, cellPx)
   }
+}
+
+export function paintPatternCell(
+  ctx: CanvasRenderingContext2D,
+  pattern: PatternResult,
+  col: number,
+  row: number,
+  options: PatternGridPaintOptions,
+): void {
+  const { width, grid } = pattern
+  const { cellPx, showColorCode, minCellPxForLabel = 16 } = options
+  if (col < 0 || row < 0 || col >= pattern.width || row >= pattern.height) return
+  drawGridCell(
+    ctx,
+    col * cellPx,
+    row * cellPx,
+    cellPx,
+    grid[row * width + col],
+    showColorCode,
+    minCellPxForLabel,
+  )
+}
+
+export function paintCellSelectionOutline(
+  ctx: CanvasRenderingContext2D,
+  col: number,
+  row: number,
+  cellPx: number,
+): void {
+  ctx.save()
+  ctx.strokeStyle = '#7c3aed'
+  ctx.lineWidth = Math.max(2, Math.round(cellPx * 0.12))
+  const inset = ctx.lineWidth / 2
+  ctx.strokeRect(
+    col * cellPx + inset,
+    row * cellPx + inset,
+    cellPx - ctx.lineWidth,
+    cellPx - ctx.lineWidth,
+  )
+  ctx.restore()
 }
 
 export interface SheetLayoutMetrics {

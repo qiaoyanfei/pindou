@@ -2,6 +2,7 @@ import { View, Text, Button, ScrollView, CoverView, Image } from '@tarojs/compon
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useCallback, useRef, useState } from 'react'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
+import PatternEditor from '@/components/PatternEditor'
 import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
@@ -29,15 +30,40 @@ interface StoredPayload {
 
 type ExportJob = 'save' | 'cover'
 
+const PATTERN_PERSIST_DELAY_MS = 400
+
 export default function PreviewPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
+  const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportJob, setExportJob] = useState<ExportJob | null>(null)
   const [creatorNickname, setCreatorNickname] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const configRef = useRef(config)
+
+  configRef.current = config
+
+  const persistPattern = useCallback((nextPattern: PatternResult, immediate = false) => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current)
+      persistTimerRef.current = null
+    }
+
+    const write = () => {
+      setStorageSafe(PATTERN_STORAGE_KEY, { pattern: nextPattern, config: configRef.current })
+    }
+
+    if (immediate) {
+      write()
+      return
+    }
+
+    persistTimerRef.current = setTimeout(write, PATTERN_PERSIST_DELAY_MS)
+  }, [])
 
   useDidShow(() => {
     restoreSessionFromStorage()
@@ -50,6 +76,7 @@ export default function PreviewPage() {
 
     setPattern(stored.pattern)
     setConfig(normalizeConfig(stored.config))
+    setEditing(false)
     setExportJob(null)
     setExportBusy(false)
     setCreatorNickname(resolveCreatorNickname())
@@ -118,13 +145,30 @@ export default function PreviewPage() {
     }
   }
 
+  const handlePatternChange = useCallback((nextPattern: PatternResult) => {
+    setPattern(nextPattern)
+    persistPattern(nextPattern)
+  }, [persistPattern])
+
+  const handleStartEdit = () => {
+    if (exportBusy) return
+    setEditing(true)
+  }
+
+  const handleFinishEdit = () => {
+    if (pattern) {
+      persistPattern(pattern, true)
+    }
+    setEditing(false)
+  }
+
   const handleSave = () => {
-    if (!pattern || saving || exportBusy) return
+    if (!pattern || saving || exportBusy || editing) return
     beginExportJob('save')
   }
 
   const handlePublish = async () => {
-    if (!pattern || publishing || exportBusy) return
+    if (!pattern || publishing || exportBusy || editing) return
     const user = await requireAuthenticated('/pages/publish/index')
     if (!user) return
     beginExportJob('cover')
@@ -145,20 +189,31 @@ export default function PreviewPage() {
 
   return (
     <View className='preview-page'>
-      <ScrollView scrollY className='preview-page__scroll' enhanced showScrollbar={false}>
+      <ScrollView scrollY={!editing} className='preview-page__scroll' enhanced showScrollbar={false}>
         <View className='preview-page__content'>
           <View className='preview-page__tags'>
             <Text className='preview-page__tag'>{config.longEdge}格</Text>
             <Text className='preview-page__tag'>MARD 221 标准色</Text>
             <Text className='preview-page__tag'>{getExportClarityLabel(config.exportCellPx)}</Text>
+            {editing ? <Text className='preview-page__tag preview-page__tag--edit'>编辑中</Text> : null}
           </View>
 
           <View className='preview-page__preview-slot'>
-            <ZoomablePatternViewer
-              pattern={pattern}
-              config={config}
-              onFullscreen={handleFullscreen}
-            />
+            {editing ? (
+              <PatternEditor
+                pattern={pattern}
+                config={config}
+                onPatternChange={handlePatternChange}
+                onDone={handleFinishEdit}
+              />
+            ) : (
+              <ZoomablePatternViewer
+                pattern={pattern}
+                config={config}
+                onFullscreen={handleFullscreen}
+                onEdit={handleStartEdit}
+              />
+            )}
           </View>
 
           <View className='preview-page__stats'>
@@ -169,7 +224,7 @@ export default function PreviewPage() {
             <Button
               className='preview-page__btn preview-page__btn--ghost'
               loading={saving || (exportBusy && exportJob === 'save')}
-              disabled={saving || exportBusy}
+              disabled={saving || exportBusy || editing}
               onClick={handleSave}
             >
               <View className='preview-page__btn-inner'>
@@ -180,7 +235,7 @@ export default function PreviewPage() {
             <Button
               className='preview-page__btn preview-page__btn--primary'
               loading={publishing || (exportBusy && exportJob === 'cover')}
-              disabled={saving || exportBusy}
+              disabled={saving || exportBusy || editing}
               onClick={handlePublish}
             >
               <View className='preview-page__btn-inner'>

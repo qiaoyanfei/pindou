@@ -11,6 +11,7 @@ interface ZoomablePatternViewerProps {
   pattern: PatternResult
   config: PatternConfig
   onFullscreen?: () => void
+  onEdit?: () => void
 }
 
 const PAGE_PADDING = 64
@@ -20,6 +21,7 @@ function ZoomablePatternViewer({
   pattern,
   config,
   onFullscreen,
+  onEdit,
 }: ZoomablePatternViewerProps) {
   const sys = Taro.getSystemInfoSync()
   const [imageSrc, setImageSrc] = useState('')
@@ -83,6 +85,13 @@ function ZoomablePatternViewer({
   return (
     <View className='zoom-viewer'>
       <View className='zoom-viewer__toolbar'>
+        {onEdit ? (
+          <Text className='zoom-viewer__action zoom-viewer__action--left' onClick={onEdit}>
+            编辑
+          </Text>
+        ) : (
+          <View className='zoom-viewer__action-spacer' />
+        )}
         <Text className='zoom-viewer__action' onClick={handleFullscreen}>
           全屏预览
         </Text>
