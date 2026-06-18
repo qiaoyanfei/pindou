@@ -81,11 +81,20 @@
   background: #eef0f3;
 }
 
-.pattern-editor__canvas-wrap {
-  position: relative;
+.pattern-editor__canvas-host {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .pattern-editor__canvas {
+  display: block;
+}
+
+.pattern-editor__image {
   display: block;
 }
 

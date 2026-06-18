@@ -1,4 +1,4 @@
-import { View, Text, Canvas, MovableArea, MovableView } from '@tarojs/components'
+import { View, Text, Canvas, Image, MovableArea, MovableView } from '@tarojs/components'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
@@ -7,6 +7,7 @@ import {
   paintCellSelectionOutline,
   paintPatternGrid,
 } from '@/services/patternRenderer'
+import { canvasToTempFile } from '@/utils/canvas'
 import {
   applyPatternCellEdit,
   coordFromTouch,
@@ -20,8 +21,11 @@ import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
 const TOOLBAR_HEIGHT = 72
-const VIEW_PADDING = 24
+const VIEW_PADDING = 16
 const MAX_UNDO = 40
+const DOUBLE_TAP_MS = 320
+const TAP_MOVE_TOLERANCE = 14
+const TAP_MAX_DURATION_MS = 280
 
 interface PatternEditorProps {
   pattern: PatternResult
@@ -50,35 +54,13 @@ export default function PatternEditor({
     return viewportHeight - navHeight - TOOLBAR_HEIGHT
   }, [viewportHeight])
 
-  const hdCellPx = useMemo(
+  const cellPx = useMemo(
     () => getEditHdCellPx(pattern, config.exportCellPx),
     [pattern.width, pattern.height, config.exportCellPx],
   )
 
-  const cellPx = hdCellPx
-
   const canvasWidth = pattern.width * cellPx
   const canvasHeight = pattern.height * cellPx
-
-  const initialScale = useMemo(() => {
-    const horizontalFit = (viewportWidth - VIEW_PADDING) / canvasWidth
-    const verticalFit = (scrollHeight - VIEW_PADDING) / canvasHeight
-    return Math.max(0.2, Math.min(horizontalFit, verticalFit))
-  }, [viewportWidth, scrollHeight, canvasWidth, canvasHeight])
-
-  const maxScale = useMemo(
-    () => Math.max(initialScale, 1),
-    [initialScale],
-  )
-
-  const initialPosition = useMemo(() => {
-    const scaledW = canvasWidth * initialScale
-    const scaledH = canvasHeight * initialScale
-    return {
-      x: Math.max(0, Math.round((viewportWidth - scaledW) / 2)),
-      y: Math.max(0, Math.round((scrollHeight - scaledH) / 2)),
-    }
-  }, [canvasWidth, canvasHeight, initialScale, viewportWidth, scrollHeight])
 
   const paintOptions = useMemo(
     () => ({
@@ -94,15 +76,42 @@ export default function PatternEditor({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const patternRef = useRef(pattern)
   const selectionRef = useRef<GridCoord | null>(null)
-  const scaleRef = useRef(initialScale)
   const undoStackRef = useRef<PatternCellEdit[]>([])
+  const tapGestureRef = useRef({
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0,
+  })
+  const refreshTokenRef = useRef(0)
+
+  const [imageSrc, setImageSrc] = useState('')
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [selectedColorId, setSelectedColorId] = useState('')
   const [pickerVisible, setPickerVisible] = useState(false)
-  const [ready, setReady] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
 
   patternRef.current = pattern
-  scaleRef.current = initialScale
+
+  const initialScale = useMemo(() => {
+    if (!imageSize.width) return 1
+    const horizontalFit = (viewportWidth - VIEW_PADDING) / imageSize.width
+    const verticalFit = (scrollHeight - VIEW_PADDING) / imageSize.height
+    return Math.max(0.2, Math.min(horizontalFit, verticalFit))
+  }, [viewportWidth, scrollHeight, imageSize])
+
+  const initialPosition = useMemo(() => {
+    if (!imageSize.width) return { x: 0, y: 0 }
+    const scaledW = imageSize.width * initialScale
+    const scaledH = imageSize.height * initialScale
+    return {
+      x: Math.max(0, Math.round((viewportWidth - scaledW) / 2)),
+      y: Math.max(0, Math.round((scrollHeight - scaledH) / 2)),
+    }
+  }, [imageSize, initialScale, viewportWidth, scrollHeight])
 
   const fullRedraw = useCallback((node: CanvasNode, nextPattern: PatternResult, selection: GridCoord | null) => {
     node.width = canvasWidth
@@ -120,11 +129,32 @@ export default function PatternEditor({
     return ctx
   }, [canvasWidth, canvasHeight, cellPx, paintOptions])
 
-  const initCanvas = useCallback((retry = 0) => {
+  const refreshDisplay = useCallback(async () => {
+    const token = refreshTokenRef.current + 1
+    refreshTokenRef.current = token
+    try {
+      const tempFilePath = await canvasToTempFile(CANVAS_ID)
+      if (token !== refreshTokenRef.current) return
+      const info = await Taro.getImageInfo({ src: tempFilePath })
+      if (token !== refreshTokenRef.current) return
+      setImageSrc(tempFilePath)
+      setImageSize({ width: info.width, height: info.height })
+    } catch {
+      if (token === refreshTokenRef.current) {
+        Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
+      }
+    } finally {
+      if (token === refreshTokenRef.current) {
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  const initCanvas = useCallback(async (retry = 0) => {
     Taro.createSelectorQuery()
       .select(`#${CANVAS_ID}`)
       .fields({ node: true, size: true })
-      .exec((res) => {
+      .exec(async (res) => {
         const node = res?.[0]?.node as CanvasNode | undefined
         if (!node) {
           if (retry < 12) {
@@ -132,6 +162,7 @@ export default function PatternEditor({
             return
           }
           Taro.showToast({ title: '画布加载失败', icon: 'none' })
+          setLoading(false)
           return
         }
 
@@ -143,12 +174,23 @@ export default function PatternEditor({
             return
           }
           Taro.showToast({ title: '画布加载失败', icon: 'none' })
+          setLoading(false)
           return
         }
         ctxRef.current = ctx
-        setReady(true)
+        await refreshDisplay()
       })
-  }, [fullRedraw])
+  }, [fullRedraw, refreshDisplay])
+
+  const redrawAndRefresh = useCallback(async () => {
+    const node = canvasRef.current
+    if (!node) return
+    const ctx = fullRedraw(node, patternRef.current, selectionRef.current)
+    if (!ctx) return
+    ctxRef.current = ctx
+    setLoading(true)
+    await refreshDisplay()
+  }, [fullRedraw, refreshDisplay])
 
   useEffect(() => {
     undoStackRef.current = []
@@ -156,32 +198,51 @@ export default function PatternEditor({
     selectionRef.current = null
     setSelectedColorId('')
     setPickerVisible(false)
-  }, [pattern.width, pattern.height])
-
-  useEffect(() => {
-    if (pickerVisible) {
-      setReady(false)
-      canvasRef.current = null
-      ctxRef.current = null
-      return undefined
-    }
-
-    setReady(false)
+    setImageSrc('')
+    setImageSize({ width: 0, height: 0 })
+    setLoading(true)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
-  }, [pickerVisible, pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
+  }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
-  const handleScale = (event: { detail: { scale: number } }) => {
-    scaleRef.current = event.detail.scale
-  }
-
-  const handleTouchStart = (event: { detail: { x: number; y: number } }) => {
-    const coord = coordFromTouch(event.detail.x, event.detail.y, cellPx, patternRef.current)
+  const openCellEditorAt = (x: number, y: number) => {
+    const coord = coordFromTouch(x, y, cellPx, patternRef.current)
     if (!coord) return
     const index = coordToCellIndex(patternRef.current, coord.col, coord.row)
     selectionRef.current = coord
     setSelectedColorId(patternRef.current.grid[index] ?? '')
     setPickerVisible(true)
+  }
+
+  const handleImageTouchStart = (event: { detail: { x: number; y: number } }) => {
+    tapGestureRef.current.startX = event.detail.x
+    tapGestureRef.current.startY = event.detail.y
+    tapGestureRef.current.startTime = Date.now()
+  }
+
+  const handleImageTouchEnd = (event: { detail: { x: number; y: number } }) => {
+    const gesture = tapGestureRef.current
+    const duration = Date.now() - gesture.startTime
+    if (duration > TAP_MAX_DURATION_MS) return
+
+    const { x, y } = event.detail
+    const moved = Math.hypot(x - gesture.startX, y - gesture.startY)
+    if (moved > TAP_MOVE_TOLERANCE) return
+
+    const now = Date.now()
+    const isDoubleTap =
+      now - gesture.lastTapTime < DOUBLE_TAP_MS
+      && Math.hypot(x - gesture.lastTapX, y - gesture.lastTapY) < TAP_MOVE_TOLERANCE
+
+    if (isDoubleTap) {
+      tapGestureRef.current.lastTapTime = 0
+      openCellEditorAt(x, y)
+      return
+    }
+
+    tapGestureRef.current.lastTapTime = now
+    tapGestureRef.current.lastTapX = x
+    tapGestureRef.current.lastTapY = y
   }
 
   const pushUndo = (edit: PatternCellEdit) => {
@@ -192,7 +253,7 @@ export default function PatternEditor({
     setCanUndo(true)
   }
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (!canUndo) return
     const edit = undoStackRef.current.pop()
     if (!edit) {
@@ -204,15 +265,10 @@ export default function PatternEditor({
     patternRef.current = nextPattern
     onPatternChange(nextPattern)
     setCanUndo(undoStackRef.current.length > 0)
-
-    const node = canvasRef.current
-    if (node) {
-      const ctx = fullRedraw(node, nextPattern, selectionRef.current)
-      ctxRef.current = ctx
-    }
+    await redrawAndRefresh()
   }
 
-  const handleColorSelect = (colorId: string) => {
+  const handleColorSelect = async (colorId: string) => {
     const cell = selectionRef.current
     if (!cell) return
     const index = coordToCellIndex(patternRef.current, cell.col, cell.row)
@@ -228,10 +284,7 @@ export default function PatternEditor({
     pushUndo(edit)
     onPatternChange(nextPattern)
     setPickerVisible(false)
-  }
-
-  const handlePickerClose = () => {
-    setPickerVisible(false)
+    await redrawAndRefresh()
   }
 
   return (
@@ -239,11 +292,11 @@ export default function PatternEditor({
       <View className='pattern-editor__toolbar'>
         <Text
           className={`pattern-editor__action${canUndo ? '' : ' pattern-editor__action--disabled'}`}
-          onClick={handleUndo}
+          onClick={() => { void handleUndo() }}
         >
           撤销
         </Text>
-        <Text className='pattern-editor__hint'>双指放大 · 点击改色</Text>
+        <Text className='pattern-editor__hint'>双击改色 · 双指缩放拖动</Text>
         <Text className='pattern-editor__meta'>
           {pattern.width}×{pattern.height}
         </Text>
@@ -253,50 +306,57 @@ export default function PatternEditor({
         className='pattern-editor__viewport'
         style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
-        {!ready && !pickerVisible && (
+        {loading && (
           <View className='pattern-editor__loading'>
-            <Text>加载画布...</Text>
+            <Text>加载高清图...</Text>
           </View>
         )}
 
-        {!pickerVisible && (
+        {!loading && imageSrc && (
           <MovableArea
-            className={`pattern-editor__area${ready ? '' : ' pattern-editor__area--hidden'}`}
+            className='pattern-editor__area'
             style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
           >
             <MovableView
-              key={`${pattern.width}x${pattern.height}-${cellPx}`}
+              key={`${pattern.width}x${pattern.height}-${imageSrc}`}
               className='pattern-editor__content'
               direction='all'
               inertia
               scale
-              scaleMin={Math.max(0.2, initialScale * 0.6)}
-              scaleMax={maxScale}
+              scaleMin={0.2}
+              scaleMax={4}
               scaleValue={initialScale}
               x={initialPosition.x}
               y={initialPosition.y}
-              style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-              onScale={handleScale}
+              style={{
+                width: `${imageSize.width}px`,
+                height: `${imageSize.height}px`,
+              }}
             >
-              <View
-                className='pattern-editor__canvas-wrap'
-                style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-                onTouchStart={(event) => {
-                  if (!ready) return
-                  handleTouchStart(event)
+              <Image
+                className='pattern-editor__image'
+                src={imageSrc}
+                style={{
+                  width: `${imageSize.width}px`,
+                  height: `${imageSize.height}px`,
                 }}
-              >
-                <Canvas
-                  type='2d'
-                  id={CANVAS_ID}
-                  canvasId={CANVAS_ID}
-                  className='pattern-editor__canvas'
-                  style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-                />
-              </View>
+                showMenuByLongpress={false}
+                onTouchStart={handleImageTouchStart}
+                onTouchEnd={handleImageTouchEnd}
+              />
             </MovableView>
           </MovableArea>
         )}
+      </View>
+
+      <View className='pattern-editor__canvas-host'>
+        <Canvas
+          type='2d'
+          id={CANVAS_ID}
+          canvasId={CANVAS_ID}
+          className='pattern-editor__canvas'
+          style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+        />
       </View>
 
       {pickerVisible && (
@@ -304,8 +364,8 @@ export default function PatternEditor({
           visible={pickerVisible}
           pattern={pattern}
           currentColorId={selectedColorId}
-          onSelect={handleColorSelect}
-          onClose={handlePickerClose}
+          onSelect={(colorId) => { void handleColorSelect(colorId) }}
+          onClose={() => setPickerVisible(false)}
         />
       )}
     </View>
