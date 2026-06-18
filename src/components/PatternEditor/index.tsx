@@ -23,9 +23,8 @@ const CANVAS_ID = 'pattern-editor-canvas'
 const TOOLBAR_HEIGHT = 72
 const VIEW_PADDING = 16
 const MAX_UNDO = 40
-const DOUBLE_TAP_MS = 320
-const TAP_MOVE_TOLERANCE = 14
-const TAP_MAX_DURATION_MS = 280
+const DOUBLE_TAP_MS = 400
+const TAP_MOVE_TOLERANCE = 20
 
 interface PatternEditorProps {
   pattern: PatternResult
@@ -78,14 +77,14 @@ export default function PatternEditor({
   const selectionRef = useRef<GridCoord | null>(null)
   const undoStackRef = useRef<PatternCellEdit[]>([])
   const tapGestureRef = useRef({
-    startX: 0,
-    startY: 0,
-    startTime: 0,
     lastTapTime: 0,
     lastTapX: 0,
     lastTapY: 0,
+    touchStartX: 0,
+    touchStartY: 0,
   })
   const refreshTokenRef = useRef(0)
+  const lastTapEventRef = useRef(0)
 
   const [imageSrc, setImageSrc] = useState('')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
@@ -206,7 +205,10 @@ export default function PatternEditor({
   }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
 
   const openCellEditorAt = (x: number, y: number) => {
-    const coord = coordFromTouch(x, y, cellPx, patternRef.current)
+    const touchCellPx = imageSize.width > 0
+      ? imageSize.width / patternRef.current.width
+      : cellPx
+    const coord = coordFromTouch(x, y, touchCellPx, patternRef.current)
     if (!coord) return
     const index = coordToCellIndex(patternRef.current, coord.col, coord.row)
     selectionRef.current = coord
@@ -214,22 +216,16 @@ export default function PatternEditor({
     setPickerVisible(true)
   }
 
-  const handleImageTouchStart = (event: { detail: { x: number; y: number } }) => {
-    tapGestureRef.current.startX = event.detail.x
-    tapGestureRef.current.startY = event.detail.y
-    tapGestureRef.current.startTime = Date.now()
-  }
-
-  const handleImageTouchEnd = (event: { detail: { x: number; y: number } }) => {
-    const gesture = tapGestureRef.current
-    const duration = Date.now() - gesture.startTime
-    if (duration > TAP_MAX_DURATION_MS) return
-
-    const { x, y } = event.detail
-    const moved = Math.hypot(x - gesture.startX, y - gesture.startY)
-    if (moved > TAP_MOVE_TOLERANCE) return
+  const handleTapAt = (x: number, y: number) => {
+    if (typeof x !== 'number' || typeof y !== 'number' || Number.isNaN(x) || Number.isNaN(y)) {
+      return
+    }
 
     const now = Date.now()
+    if (now - lastTapEventRef.current < 80) return
+    lastTapEventRef.current = now
+
+    const gesture = tapGestureRef.current
     const isDoubleTap =
       now - gesture.lastTapTime < DOUBLE_TAP_MS
       && Math.hypot(x - gesture.lastTapX, y - gesture.lastTapY) < TAP_MOVE_TOLERANCE
@@ -243,6 +239,32 @@ export default function PatternEditor({
     tapGestureRef.current.lastTapTime = now
     tapGestureRef.current.lastTapX = x
     tapGestureRef.current.lastTapY = y
+  }
+
+  const handleImageTap = (event: { detail: { x: number; y: number } }) => {
+    handleTapAt(event.detail.x, event.detail.y)
+  }
+
+  const handleWrapTouchStart = (event: { touches?: Array<{ x: number; y: number }> }) => {
+    const touch = event.touches?.[0]
+    if (!touch) return
+    tapGestureRef.current.touchStartX = touch.x
+    tapGestureRef.current.touchStartY = touch.y
+  }
+
+  const handleWrapTouchEnd = (event: {
+    changedTouches?: Array<{ x: number; y: number }>
+    touches?: Array<{ x: number; y: number }>
+  }) => {
+    if ((event.touches?.length ?? 0) > 0) return
+    if (event.changedTouches?.length !== 1) return
+    const touch = event.changedTouches[0]
+    const moved = Math.hypot(
+      touch.x - tapGestureRef.current.touchStartX,
+      touch.y - tapGestureRef.current.touchStartY,
+    )
+    if (moved > TAP_MOVE_TOLERANCE) return
+    handleTapAt(touch.x, touch.y)
   }
 
   const pushUndo = (edit: PatternCellEdit) => {
@@ -333,17 +355,27 @@ export default function PatternEditor({
                 height: `${imageSize.height}px`,
               }}
             >
-              <Image
-                className='pattern-editor__image'
-                src={imageSrc}
+              <View
+                className='pattern-editor__image-wrap'
                 style={{
                   width: `${imageSize.width}px`,
                   height: `${imageSize.height}px`,
                 }}
-                showMenuByLongpress={false}
-                onTouchStart={handleImageTouchStart}
-                onTouchEnd={handleImageTouchEnd}
-              />
+                onClick={handleImageTap}
+                onTap={handleImageTap}
+                onTouchStart={handleWrapTouchStart}
+                onTouchEnd={handleWrapTouchEnd}
+              >
+                <Image
+                  className='pattern-editor__image'
+                  src={imageSrc}
+                  style={{
+                    width: `${imageSize.width}px`,
+                    height: `${imageSize.height}px`,
+                  }}
+                  showMenuByLongpress={false}
+                />
+              </View>
             </MovableView>
           </MovableArea>
         )}

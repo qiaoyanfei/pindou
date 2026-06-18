@@ -94,8 +94,13 @@
   display: block;
 }
 
+.pattern-editor__image-wrap {
+  display: block;
+}
+
 .pattern-editor__image {
   display: block;
+  pointer-events: none;
 }
 
 .pattern-editor__loading {
