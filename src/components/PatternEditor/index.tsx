@@ -145,14 +145,24 @@ export default function PatternEditor({
       .exec((res) => {
         const node = res?.[0]?.node as CanvasNode | undefined
         if (!node) {
-          if (retry < 8) {
-            setTimeout(() => initCanvas(retry + 1), 120)
+          if (retry < 12) {
+            setTimeout(() => initCanvas(retry + 1), 150)
+            return
           }
+          Taro.showToast({ title: '画布加载失败', icon: 'none' })
           return
         }
 
         canvasRef.current = node
         const ctx = fullRedraw(node, patternRef.current, selectionRef.current)
+        if (!ctx) {
+          if (retry < 12) {
+            setTimeout(() => initCanvas(retry + 1), 150)
+            return
+          }
+          Taro.showToast({ title: '画布加载失败', icon: 'none' })
+          return
+        }
         ctxRef.current = ctx
         setReady(true)
       })
@@ -264,41 +274,42 @@ export default function PatternEditor({
           </View>
         )}
 
-        {ready && (
-          <MovableArea
-            className='pattern-editor__area'
-            style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
+        <MovableArea
+          className={`pattern-editor__area${ready ? '' : ' pattern-editor__area--hidden'}`}
+          style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
+        >
+          <MovableView
+            key={`${pattern.width}x${pattern.height}-${cellPx}`}
+            className='pattern-editor__content'
+            direction='all'
+            inertia
+            scale
+            scaleMin={Math.min(initialScale, 0.3)}
+            scaleMax={maxScale}
+            scaleValue={initialScale}
+            x={initialPosition.x}
+            y={initialPosition.y}
+            style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
+            onScale={handleScale}
           >
-            <MovableView
-              key={`${pattern.width}x${pattern.height}-${cellPx}`}
-              className='pattern-editor__content'
-              direction='all'
-              inertia
-              scale
-              scaleMin={Math.min(initialScale, 0.3)}
-              scaleMax={maxScale}
-              scaleValue={initialScale}
-              x={initialPosition.x}
-              y={initialPosition.y}
+            <View
+              className='pattern-editor__canvas-wrap'
               style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-              onScale={handleScale}
+              onTouchStart={(event) => {
+                if (!ready) return
+                handleTouchStart(event)
+              }}
             >
-              <View
-                className='pattern-editor__canvas-wrap'
+              <Canvas
+                type='2d'
+                id={CANVAS_ID}
+                canvasId={CANVAS_ID}
+                className='pattern-editor__canvas'
                 style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-                onTouchStart={handleTouchStart}
-              >
-                <Canvas
-                  type='2d'
-                  id={CANVAS_ID}
-                  canvasId={CANVAS_ID}
-                  className='pattern-editor__canvas'
-                  style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}
-                />
-              </View>
-            </MovableView>
-          </MovableArea>
-        )}
+              />
+            </View>
+          </MovableView>
+        </MovableArea>
       </View>
 
       <ColorPickerSheet
