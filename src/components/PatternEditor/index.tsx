@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
 import {
-  getEditCellPx,
   getEditHdCellPx,
   paintCellSelectionOutline,
   paintPatternGrid,
@@ -56,24 +55,21 @@ export default function PatternEditor({
     [pattern.width, pattern.height, config.exportCellPx],
   )
 
-  const cellPx = useMemo(
-    () => getEditCellPx(pattern, config.exportCellPx, viewportWidth, scrollHeight, VIEW_PADDING * 2),
-    [pattern.width, pattern.height, config.exportCellPx, viewportWidth, scrollHeight],
-  )
+  const cellPx = hdCellPx
 
   const canvasWidth = pattern.width * cellPx
   const canvasHeight = pattern.height * cellPx
 
-  const maxScale = useMemo(
-    () => Math.max(1, Math.min(6, hdCellPx / cellPx)),
-    [hdCellPx, cellPx],
-  )
-
   const initialScale = useMemo(() => {
     const horizontalFit = (viewportWidth - VIEW_PADDING) / canvasWidth
     const verticalFit = (scrollHeight - VIEW_PADDING) / canvasHeight
-    return Math.max(0.3, Math.min(horizontalFit, verticalFit, 1))
+    return Math.max(0.2, Math.min(horizontalFit, verticalFit))
   }, [viewportWidth, scrollHeight, canvasWidth, canvasHeight])
+
+  const maxScale = useMemo(
+    () => Math.max(initialScale, 1),
+    [initialScale],
+  )
 
   const initialPosition = useMemo(() => {
     const scaledW = canvasWidth * initialScale
@@ -247,7 +243,7 @@ export default function PatternEditor({
         >
           撤销
         </Text>
-        <Text className='pattern-editor__hint'>双指缩放 · 点击改色</Text>
+        <Text className='pattern-editor__hint'>双指放大 · 点击改色</Text>
         <Text className='pattern-editor__meta'>
           {pattern.width}×{pattern.height}
         </Text>
@@ -274,7 +270,7 @@ export default function PatternEditor({
               direction='all'
               inertia
               scale
-              scaleMin={Math.min(initialScale, 0.3)}
+              scaleMin={Math.max(0.2, initialScale * 0.6)}
               scaleMax={maxScale}
               scaleValue={initialScale}
               x={initialPosition.x}

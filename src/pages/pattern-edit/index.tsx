@@ -98,7 +98,7 @@ export default function PatternEditPage() {
             完成
           </Text>
           <Text className='pattern-edit-page__nav-title'>
-            {pattern.width}×{pattern.height} · 编辑
+            {pattern.width}×{pattern.height} · 高清预览
           </Text>
         </View>
       </View>

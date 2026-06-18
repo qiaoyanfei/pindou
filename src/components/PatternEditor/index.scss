@@ -13,7 +13,7 @@
   flex-direction: column;
   min-height: 0;
   border-radius: 0;
-  background: #eef0f3;
+  background: #fff;
 }
 
 .pattern-editor__toolbar {
@@ -58,11 +58,12 @@
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: #eef0f3;
+  background: #fff;
 }
 
 .pattern-editor__area {
   overflow: hidden;
+  background: #fff;
 }
 
 .pattern-editor__area--hidden {
