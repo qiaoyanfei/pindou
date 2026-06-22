@@ -37,6 +37,39 @@ export function coordFromTouch(
   return { col, row }
 }
 
+/** 吸附到最近的格子中心，扩大可点击范围 */
+export function coordFromTouchNearest(
+  touchX: number,
+  touchY: number,
+  cellPx: number,
+  pattern: PatternResult,
+  hitRadiusRatio = 0.92,
+): GridCoord | null {
+  const baseCol = Math.floor(touchX / cellPx)
+  const baseRow = Math.floor(touchY / cellPx)
+  const hitRadius = cellPx * hitRadiusRatio
+  let best: GridCoord | null = null
+  let bestDist = Infinity
+
+  for (let dr = -1; dr <= 1; dr += 1) {
+    for (let dc = -1; dc <= 1; dc += 1) {
+      const col = baseCol + dc
+      const row = baseRow + dr
+      if (col < 0 || row < 0 || col >= pattern.width || row >= pattern.height) continue
+      const centerX = col * cellPx + cellPx / 2
+      const centerY = row * cellPx + cellPx / 2
+      const dist = Math.hypot(touchX - centerX, touchY - centerY)
+      if (dist < bestDist) {
+        bestDist = dist
+        best = { col, row }
+      }
+    }
+  }
+
+  if (!best || bestDist > hitRadius) return null
+  return best
+}
+
 export function setPatternCellColor(
   pattern: PatternResult,
   index: number,

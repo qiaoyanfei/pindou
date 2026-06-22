@@ -95,11 +95,20 @@
 }
 
 .pattern-editor__image-wrap {
+  position: relative;
   display: block;
 }
 
 .pattern-editor__image {
   display: block;
+  pointer-events: none;
+}
+
+.pattern-editor__image--preload {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
   pointer-events: none;
 }
 

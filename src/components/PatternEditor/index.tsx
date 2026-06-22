@@ -10,7 +10,7 @@ import {
 import { canvasToTempFile } from '@/utils/canvas'
 import {
   applyPatternCellEdit,
-  coordFromTouch,
+  coordFromTouchNearest,
   coordToCellIndex,
   revertPatternCellEdit,
   type GridCoord,
@@ -24,9 +24,9 @@ const IMAGE_WRAP_ID = 'pattern-editor-image-wrap'
 const TOOLBAR_HEIGHT = 72
 const VIEW_PADDING = 16
 const MAX_UNDO = 40
-const DOUBLE_TAP_MS = 400
-const TAP_MOVE_TOLERANCE = 12
-const DOUBLE_TAP_SCREEN_TOLERANCE = 24
+const DOUBLE_TAP_MS = 450
+const TAP_MOVE_TOLERANCE = 16
+const DOUBLE_TAP_SCREEN_TOLERANCE = 40
 
 interface ScreenTouch {
   clientX: number
@@ -93,12 +93,19 @@ export default function PatternEditor({
   const refreshTokenRef = useRef(0)
   const lastTapEventRef = useRef(0)
   const imageSizeRef = useRef({ width: 0, height: 0 })
+  const imageSrcRef = useRef('')
+  const preloadPendingRef = useRef<{ src: string; width: number; height: number } | null>(null)
+  /** 首次挂载时的默认视口 */
+  const viewportInitRef = useRef<{ scale: number; x: number; y: number } | null>(null)
+  /** 当前视口（手势实时写入 ref，改色后重渲染时恢复） */
+  const viewportLiveRef = useRef({ scale: 1, x: 0, y: 0 })
 
   const [imageSrc, setImageSrc] = useState('')
+  const [preloadSrc, setPreloadSrc] = useState('')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [selectedColorId, setSelectedColorId] = useState('')
   const [pickerVisible, setPickerVisible] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
 
   patternRef.current = pattern
@@ -137,26 +144,70 @@ export default function PatternEditor({
     return ctx
   }, [canvasWidth, canvasHeight, cellPx, paintOptions])
 
-  const refreshDisplay = useCallback(async () => {
+  const applyImageSize = useCallback((width: number, height: number) => {
+    const prev = imageSizeRef.current
+    if (prev.width === width && prev.height === height) return
+    const next = { width, height }
+    imageSizeRef.current = next
+    setImageSize(next)
+  }, [])
+
+  const commitDisplayImage = useCallback((src: string, width: number, height: number) => {
+    imageSrcRef.current = src
+    setImageSrc(src)
+    applyImageSize(width, height)
+  }, [applyImageSize])
+
+  const handlePreloadLoad = useCallback(() => {
+    const pending = preloadPendingRef.current
+    if (!pending) return
+    preloadPendingRef.current = null
+    commitDisplayImage(pending.src, pending.width, pending.height)
+    setPreloadSrc('')
+  }, [commitDisplayImage])
+
+  const refreshDisplay = useCallback(async (silent = false) => {
     const token = refreshTokenRef.current + 1
     refreshTokenRef.current = token
+    preloadPendingRef.current = null
+    setPreloadSrc('')
     try {
       const tempFilePath = await canvasToTempFile(CANVAS_ID)
       if (token !== refreshTokenRef.current) return
       const info = await Taro.getImageInfo({ src: tempFilePath })
       if (token !== refreshTokenRef.current) return
-      setImageSrc(tempFilePath)
-      setImageSize({ width: info.width, height: info.height })
+
+      if (!imageSrcRef.current) {
+        commitDisplayImage(tempFilePath, info.width, info.height)
+        return
+      }
+
+      if (tempFilePath === imageSrcRef.current) return
+
+      preloadPendingRef.current = {
+        src: tempFilePath,
+        width: info.width,
+        height: info.height,
+      }
+      setPreloadSrc(tempFilePath)
+      setTimeout(() => {
+        if (token !== refreshTokenRef.current) return
+        const pending = preloadPendingRef.current
+        if (!pending || pending.src !== tempFilePath) return
+        preloadPendingRef.current = null
+        commitDisplayImage(pending.src, pending.width, pending.height)
+        setPreloadSrc('')
+      }, 120)
     } catch {
-      if (token === refreshTokenRef.current) {
+      if (token === refreshTokenRef.current && !silent) {
         Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
       }
     } finally {
       if (token === refreshTokenRef.current) {
-        setLoading(false)
+        setInitialLoading(false)
       }
     }
-  }, [])
+  }, [commitDisplayImage])
 
   const initCanvas = useCallback(async (retry = 0) => {
     Taro.createSelectorQuery()
@@ -170,7 +221,7 @@ export default function PatternEditor({
             return
           }
           Taro.showToast({ title: '画布加载失败', icon: 'none' })
-          setLoading(false)
+          setInitialLoading(false)
           return
         }
 
@@ -182,7 +233,7 @@ export default function PatternEditor({
             return
           }
           Taro.showToast({ title: '画布加载失败', icon: 'none' })
-          setLoading(false)
+          setInitialLoading(false)
           return
         }
         ctxRef.current = ctx
@@ -196,8 +247,7 @@ export default function PatternEditor({
     const ctx = fullRedraw(node, patternRef.current, selectionRef.current)
     if (!ctx) return
     ctxRef.current = ctx
-    setLoading(true)
-    await refreshDisplay()
+    await refreshDisplay(true)
   }, [fullRedraw, refreshDisplay])
 
   useEffect(() => {
@@ -207,8 +257,14 @@ export default function PatternEditor({
     setSelectedColorId('')
     setPickerVisible(false)
     setImageSrc('')
+    setPreloadSrc('')
+    preloadPendingRef.current = null
+    imageSrcRef.current = ''
     setImageSize({ width: 0, height: 0 })
-    setLoading(true)
+    imageSizeRef.current = { width: 0, height: 0 }
+    viewportInitRef.current = null
+    viewportLiveRef.current = { scale: 1, x: 0, y: 0 }
+    setInitialLoading(true)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
   }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas])
@@ -246,7 +302,7 @@ export default function PatternEditor({
     const touchCellPx = size.width > 0
       ? size.width / patternRef.current.width
       : cellPx
-    const coord = coordFromTouch(x, y, touchCellPx, patternRef.current)
+    const coord = coordFromTouchNearest(x, y, touchCellPx, patternRef.current)
     if (!coord) return
     const index = coordToCellIndex(patternRef.current, coord.col, coord.row)
     selectionRef.current = coord
@@ -327,6 +383,29 @@ export default function PatternEditor({
     handleScreenTap(touch)
   }
 
+  if (imageSize.width && !viewportInitRef.current) {
+    const init = {
+      scale: initialScale,
+      x: initialPosition.x,
+      y: initialPosition.y,
+    }
+    viewportInitRef.current = init
+    viewportLiveRef.current = init
+  }
+
+  const viewportInit = viewportInitRef.current
+  const showViewport = Boolean(imageSrc && !initialLoading && viewportInit)
+  const viewportLive = viewportLiveRef.current
+
+  const handleViewChange = (event: { detail: { x: number; y: number } }) => {
+    viewportLiveRef.current.x = event.detail.x
+    viewportLiveRef.current.y = event.detail.y
+  }
+
+  const handleViewScale = (event: { detail: { scale: number } }) => {
+    viewportLiveRef.current.scale = event.detail.scale
+  }
+
   const pushUndo = (edit: PatternCellEdit) => {
     undoStackRef.current.push(edit)
     if (undoStackRef.current.length > MAX_UNDO) {
@@ -365,8 +444,8 @@ export default function PatternEditor({
     patternRef.current = nextPattern
     pushUndo(edit)
     onPatternChange(nextPattern)
-    setPickerVisible(false)
     await redrawAndRefresh()
+    setPickerVisible(false)
   }
 
   return (
@@ -378,7 +457,7 @@ export default function PatternEditor({
         >
           撤销
         </Text>
-        <Text className='pattern-editor__hint'>双击改色 · 双指缩放拖动</Text>
+        <Text className='pattern-editor__hint'>双击改色 · 可放大拖动</Text>
         <Text className='pattern-editor__meta'>
           {pattern.width}×{pattern.height}
         </Text>
@@ -388,32 +467,34 @@ export default function PatternEditor({
         className='pattern-editor__viewport'
         style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
-        {loading && (
+        {initialLoading && (
           <View className='pattern-editor__loading'>
             <Text>加载高清图...</Text>
           </View>
         )}
 
-        {!loading && imageSrc && (
+        {showViewport && (
           <MovableArea
             className='pattern-editor__area'
             style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
           >
             <MovableView
-              key={`${pattern.width}x${pattern.height}-${imageSrc}`}
+              key={`${pattern.width}x${pattern.height}-${cellPx}`}
               className='pattern-editor__content'
               direction='all'
               inertia
               scale
               scaleMin={0.2}
               scaleMax={4}
-              scaleValue={initialScale}
-              x={initialPosition.x}
-              y={initialPosition.y}
+              scaleValue={viewportLive.scale}
+              x={viewportLive.x}
+              y={viewportLive.y}
               style={{
                 width: `${imageSize.width}px`,
                 height: `${imageSize.height}px`,
               }}
+              onChange={handleViewChange}
+              onScale={handleViewScale}
             >
               <View
                 id={IMAGE_WRAP_ID}
@@ -425,6 +506,18 @@ export default function PatternEditor({
                 onTouchStart={handleWrapTouchStart}
                 onTouchEnd={handleWrapTouchEnd}
               >
+                {preloadSrc ? (
+                  <Image
+                    className='pattern-editor__image pattern-editor__image--preload'
+                    src={preloadSrc}
+                    style={{
+                      width: `${imageSize.width}px`,
+                      height: `${imageSize.height}px`,
+                    }}
+                    showMenuByLongpress={false}
+                    onLoad={handlePreloadLoad}
+                  />
+                ) : null}
                 <Image
                   className='pattern-editor__image'
                   src={imageSrc}
