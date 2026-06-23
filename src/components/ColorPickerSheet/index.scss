@@ -6,6 +6,10 @@
   z-index: 100000;
 }
 
+.color-picker-sheet--hidden {
+  display: none;
+}
+
 .color-picker-sheet__mask {
   position: absolute;
   inset: 0;
@@ -19,13 +23,31 @@
   right: 0;
   bottom: 0;
   z-index: 2;
+  height: 72vh;
   max-height: 72vh;
-  padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
   border-radius: 28px 28px 0 0;
   background: #fff;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.color-picker-sheet__panel-body {
+  padding: 24px 24px 0;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__list-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px calc(24px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.color-picker-sheet__list {
+  height: 100%;
 }
 
 .color-picker-sheet__header {
@@ -75,6 +97,64 @@
   color: $color-text;
 }
 
+.color-picker-sheet__mode {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.color-picker-sheet__mode-btn {
+  flex: 1;
+  padding: 14px 0;
+  border-radius: 14px;
+  background: $color-bg;
+  color: $color-text-secondary;
+  font-size: 26px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.color-picker-sheet__mode-btn--active {
+  background: $color-primary-light;
+  color: $color-primary;
+  font-weight: 600;
+}
+
+.color-picker-sheet__batch-hint {
+  display: block;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 24px;
+  line-height: 1.5;
+}
+
+.color-picker-sheet__batch-panel {
+  margin-bottom: 16px;
+}
+
+.color-picker-sheet__batch-panel--hidden {
+  display: none;
+}
+
+.color-picker-sheet__batch-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.color-picker-sheet__batch-action {
+  flex: 1;
+  padding: 12px 0;
+  border-radius: 12px;
+  background: $color-primary-light;
+  color: $color-primary;
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+}
+
 .color-picker-sheet__search {
   margin-bottom: 16px;
 }
@@ -106,12 +186,6 @@
   background: $color-primary-light;
   color: $color-primary;
   font-weight: 600;
-}
-
-.color-picker-sheet__list {
-  flex: 1;
-  min-height: 240px;
-  max-height: 44vh;
 }
 
 .color-picker-sheet__grid {
