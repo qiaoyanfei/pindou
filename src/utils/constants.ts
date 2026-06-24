@@ -2,7 +2,7 @@ import type { LegacyStyleMode, PatternConfig, StyleMode } from '@/types'
 
 export const STYLE_MODE_LONG_EDGE_LIMITS: Record<StyleMode, { min: number; max: number }> = {
   portrait: { min: 29, max: 300 },
-  manga: { min: 29, max: 160 },
+  manga: { min: 20, max: 160 },
 }
 
 export function getLongEdgeLimits(styleMode: StyleMode): { min: number; max: number } {

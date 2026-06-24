@@ -6,9 +6,10 @@ import PatternCanvas from '@/components/PatternCanvas'
 import ColorStats from '@/components/ColorStats'
 import { canvasToTempFile } from '@/utils/canvas'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
+import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
-import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
+import { DEFAULT_CONFIG, getExportClarityLabel, normalizeConfig } from '@/utils/constants'
 import { getCoverCellPx } from '@/services/patternRenderer'
 import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
 import saveIcon from '@/assets/icons/preview-save.svg'
@@ -84,32 +85,16 @@ export default function PreviewPage() {
       if (job === 'save') {
         setSaving(true)
         Taro.showLoading({ title: '保存中...' })
-
-        const setting = await Taro.getSetting()
-        if (!setting.authSetting['scope.writePhotosAlbum']) {
-          await Taro.authorize({ scope: 'scope.writePhotosAlbum' })
-        }
-
-        const tempFilePath = await canvasToTempFile('export-canvas')
-        await Taro.saveImageToPhotosAlbum({ filePath: tempFilePath })
-
+        await saveCanvasToAlbum('export-canvas')
         Taro.hideLoading()
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
       }
     } catch (error) {
       Taro.hideLoading()
-      const message = (error as { errMsg?: string })?.errMsg ?? ''
-      if (job === 'save' && (message.includes('auth deny') || message.includes('authorize'))) {
-        Taro.showModal({
-          title: '需要相册权限',
-          content: `请在设置中允许保存图片到相册，以便保存${MINI_PROGRAM_NAME}图纸。`,
-          confirmText: '去设置',
-          success: (res) => {
-            if (res.confirm) Taro.openSetting()
-          },
-        })
+      if (job === 'save') {
+        handleAlbumSaveError(error)
       } else {
-        notifyOperationError(error, job === 'save' ? '保存失败' : '准备发布失败')
+        notifyOperationError(error, '准备发布失败')
       }
     } finally {
       if (job === 'save') setSaving(false)

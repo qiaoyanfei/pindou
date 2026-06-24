@@ -1,5 +1,10 @@
 export default defineAppConfig({
   lazyCodeLoading: 'requiredComponents',
+  permission: {
+    'scope.writePhotosAlbum': {
+      desc: '用于将生成的拼豆图纸保存到您的相册',
+    },
+  },
   pages: [
     'pages/home/index',
     'pages/generate/index',
