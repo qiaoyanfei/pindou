@@ -60,33 +60,39 @@ export default function PostDetailPage() {
   const [downloading, setDownloading] = useState(false)
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
   const exportPayloadRef = useRef<ExportPayload | null>(null)
+  const postRef = useRef<PostDetail | null>(null)
   const [showAllColors, setShowAllColors] = useState(false)
   const [previewFrame, setPreviewFrame] = useState(getPreviewFrameSize)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const downloadCost = getCachedConfig()?.downloadCost ?? 0
   const loginRedirectUrl = `/pages/post-detail/index?id=${postId}`
 
+  postRef.current = post
+
   useEffect(() => {
     setPreviewFrame(getPreviewFrameSize())
   }, [])
 
-  const loadPost = useCallback(async () => {
+  const loadPost = useCallback(async (options?: { silent?: boolean }) => {
     if (!postId) {
       setLoading(false)
       return
     }
-    setLoading(true)
+    const silent = options?.silent ?? Boolean(postRef.current)
+    if (!silent) setLoading(true)
     try {
       const detail = await fetchPostDetail(postId)
       setPost(detail)
       void resolvePatternForPreview(detail).catch(() => {})
     } catch (error) {
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
+      if (!silent) {
+        Taro.showToast({
+          title: error instanceof Error ? error.message : '加载失败',
+          icon: 'none',
+        })
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [postId])
 
@@ -94,7 +100,7 @@ export default function PostDetailPage() {
     restoreSessionFromStorage()
     setIsLoggedIn(isUserAuthenticated(getCachedUser()))
     Taro.showShareMenu({ withShareTicket: true, showShareItems: ['shareAppMessage'] })
-    loadPost()
+    void loadPost({ silent: Boolean(postRef.current) })
   })
 
   useShareContent(() => ({

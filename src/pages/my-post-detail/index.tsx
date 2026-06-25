@@ -89,7 +89,10 @@ export default function MyPostDetailPage() {
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
   const loadTokenRef = useRef(0)
   const postRef = useRef<PostDetail | null>(null)
+  const sourceRef = useRef<DetailSource | null>(null)
   const exportPayloadRef = useRef<ExportPayload | null>(null)
+
+  sourceRef.current = source
 
   const reviewStatus = source?.reviewStatus || 'draft'
   const isApproved = reviewStatus === 'approved'
@@ -97,14 +100,15 @@ export default function MyPostDetailPage() {
   const isRejected = reviewStatus === 'rejected'
   const isDraft = reviewStatus === 'draft'
 
-  const loadDetail = useCallback(async () => {
+  const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
     if (!itemId) {
       setLoading(false)
       return
     }
 
+    const silent = options?.silent ?? Boolean(sourceRef.current)
     const token = ++loadTokenRef.current
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const post = await fetchPostDetail(itemId)
       if (token !== loadTokenRef.current) return
@@ -137,13 +141,15 @@ export default function MyPostDetailPage() {
       })
     } catch (error) {
       if (token !== loadTokenRef.current) return
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
+      if (!silent) {
+        Taro.showToast({
+          title: error instanceof Error ? error.message : '加载失败',
+          icon: 'none',
+        })
+      }
     } finally {
       if (token !== loadTokenRef.current) return
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [itemId])
 
@@ -152,7 +158,7 @@ export default function MyPostDetailPage() {
   })
 
   useDidShow(() => {
-    loadDetail()
+    void loadDetail({ silent: Boolean(sourceRef.current) })
   })
 
   useEffect(() => {

@@ -67,7 +67,7 @@ export default function ColorPickerSheet({
 
   return (
     <View className='color-picker-sheet'>
-      <View className='color-picker-sheet__mask' onClick={onClose} />
+      <View className='color-picker-sheet__mask' catchMove />
       <View className='color-picker-sheet__panel'>
         <View className='color-picker-sheet__panel-body'>
           <View className='color-picker-sheet__header'>

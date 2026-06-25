@@ -71,38 +71,37 @@
 .pattern-editor__viewport {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   background: #fff;
 }
 
 .pattern-editor__area {
-  overflow: hidden;
-  background: #fff;
-}
-
-.pattern-editor__frozen {
   position: relative;
   overflow: hidden;
   background: #fff;
 }
 
-.pattern-editor__frozen-content {
+.pattern-editor__area--fill {
+  width: 100%;
+  height: 100%;
+}
+
+.pattern-editor__content {
   position: absolute;
   left: 0;
   top: 0;
   transform-origin: 0 0;
 }
 
-.pattern-editor__highlights {
+.pattern-editor__highlights-layer {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   pointer-events: none;
-}
-
-.pattern-editor__content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  z-index: 1;
 }
 
 .pattern-editor__scroll {

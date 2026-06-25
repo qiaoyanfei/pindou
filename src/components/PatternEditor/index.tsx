@@ -1,4 +1,4 @@
-import { View, Text, Canvas, Image } from '@tarojs/components'
+import { View, Text, Canvas } from '@tarojs/components'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
@@ -24,9 +24,7 @@ import type { PatternConfig, PatternResult } from '@/types'
 import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
-const IMAGE_WRAP_ID = 'pattern-editor-image-wrap'
-const MOVABLE_AREA_ID = 'pattern-editor-movable-area'
-const TOOLBAR_HEIGHT = 72
+const VIEWPORT_AREA_ID = 'pattern-editor-viewport-area'
 const VIEW_PADDING = 16
 const MAX_UNDO = 40
 const DOUBLE_TAP_MS = 450
@@ -58,13 +56,8 @@ export default function PatternEditor({
 }: PatternEditorProps) {
   const sys = Taro.getWindowInfo()
   const viewportWidth = sys.windowWidth
-  const viewportHeight = sys.windowHeight
 
-  const scrollHeight = useMemo(() => {
-    const menu = Taro.getMenuButtonBoundingClientRect()
-    const navHeight = menu.top + menu.height + 8
-    return viewportHeight - navHeight - TOOLBAR_HEIGHT
-  }, [viewportHeight])
+  const [frameHeight, setFrameHeight] = useState(0)
 
   const cellPx = useMemo(
     () => getEditHdCellPx(pattern, config.exportCellPx),
@@ -90,6 +83,7 @@ export default function PatternEditor({
   const selectionRef = useRef<GridCoord | null>(null)
   const selectedIndicesRef = useRef<Set<number>>(new Set())
   const isPickingCellsRef = useRef(false)
+  const pickerVisibleRef = useRef(false)
   const undoStackRef = useRef<PatternUndoEntry[]>([])
   const tapGestureRef = useRef({
     lastTapTime: 0,
@@ -110,16 +104,16 @@ export default function PatternEditor({
     height: number
     preserveViewport: boolean
   } | null>(null)
+  const displayCommitWaiterRef = useRef<(() => void) | null>(null)
   const viewportInitRef = useRef<{ scale: number; x: number; y: number } | null>(null)
   const viewportLiveRef = useRef<ViewportTransform>({ scale: 1, x: 0, y: 0 })
   const viewportLockedRef = useRef(false)
-  const viewportDirtyRef = useRef(false)
-  const wasPickingCellsRef = useRef(false)
 
   const [imageSrc, setImageSrc] = useState('')
   const [preloadSrc, setPreloadSrc] = useState('')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [viewport, setViewport] = useState<ViewportTransform>({ scale: 1, x: 0, y: 0 })
+  const [viewportReady, setViewportReady] = useState(false)
   const [pickingHighlights, setPickingHighlights] = useState<CellHighlight[]>([])
   const [selectedColorId, setSelectedColorId] = useState('')
   const [pickerVisible, setPickerVisible] = useState(false)
@@ -131,13 +125,27 @@ export default function PatternEditor({
   patternRef.current = pattern
   imageSizeRef.current = imageSize
   isPickingCellsRef.current = isPickingCells
+  pickerVisibleRef.current = pickerVisible
+
+  const measureViewportFrame = useCallback(() => {
+    Taro.createSelectorQuery()
+      .select('#pattern-editor-viewport-frame')
+      .boundingClientRect((rect) => {
+        const box = rect as { height: number } | null
+        if (box?.height) {
+          setFrameHeight(Math.round(box.height))
+        }
+      })
+      .exec()
+  }, [])
 
   const syncSelectionCount = useCallback(() => {
     setSelectionCount(selectedIndicesRef.current.size)
   }, [])
 
-  const syncPickingHighlights = useCallback(() => {
-    if (!isPickingCellsRef.current) {
+  const syncSelectionHighlights = useCallback(() => {
+    const shouldShow = isPickingCellsRef.current || pickerVisibleRef.current
+    if (!shouldShow || selectedIndicesRef.current.size === 0) {
       setPickingHighlights([])
       return
     }
@@ -149,6 +157,10 @@ export default function PatternEditor({
     )
   }, [])
 
+  useEffect(() => {
+    syncSelectionHighlights()
+  }, [pickerVisible, isPickingCells, selectionCount, syncSelectionHighlights])
+
   const commitViewportState = useCallback((next?: ViewportTransform) => {
     const merged = next ?? { ...viewportLiveRef.current }
     viewportLiveRef.current = merged
@@ -158,8 +170,8 @@ export default function PatternEditor({
   const clearSelection = useCallback(() => {
     selectedIndicesRef.current.clear()
     syncSelectionCount()
-    syncPickingHighlights()
-  }, [syncPickingHighlights, syncSelectionCount])
+    syncSelectionHighlights()
+  }, [syncSelectionHighlights, syncSelectionCount])
 
   const fullRedraw = useCallback((
     node: CanvasNode,
@@ -185,21 +197,21 @@ export default function PatternEditor({
   }, [canvasWidth, canvasHeight, cellPx, paintOptions])
 
   const initialScale = useMemo(() => {
-    if (!imageSize.width) return 1
+    if (!imageSize.width || !frameHeight) return 1
     const horizontalFit = (viewportWidth - VIEW_PADDING) / imageSize.width
-    const verticalFit = (scrollHeight - VIEW_PADDING) / imageSize.height
+    const verticalFit = (frameHeight - VIEW_PADDING) / imageSize.height
     return Math.max(0.2, Math.min(horizontalFit, verticalFit))
-  }, [viewportWidth, scrollHeight, imageSize])
+  }, [viewportWidth, frameHeight, imageSize])
 
   const initialPosition = useMemo(() => {
-    if (!imageSize.width) return { x: 0, y: 0 }
+    if (!imageSize.width || !frameHeight) return { x: 0, y: 0 }
     const scaledW = imageSize.width * initialScale
     const scaledH = imageSize.height * initialScale
     return {
       x: Math.max(0, Math.round((viewportWidth - scaledW) / 2)),
-      y: Math.max(0, Math.round((scrollHeight - scaledH) / 2)),
+      y: Math.max(0, Math.round((frameHeight - scaledH) / 2)),
     }
-  }, [imageSize, initialScale, viewportWidth, scrollHeight])
+  }, [imageSize, initialScale, viewportWidth, frameHeight])
 
   const applyImageSize = useCallback((width: number, height: number) => {
     const prev = imageSizeRef.current
@@ -217,73 +229,25 @@ export default function PatternEditor({
     applyImageSize(width, height)
   }, [applyImageSize])
 
-  const syncViewportFromDom = useCallback((): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const size = imageSizeRef.current
-      if (!size.width || !size.height) {
-        resolve(false)
-        return
-      }
-
-      Taro.createSelectorQuery()
-        .select(`#${IMAGE_WRAP_ID}`)
-        .boundingClientRect()
-        .select(`#${MOVABLE_AREA_ID}`)
-        .boundingClientRect()
-        .exec((res) => {
-          const wrap = res?.[0] as { left: number; top: number; width: number; height: number } | null
-          const area = res?.[1] as { left: number; top: number; width: number; height: number } | null
-          if (!wrap?.width || !area) {
-            resolve(false)
-            return
-          }
-
-          viewportLiveRef.current = {
-            scale: Math.max(0.2, Math.min(4, wrap.width / size.width)),
-            x: Math.round(wrap.left - area.left),
-            y: Math.round(wrap.top - area.top),
-          }
-          resolve(true)
-        })
-    })
+  const resolveDisplayCommitWaiter = useCallback(() => {
+    const resolve = displayCommitWaiterRef.current
+    displayCommitWaiterRef.current = null
+    resolve?.()
   }, [])
-
-  const waitNextFrame = useCallback(() => (
-    new Promise<void>((resolve) => {
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => resolve())
-        return
-      }
-      setTimeout(resolve, 16)
-    })
-  ), [])
-
-  const syncViewportState = useCallback(async (next?: ViewportTransform) => {
-    if (next) {
-      viewportLiveRef.current = next
-    } else if (viewportLockedRef.current) {
-      await waitNextFrame()
-      await syncViewportFromDom()
-    }
-    commitViewportState()
-  }, [commitViewportState, syncViewportFromDom, waitNextFrame])
 
   const finalizeImageCommit = useCallback(async (
     src: string,
     width: number,
     height: number,
-    preserveViewport = false,
   ) => {
-    if (viewportLockedRef.current && viewportDirtyRef.current && !preserveViewport && !isPickingCellsRef.current) {
-      await syncViewportState()
-    }
     commitDisplayImage(src, width, height)
-  }, [commitDisplayImage, syncViewportState])
+  }, [commitDisplayImage])
 
   const cancelPreload = useCallback(() => {
     preloadPendingRef.current = null
     setPreloadSrc('')
-  }, [])
+    resolveDisplayCommitWaiter()
+  }, [resolveDisplayCommitWaiter])
 
   const handlePreloadLoad = useCallback(() => {
     const pending = preloadPendingRef.current
@@ -293,16 +257,17 @@ export default function PatternEditor({
       pending.src,
       pending.width,
       pending.height,
-      pending.preserveViewport,
     ).then(() => {
       setPreloadSrc('')
+      resolveDisplayCommitWaiter()
     })
-  }, [finalizeImageCommit])
+  }, [finalizeImageCommit, resolveDisplayCommitWaiter])
 
   const handlePreloadError = useCallback(() => {
     preloadPendingRef.current = null
     setPreloadSrc('')
-  }, [])
+    resolveDisplayCommitWaiter()
+  }, [resolveDisplayCommitWaiter])
 
   const handleDisplayImageError = useCallback(() => {
     const fallback = lastGoodImageSrcRef.current
@@ -317,32 +282,45 @@ export default function PatternEditor({
     height: number,
     token: number,
     preserveViewport = false,
-  ) => {
-    if (!imageSrcRef.current) {
-      commitDisplayImage(src, width, height)
-      return
-    }
+  ): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!imageSrcRef.current) {
+        commitDisplayImage(src, width, height)
+        resolve()
+        return
+      }
 
-    if (src === imageSrcRef.current) return
+      if (src === imageSrcRef.current) {
+        resolve()
+        return
+      }
 
-    preloadPendingRef.current = { src, width, height, preserveViewport }
-    setPreloadSrc(src)
+      displayCommitWaiterRef.current = resolve
+      preloadPendingRef.current = { src, width, height, preserveViewport }
+      setPreloadSrc(src)
 
-    setTimeout(() => {
-      if (token !== refreshTokenRef.current) return
-      const pending = preloadPendingRef.current
-      if (!pending || pending.src !== src) return
-      preloadPendingRef.current = null
-      void finalizeImageCommit(
-        pending.src,
-        pending.width,
-        pending.height,
-        pending.preserveViewport,
-      ).then(() => {
-        setPreloadSrc('')
-      })
-    }, PRELOAD_COMMIT_FALLBACK_MS)
-  }, [commitDisplayImage, finalizeImageCommit])
+      setTimeout(() => {
+        if (token !== refreshTokenRef.current) {
+          resolveDisplayCommitWaiter()
+          return
+        }
+        const pending = preloadPendingRef.current
+        if (!pending || pending.src !== src) {
+          resolveDisplayCommitWaiter()
+          return
+        }
+        preloadPendingRef.current = null
+        void finalizeImageCommit(
+          pending.src,
+          pending.width,
+          pending.height,
+        ).then(() => {
+          setPreloadSrc('')
+          resolveDisplayCommitWaiter()
+        })
+      }, PRELOAD_COMMIT_FALLBACK_MS)
+    })
+  }, [commitDisplayImage, finalizeImageCommit, resolveDisplayCommitWaiter])
 
   const refreshDisplay = useCallback(async (silent = false, preserveViewport = false) => {
     const token = refreshTokenRef.current + 1
@@ -353,7 +331,7 @@ export default function PatternEditor({
       if (token !== refreshTokenRef.current) return
       const info = await Taro.getImageInfo({ src: tempFilePath })
       if (token !== refreshTokenRef.current) return
-      queueDisplayImage(tempFilePath, info.width, info.height, token, preserveViewport)
+      await queueDisplayImage(tempFilePath, info.width, info.height, token, preserveViewport)
     } catch {
       if (token === refreshTokenRef.current && !silent) {
         Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
@@ -409,13 +387,13 @@ export default function PatternEditor({
       })
   }, [fullRedraw, refreshDisplay])
 
-  const redrawAndRefresh = useCallback(async () => {
+  const redrawAndRefresh = useCallback(async (preserveViewport = false) => {
     const node = canvasRef.current
     if (!node) return
     const ctx = fullRedraw(node, patternRef.current, null)
     if (!ctx) return
     ctxRef.current = ctx
-    await refreshDisplay(true)
+    await refreshDisplay(true, preserveViewport)
   }, [fullRedraw, refreshDisplay])
 
   useEffect(() => {
@@ -436,10 +414,10 @@ export default function PatternEditor({
     viewportInitRef.current = null
     viewportLiveRef.current = { scale: 1, x: 0, y: 0 }
     viewportLockedRef.current = false
-    viewportDirtyRef.current = false
     setViewport({ scale: 1, x: 0, y: 0 })
+    setViewportReady(false)
+    setFrameHeight(0)
     setPickingHighlights([])
-    wasPickingCellsRef.current = false
     setInitialLoading(true)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
@@ -448,26 +426,26 @@ export default function PatternEditor({
   const resolveLogicalPoint = useCallback((touch: ScreenTouch): Promise<{ x: number; y: number } | null> => {
     return new Promise((resolve) => {
       Taro.createSelectorQuery()
-        .select(`#${IMAGE_WRAP_ID}`)
+        .select(`#${VIEWPORT_AREA_ID}`)
         .boundingClientRect((rect) => {
-          const box = rect as { left: number; top: number; width: number; height: number } | null
+          const area = rect as { left: number; top: number } | null
           const size = imageSizeRef.current
-          if (!box?.width || !box.height || !size.width || !size.height) {
+          const vp = viewportLiveRef.current
+          if (!area || !size.width || !size.height) {
             resolve(null)
             return
           }
 
-          const localX = touch.clientX - box.left
-          const localY = touch.clientY - box.top
-          if (localX < 0 || localY < 0 || localX > box.width || localY > box.height) {
+          const localX = touch.clientX - area.left
+          const localY = touch.clientY - area.top
+          const x = (localX - vp.x) / vp.scale
+          const y = (localY - vp.y) / vp.scale
+          if (x < 0 || y < 0 || x > size.width || y > size.height) {
             resolve(null)
             return
           }
 
-          resolve({
-            x: localX * size.width / box.width,
-            y: localY * size.height / box.height,
-          })
+          resolve({ x, y })
         })
         .exec()
     })
@@ -489,17 +467,15 @@ export default function PatternEditor({
     }
     syncSelectionCount()
     if (isPickingCellsRef.current) {
-      syncPickingHighlights()
+      syncSelectionHighlights()
       return
     }
     void refreshSelectionOverlay()
-  }, [cellPx, refreshSelectionOverlay, syncPickingHighlights, syncSelectionCount])
+  }, [cellPx, refreshSelectionOverlay, syncSelectionHighlights, syncSelectionCount])
 
-  const openPickerFlow = useCallback(async () => {
-    await syncViewportState()
+  const openPickerFlow = useCallback(() => {
     setPickerVisible(true)
-    await refreshSelectionOverlay()
-  }, [refreshSelectionOverlay, syncViewportState])
+  }, [])
 
   const ensureSelectionAnchor = useCallback(() => {
     if (selectionRef.current || selectedIndicesRef.current.size === 0) return
@@ -613,40 +589,34 @@ export default function PatternEditor({
       touch.clientY - tapGestureRef.current.touchStartClientY,
     )
     if (moved > TAP_MOVE_TOLERANCE) {
-      if (viewportLockedRef.current) {
-        viewportDirtyRef.current = true
-        commitViewportState()
-      }
       return
     }
     handleScreenTap(touch)
   }
 
   const initialViewport = useMemo((): ViewportTransform | null => {
-    if (!imageSize.width) return null
+    if (!imageSize.width || !frameHeight) return null
     return {
       scale: initialScale,
       x: initialPosition.x,
       y: initialPosition.y,
     }
-  }, [imageSize.width, imageSize.height, initialScale, initialPosition.x, initialPosition.y])
-
-  if (initialViewport && !viewportInitRef.current) {
-    viewportInitRef.current = initialViewport
-    viewportLiveRef.current = initialViewport
-  }
+  }, [frameHeight, imageSize.width, imageSize.height, initialScale, initialPosition.x, initialPosition.y])
 
   useLayoutEffect(() => {
-    if (!initialViewport) return
+    if (!initialViewport || viewportReady) return
+    viewportInitRef.current = initialViewport
+    viewportLiveRef.current = initialViewport
     commitViewportState(initialViewport)
-  }, [commitViewportState, initialViewport])
+    setViewportReady(true)
+  }, [commitViewportState, initialViewport, viewportReady])
 
   const showViewport = Boolean(imageSrc && !initialLoading && initialViewport)
-  const viewportForView: ViewportTransform = {
-    scale: viewportLiveRef.current.scale,
-    x: viewportLiveRef.current.x,
-    y: viewportLiveRef.current.y,
-  }
+  const showEditorViewport = showViewport && viewportReady
+
+  useLayoutEffect(() => {
+    measureViewportFrame()
+  }, [measureViewportFrame, pickerVisible, initialLoading, imageSrc])
 
   useLayoutEffect(() => {
     if (showViewport && initialViewport && !viewportLockedRef.current) {
@@ -654,33 +624,9 @@ export default function PatternEditor({
     }
   }, [initialViewport, showViewport])
 
-  useEffect(() => {
-    if (isPickingCells) {
-      wasPickingCellsRef.current = true
-      return
-    }
-    if (!wasPickingCellsRef.current || !viewportLockedRef.current) return
-    wasPickingCellsRef.current = false
-    void syncViewportState()
-  }, [isPickingCells, syncViewportState])
-
-  const handleViewChange = (event: { detail: { x: number; y: number } }) => {
-    viewportDirtyRef.current = true
-    viewportLiveRef.current = {
-      ...viewportLiveRef.current,
-      x: event.detail.x,
-      y: event.detail.y,
-    }
-  }
-
-  const handleViewScale = (event: { detail: { x?: number; y?: number; scale: number } }) => {
-    viewportDirtyRef.current = true
-    viewportLiveRef.current = {
-      x: event.detail.x ?? viewportLiveRef.current.x,
-      y: event.detail.y ?? viewportLiveRef.current.y,
-      scale: event.detail.scale,
-    }
-  }
+  const handleViewportChange = useCallback((next: ViewportTransform) => {
+    commitViewportState(next)
+  }, [commitViewportState])
 
   const highlightCellPx = imageSize.width > 0
     ? imageSize.width / pattern.width
@@ -704,8 +650,7 @@ export default function PatternEditor({
     setPickerVisible(false)
     setIsPickingCells(false)
     clearSelection()
-    await waitNextFrame()
-    await redrawAndRefresh()
+    await redrawAndRefresh(true)
   }
 
   const handleContinuePick = () => {
@@ -720,7 +665,6 @@ export default function PatternEditor({
     }
     setPickerVisible(false)
     setIsPickingCells(true)
-    syncPickingHighlights()
   }
 
   const handleSelectAllSameColor = () => {
@@ -742,13 +686,9 @@ export default function PatternEditor({
       return
     }
     ensureSelectionAnchor()
-    void (async () => {
-      await syncViewportState()
-      await refreshSelectionOverlay()
-      setIsPickingCells(false)
-      setPickingHighlights([])
-      setPickerVisible(true)
-    })()
+    setIsPickingCells(false)
+    setPickingHighlights([])
+    setPickerVisible(true)
   }
 
   const handleClosePicker = () => {
@@ -756,7 +696,8 @@ export default function PatternEditor({
     if (!isPickingCellsRef.current) {
       setIsPickingCells(false)
       clearSelection()
-      void refreshSelectionOverlay()
+      void refreshSelectionOverlay(true)
+      return
     }
   }
 
@@ -772,7 +713,7 @@ export default function PatternEditor({
     patternRef.current = nextPattern
     onPatternChange(nextPattern)
     setCanUndo(undoStackRef.current.length > 0)
-    await redrawAndRefresh()
+    await redrawAndRefresh(true)
   }
 
   const handleToolbarLeft = () => {
@@ -875,8 +816,8 @@ export default function PatternEditor({
       </View>
 
       <View
+        id='pattern-editor-viewport-frame'
         className='pattern-editor__viewport'
-        style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
       >
         {initialLoading && (
           <View className='pattern-editor__loading'>
@@ -884,21 +825,17 @@ export default function PatternEditor({
           </View>
         )}
 
-        {showViewport && !pickerVisible && (
+        {showEditorViewport && (
           <EditorViewport
-            viewportWidth={viewportWidth}
-            scrollHeight={scrollHeight}
             imageSrc={imageSrc}
             preloadSrc={preloadSrc}
             imageWidth={imageSize.width}
             imageHeight={imageSize.height}
-            patternWidth={pattern.width}
-            cellPxKey={String(cellPx)}
+            viewport={viewport}
+            interactive={!pickerVisible}
             highlights={pickingHighlights}
             highlightCellPx={highlightCellPx}
-            viewport={viewportForView}
-            onViewChange={handleViewChange}
-            onViewScale={handleViewScale}
+            onViewportChange={handleViewportChange}
             onTouchStart={handleWrapTouchStart}
             onTouchMove={handleWrapTouchMove}
             onTouchEnd={handleWrapTouchEnd}
@@ -906,32 +843,6 @@ export default function PatternEditor({
             onPreloadError={handlePreloadError}
             onDisplayError={handleDisplayImageError}
           />
-        )}
-
-        {showViewport && pickerVisible && (
-          <View
-            className='pattern-editor__frozen pattern-editor__area'
-            style={{ width: `${viewportWidth}px`, height: `${scrollHeight}px` }}
-          >
-            <View
-              className='pattern-editor__frozen-content'
-              style={{
-                width: `${imageSize.width}px`,
-                height: `${imageSize.height}px`,
-                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
-              }}
-            >
-              <Image
-                className='pattern-editor__image'
-                src={imageSrc}
-                style={{
-                  width: `${imageSize.width}px`,
-                  height: `${imageSize.height}px`,
-                }}
-                showMenuByLongpress={false}
-              />
-            </View>
-          </View>
         )}
       </View>
 
