@@ -1,5 +1,5 @@
 import { View, Image, Text } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import { chooseMediaWithPermission, handleMediaPickerError, isMediaPickerCancelled, notifyMediaPickerEmptyResult } from '@/utils/mediaPickerError'
 import cloudUploadIcon from '@/assets/icons/cloud-upload.png'
 import exampleBear from '@/assets/generate/example-bear.jpg'
 import exampleDog from '@/assets/generate/example-dog.jpg'
@@ -17,17 +17,21 @@ interface ImageUploaderProps {
 export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProps) {
   const handleChoose = async () => {
     try {
-      const res = await Taro.chooseMedia({
+      const res = await chooseMediaWithPermission({
         count: 1,
         mediaType: ['image'],
         sourceType: ['album', 'camera'],
       })
 
       const path = res.tempFiles?.[0]?.tempFilePath
-      if (path) onSelect(path)
+      if (path) {
+        onSelect(path)
+        return
+      }
+      notifyMediaPickerEmptyResult()
     } catch (error) {
-      if ((error as { errMsg?: string })?.errMsg?.includes('cancel')) return
-      Taro.showToast({ title: '选图失败', icon: 'none' })
+      if (isMediaPickerCancelled(error)) return
+      handleMediaPickerError(error)
     }
   }
 

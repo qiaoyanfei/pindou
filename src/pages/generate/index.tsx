@@ -13,7 +13,8 @@ import {
   syncGenerateDraftFromPage,
 } from '@/services/generateSession'
 import { requireAuthenticated } from '@/services/session'
-import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
+import { handleImageProcessError } from '@/utils/mediaPickerError'
+import { setStorageSafe } from '@/utils/localCache'
 import { safeSwitchTab } from '@/utils/navigation'
 import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import {
@@ -116,7 +117,7 @@ export default function GeneratePage() {
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       Taro.hideLoading()
-      notifyOperationError(error, '生成失败')
+      handleImageProcessError(error, '生成失败')
     } finally {
       setLoading(false)
     }

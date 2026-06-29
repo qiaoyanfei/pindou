@@ -10,7 +10,8 @@ import {
   normalizeConfig,
 } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig } from '@/types'
-import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
+import { handleImageProcessError } from '@/utils/mediaPickerError'
+import { setStorageSafe } from '@/utils/localCache'
 import bannerImage from '@/assets/advanced-settings-banner.jpg'
 import './index.scss'
 
@@ -83,7 +84,7 @@ export default function AdvancedSettingsPage() {
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       Taro.hideLoading()
-      notifyOperationError(error, '生成失败')
+      handleImageProcessError(error, '生成失败')
     } finally {
       setLoading(false)
     }

@@ -1,86 +1,43 @@
 import Taro from '@tarojs/taro'
-import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import { canvasToTempFile } from '@/utils/canvas'
+import {
+  ensurePrivacyForMediaAction,
+  isPrivacyAgreementCancelled,
+  isPrivacyAuthorizeError,
+} from '@/utils/privacyAuthorize'
+import {
+  ensureWritePhotosAlbumScope,
+  promptWritePhotosAlbumSettings,
+} from '@/utils/writePhotosAlbumScope'
 
 function extractErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
   return (error as { errMsg?: string })?.errMsg ?? ''
 }
 
-function isPrivacyOrAlbumAuthError(message: string): boolean {
+function isAlbumSaveAuthError(message: string): boolean {
   const lower = message.toLowerCase()
   return (
     lower.includes('auth deny')
-    || lower.includes('authorize')
-    || lower.includes('privacy')
-    || lower.includes('album_auth_denied')
+    || lower.includes('authorize:fail')
     || lower.includes('permission denied')
+    || lower.includes('system auth deny')
   )
 }
 
-function requirePrivacyAuthorize(): Promise<void> {
-  if (process.env.TARO_ENV !== 'weapp') {
-    return Promise.resolve()
-  }
-
-  const wxApi = wx as WechatMiniprogram.Wx & {
-    requirePrivacyAuthorize?: (option: {
-      success?: () => void
-      fail?: (res: WechatMiniprogram.GeneralCallbackResult) => void
-    }) => void
-  }
-
-  if (typeof wxApi.requirePrivacyAuthorize !== 'function') {
-    return Promise.resolve()
-  }
-
-  return new Promise((resolve, reject) => {
-    wxApi.requirePrivacyAuthorize!({
-      success: () => resolve(),
-      fail: (err) => reject(err ?? new Error('用户未同意隐私协议')),
-    })
-  })
-}
-
-function promptOpenAlbumSettings(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    Taro.showModal({
-      title: '需要相册权限',
-      content: `请在设置中允许保存图片到相册，以便保存${MINI_PROGRAM_NAME}图纸。`,
-      confirmText: '去设置',
-      success: (res) => {
-        if (res.confirm) {
-          void Taro.openSetting().finally(resolve)
-          return
-        }
-        reject(new Error('album_auth_denied'))
-      },
-      fail: () => reject(new Error('album_auth_denied')),
-    })
-  })
-}
+/** 同一次保存内已引导过设置页 */
+let albumSettingsPromptedInCurrentSave = false
 
 /** 微信隐私协议 + 相册写入权限（saveImageToPhotosAlbum 前置） */
 export async function ensureAlbumPermission(): Promise<void> {
-  await requirePrivacyAuthorize()
-
-  const setting = await Taro.getSetting()
-  const albumAuth = setting.authSetting['scope.writePhotosAlbum']
-
-  if (albumAuth === true) return
-  if (albumAuth === false) {
-    await promptOpenAlbumSettings()
-    throw new Error('album_auth_denied')
-  }
-
-  try {
-    await Taro.authorize({ scope: 'scope.writePhotosAlbum' })
-  } catch {
-    // 新隐私流程下 authorize 可能无效，后续 saveImageToPhotosAlbum 仍会触发系统授权
-  }
+  await ensurePrivacyForMediaAction()
+  await ensureWritePhotosAlbumScope(() => {
+    albumSettingsPromptedInCurrentSave = true
+  })
 }
 
 export async function saveCanvasToAlbum(canvasId: string): Promise<void> {
+  albumSettingsPromptedInCurrentSave = false
   await ensureAlbumPermission()
   await new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame === 'function') {
@@ -95,10 +52,35 @@ export async function saveCanvasToAlbum(canvasId: string): Promise<void> {
 
 export function handleAlbumSaveError(error: unknown): void {
   const message = extractErrorMessage(error)
-  if (isPrivacyOrAlbumAuthError(message)) {
-    void promptOpenAlbumSettings()
+  if (message === 'album_scope_cancelled' || message === 'album_auth_cancelled') return
+  if (isPrivacyAgreementCancelled(error)) return
+
+  if (message === 'album_scope_denied') {
+    albumSettingsPromptedInCurrentSave = false
+    Taro.showToast({ title: '未获得相册权限', icon: 'none', duration: 3000 })
     return
   }
+
+  if (isPrivacyAuthorizeError(error)) {
+    Taro.showToast({ title: '请先同意隐私保护指引', icon: 'none', duration: 3000 })
+    return
+  }
+
+  if (isAlbumSaveAuthError(message)) {
+    if (albumSettingsPromptedInCurrentSave) {
+      albumSettingsPromptedInCurrentSave = false
+      Taro.showToast({ title: '未获得相册权限', icon: 'none', duration: 3000 })
+      return
+    }
+    void promptWritePhotosAlbumSettings().then((result) => {
+      if (result === 'denied') {
+        Taro.showToast({ title: '未获得相册权限', icon: 'none', duration: 3000 })
+      }
+    })
+    return
+  }
+
+  albumSettingsPromptedInCurrentSave = false
   Taro.showToast({
     title: message || '保存失败',
     icon: 'none',

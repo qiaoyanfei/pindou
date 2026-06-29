@@ -4,6 +4,9 @@ export default defineAppConfig({
     'scope.writePhotosAlbum': {
       desc: '用于将生成的拼豆图纸保存到您的相册',
     },
+    'scope.camera': {
+      desc: '用于拍摄上传拼豆参考照片',
+    },
   },
   pages: [
     'pages/home/index',
