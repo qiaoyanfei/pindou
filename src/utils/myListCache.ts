@@ -2,15 +2,21 @@ import type { PostSummary } from '@/types/community'
 
 export type MyListCacheKey = 'my-posts' | 'drafts' | 'my-likes' | 'my-favorites'
 
-const listCaches = new Map<MyListCacheKey, PostSummary[]>()
+export interface MyListCacheState {
+  list: PostSummary[]
+  page: number
+  hasMore: boolean
+}
+
+const listCaches = new Map<MyListCacheKey, MyListCacheState>()
 const invalidatedKeys = new Set<MyListCacheKey>()
 
-export function readMyListCache(key: MyListCacheKey): PostSummary[] | null {
+export function readMyListCache(key: MyListCacheKey): MyListCacheState | null {
   return listCaches.get(key) ?? null
 }
 
-export function writeMyListCache(key: MyListCacheKey, list: PostSummary[]): void {
-  listCaches.set(key, list)
+export function writeMyListCache(key: MyListCacheKey, state: MyListCacheState): void {
+  listCaches.set(key, state)
   invalidatedKeys.delete(key)
 }
 

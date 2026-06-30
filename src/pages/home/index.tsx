@@ -114,6 +114,8 @@ export default function HomePage() {
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<PostSummary[]>([])
+  const [searchPage, setSearchPage] = useState(1)
+  const [searchHasMore, setSearchHasMore] = useState(false)
   const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null)
   const [searching, setSearching] = useState(false)
   const runtimeRef = useRef({
@@ -123,18 +125,20 @@ export default function HomePage() {
     hasMore: false,
     loadingTab: null as FeedTab | null,
     page: 1,
+    searchPage: 1,
   })
 
   const isSearching = searchKeyword.length > 0
   const currentFeed = feeds[tab]
   const posts = isSearching ? searchResults : currentFeed.posts
-  const hasMore = isSearching ? false : currentFeed.hasMore
-  const page = currentFeed.page
-  runtimeRef.current = { tab, searchKeyword, isSearching, hasMore, loadingTab, page }
+  const hasMore = isSearching ? searchHasMore : currentFeed.hasMore
+  const page = isSearching ? searchPage : currentFeed.page
+  runtimeRef.current = { tab, searchKeyword, isSearching, hasMore, loadingTab, page, searchPage }
   const showInitialLoading = !isSearching
     && posts.length === 0
     && loadingTab === tab
-  const isLoadingMore = !isSearching && loadingTab === tab && posts.length > 0
+  const isLoadingMore = (isSearching && searching && posts.length > 0)
+    || (!isSearching && loadingTab === tab && posts.length > 0)
 
   const [leftCol, rightCol] = useMemo(() => splitWaterfall(posts), [posts])
 
@@ -180,11 +184,16 @@ export default function HomePage() {
     }
   }, [updateFeeds])
 
-  const loadSearch = useCallback(async (value: string, options?: { silent?: boolean }) => {
+  const loadSearch = useCallback(async (
+    value: string,
+    options?: { page?: number; silent?: boolean; append?: boolean },
+  ) => {
     const trimmed = value.trim()
     if (!trimmed) {
       setSearchKeyword('')
       setSearchResults([])
+      setSearchPage(1)
+      setSearchHasMore(false)
       if (feeds[tab].posts.length === 0) {
         await loadFeed(tab, 1, true)
       }
@@ -192,11 +201,17 @@ export default function HomePage() {
     }
 
     const silent = options?.silent ?? false
+    const nextPage = options?.page ?? 1
+    const append = options?.append ?? false
     if (!silent) setSearching(true)
     try {
-      const list = await searchPosts(trimmed)
+      const result = await searchPosts(trimmed, nextPage)
       setSearchKeyword(trimmed)
-      setSearchResults(applyPatchesToPosts(list))
+      setSearchPage(nextPage)
+      setSearchHasMore(result.hasMore)
+      setSearchResults((prev) => applyPatchesToPosts(append
+        ? [...prev, ...result.list]
+        : result.list))
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '搜索失败',
@@ -254,7 +269,7 @@ export default function HomePage() {
   usePullDownRefresh(() => {
     const { isSearching: searchingNow, searchKeyword: keywordNow, tab: currentTab } = runtimeRef.current
     if (searchingNow && keywordNow) {
-      void loadSearch(keywordNow, { silent: true })
+      void loadSearch(keywordNow, { page: 1, silent: true })
       return
     }
     void loadFeed(currentTab, 1, true)
@@ -268,7 +283,15 @@ export default function HomePage() {
       loadingTab: loadingNow,
       page: currentPage,
     } = runtimeRef.current
-    if (searchingNow || !canLoadMore || loadingNow === currentTab) return
+    if (searchingNow) {
+      if (!canLoadMore || searching) return
+      void loadSearch(runtimeRef.current.searchKeyword, {
+        page: runtimeRef.current.searchPage + 1,
+        append: true,
+      })
+      return
+    }
+    if (!canLoadMore || loadingNow === currentTab) return
     void loadFeed(currentTab, currentPage + 1)
   })
 
@@ -277,6 +300,8 @@ export default function HomePage() {
     setSearchKeyword('')
     setKeyword('')
     setSearchResults([])
+    setSearchPage(1)
+    setSearchHasMore(false)
     setTab(nextTab)
     if (feeds[nextTab].posts.length === 0) {
       void loadFeed(nextTab, 1, true)
@@ -363,6 +388,8 @@ export default function HomePage() {
               setKeyword('')
               setSearchKeyword('')
               setSearchResults([])
+              setSearchPage(1)
+              setSearchHasMore(false)
             }}
           >
             清除

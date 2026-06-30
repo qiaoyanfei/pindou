@@ -10,7 +10,7 @@ import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyLikesPage() {
-  const { list, loading } = useCachedPostList('my-likes', fetchMyLikes)
+  const { list, loading, loadingMore, hasMore, loadMore } = useCachedPostList('my-likes', fetchMyLikes)
 
   const openPost = (item: PostSummary) => {
     restoreSessionFromStorage()
@@ -21,7 +21,7 @@ export default function MyLikesPage() {
 
   return (
     <View className='list-page my-likes-page'>
-      <ScrollView scrollY className='list-page__scroll'>
+      <ScrollView scrollY className='list-page__scroll' onScrollToLower={loadMore}>
         <View className='list-page__content'>
           {loading ? (
             <View className='list-page__loading'>加载中...</View>
@@ -33,7 +33,9 @@ export default function MyLikesPage() {
             </View>
           ) : (
             <>
-              <Text className='list-page__count'>共 {list.length} 个点赞</Text>
+              <Text className='list-page__count'>
+                {hasMore ? '已加载' : '共'} {list.length} 个点赞
+              </Text>
               <PageListBanner variant='tip' icon='❤️' title='这里展示你点赞过的图纸' />
               {list.map((item, index) => (
                 <PostListItem
@@ -44,7 +46,9 @@ export default function MyLikesPage() {
                   onClick={() => openPost(item)}
                 />
               ))}
-              <Text className='list-page__end'>· 没有更多啦 ·</Text>
+              <Text className='list-page__end'>
+                {loadingMore ? '加载中...' : hasMore ? '上拉加载更多' : '· 没有更多啦 ·'}
+              </Text>
             </>
           )}
         </View>

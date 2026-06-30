@@ -15,7 +15,14 @@ import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function DraftsPage() {
-  const { list, loading, reload } = useCachedPostList('drafts', fetchPendingPosts)
+  const {
+    list,
+    loading,
+    loadingMore,
+    hasMore,
+    reload,
+    loadMore,
+  } = useCachedPostList('drafts', fetchPendingPosts)
 
   const handleGoPublic = async (postId: string) => {
     const res = await showModal({
@@ -53,7 +60,7 @@ export default function DraftsPage() {
 
   return (
     <View className='list-page drafts-page'>
-      <ScrollView scrollY className='list-page__scroll'>
+      <ScrollView scrollY className='list-page__scroll' onScrollToLower={loadMore}>
         <View className='list-page__content'>
           {loading ? (
             <View className='list-page__loading'>加载中...</View>
@@ -65,7 +72,9 @@ export default function DraftsPage() {
             </View>
           ) : (
             <>
-              <Text className='list-page__count'>共 {list.length} 张待发布图纸</Text>
+              <Text className='list-page__count'>
+                {hasMore ? '已加载' : '共'} {list.length} 张待发布图纸
+              </Text>
               <PageListBanner
                 variant='tip'
                 icon='📝'
@@ -82,7 +91,9 @@ export default function DraftsPage() {
                   onRegenerate={() => handleRegenerate(item._id)}
                 />
               ))}
-              <Text className='list-page__end'>· 没有更多啦 ·</Text>
+              <Text className='list-page__end'>
+                {loadingMore ? '加载中...' : hasMore ? '上拉加载更多' : '· 没有更多啦 ·'}
+              </Text>
             </>
           )}
         </View>

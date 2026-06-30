@@ -113,13 +113,16 @@ export async function refreshCounts(): Promise<void> {
 
 export async function fetchFeed(tab: FeedTab, page = 1): Promise<{ list: PostSummary[]; hasMore: boolean }> {
   const result = await callCloudApi<{ list: PostSummary[]; hasMore: boolean }>('getFeed', { tab, page })
-  const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
-  const authorAvatars = result.list.map((item) => item.author?.avatarUrl).filter(Boolean)
+  const fileIds = getCloudFileIds(result.list)
+  const authorAvatars = result.list
+    .map((item) => item.author?.avatarUrl)
+    .filter((fileId): fileId is string => Boolean(fileId))
   const urlMap = await getTempFileUrls([...fileIds, ...authorAvatars] as string[])
   const list = result.list.map((item) => {
+    const coverFileId = item.coverFileId || ''
     const normalized = normalizePostSummary({
       ...item,
-      coverUrl: urlMap[item.coverFileId] || item.coverUrl || '',
+      coverUrl: urlMap[coverFileId] || item.coverUrl || '',
     })
     const avatarKey = item.author?.avatarUrl || ''
     return {
@@ -133,14 +136,29 @@ export async function fetchFeed(tab: FeedTab, page = 1): Promise<{ list: PostSum
   return { list, hasMore: result.hasMore }
 }
 
-export async function searchPosts(keyword: string): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('searchPosts', { keyword })
-  const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
+export async function searchPosts(
+  keyword: string,
+  page = 1,
+): Promise<{ list: PostSummary[]; hasMore: boolean }> {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('searchPosts', {
+    keyword,
+    page,
+    pageSize: 20,
+  })
+  const fileIds = result.list
+    .map((item) => item.coverFileId)
+    .filter((fileId): fileId is string => Boolean(fileId))
   const urlMap = await getTempFileUrls(fileIds)
-  return result.list.map((item) => normalizePostSummary({
-    ...item,
-    coverUrl: urlMap[item.coverFileId] || '',
-  }))
+  return {
+    list: result.list.map((item) => {
+      const coverFileId = item.coverFileId || ''
+      return normalizePostSummary({
+        ...item,
+        coverUrl: urlMap[coverFileId] || '',
+      })
+    }),
+    hasMore: result.hasMore ?? false,
+  }
 }
 
 export async function fetchPostDetail(postId: string): Promise<PostDetail> {
@@ -293,52 +311,91 @@ function normalizePostSummary(item: PostSummary): PostSummary {
   }
 }
 
-export async function fetchMyPosts(): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('getMyPosts')
-  const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
-  return result.list.map((item) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '' }),
-  )
+type PagedPostSummaryResult = { list: PostSummary[]; hasMore: boolean }
+
+function getCloudFileIds(list: PostSummary[]): string[] {
+  return list
+    .map((item) => item.coverFileId)
+    .filter((fileId): fileId is string => Boolean(fileId))
 }
 
-export async function fetchPendingPosts(): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('getPendingPosts')
-  const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
-  return result.list.map((item) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '' }),
-  )
+async function mapPostSummariesWithCover(
+  list: PostSummary[],
+  extra?: Partial<PostSummary>,
+): Promise<PostSummary[]> {
+  const urlMap = await getTempFileUrls(getCloudFileIds(list))
+  return list.map((item) => {
+    const coverFileId = item.coverFileId || ''
+    return normalizePostSummary({
+      ...item,
+      ...extra,
+      coverUrl: urlMap[coverFileId] || item.coverUrl || '',
+    })
+  })
 }
 
-export async function fetchMyLikes(): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('getMyLikes')
-  const fileIds = result.list.map((item) => item.coverFileId).filter(Boolean)
+export async function fetchMyPosts(page = 1): Promise<PagedPostSummaryResult> {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyPosts', {
+    page,
+    pageSize: 20,
+  })
+  return {
+    list: await mapPostSummariesWithCover(result.list),
+    hasMore: result.hasMore ?? false,
+  }
+}
+
+export async function fetchPendingPosts(page = 1): Promise<PagedPostSummaryResult> {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getPendingPosts', {
+    page,
+    pageSize: 20,
+  })
+  return {
+    list: await mapPostSummariesWithCover(result.list),
+    hasMore: result.hasMore ?? false,
+  }
+}
+
+export async function fetchMyLikes(page = 1): Promise<PagedPostSummaryResult> {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyLikes', {
+    page,
+    pageSize: 20,
+  })
+  const fileIds = getCloudFileIds(result.list)
   const authorAvatars = result.list
     .map((item) => item.author?.avatarUrl)
     .filter(Boolean) as string[]
   const urlMap = await getTempFileUrls([...fileIds, ...authorAvatars])
-  return result.list.map((item) => {
-    const normalized = normalizePostSummary({
-      ...item,
-      coverUrl: urlMap[item.coverFileId] || item.coverUrl || '',
-      liked: true,
-    })
-    const avatarKey = normalized.author?.avatarUrl || ''
-    return {
-      ...normalized,
-      author: {
-        ...normalized.author,
-        avatarUrl: urlMap[avatarKey] || avatarKey || '',
-      },
-    }
-  })
+  return {
+    list: result.list.map((item) => {
+      const coverFileId = item.coverFileId || ''
+      const normalized = normalizePostSummary({
+        ...item,
+        coverUrl: urlMap[coverFileId] || item.coverUrl || '',
+        liked: true,
+      })
+      const avatarKey = normalized.author?.avatarUrl || ''
+      return {
+        ...normalized,
+        author: {
+          ...normalized.author,
+          avatarUrl: urlMap[avatarKey] || avatarKey || '',
+        },
+      }
+    }),
+    hasMore: result.hasMore ?? false,
+  }
 }
 
-export async function fetchMyFavorites(): Promise<PostSummary[]> {
-  const result = await callCloudApi<{ list: PostSummary[] }>('getMyFavorites')
-  const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
-  return result.list.map((item) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '', favorited: true }),
-  )
+export async function fetchMyFavorites(page = 1): Promise<PagedPostSummaryResult> {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyFavorites', {
+    page,
+    pageSize: 20,
+  })
+  return {
+    list: await mapPostSummariesWithCover(result.list, { favorited: true }),
+    hasMore: result.hasMore ?? false,
+  }
 }
 
 export async function fetchBeanLogs(filter: 'all' | 'income' | 'expense'): Promise<BeanTransaction[]> {
@@ -388,9 +445,9 @@ export async function checkIsAdmin(): Promise<AdminCheckResult> {
 
 export async function fetchReviewQueue(): Promise<PostSummary[]> {
   const result = await callCloudApi<{ list: PostSummary[] }>('getReviewQueue')
-  const urlMap = await getTempFileUrls(result.list.map((item) => item.coverFileId))
+  const urlMap = await getTempFileUrls(getCloudFileIds(result.list))
   return result.list.map((item) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId] || '' }),
+    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId || ''] || '' }),
   )
 }
 
