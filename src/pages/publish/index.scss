@@ -123,6 +123,20 @@
   line-height: 1.5;
 }
 
+.publish-page__title-input {
+  height: 80px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: $color-bg;
+  color: $color-text;
+  font-size: 28px;
+  box-sizing: border-box;
+}
+
+.publish-page__title-placeholder {
+  color: $color-text-secondary;
+}
+
 .publish-page__category {
   padding: 12px 24px;
   border-radius: 999px;

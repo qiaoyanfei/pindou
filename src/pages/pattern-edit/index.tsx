@@ -1,5 +1,5 @@
 import { View, Text } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PatternEditor from '@/components/PatternEditor'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
@@ -51,6 +51,11 @@ export default function PatternEditPage() {
     persistTimerRef.current = setTimeout(write, PATTERN_PERSIST_DELAY_MS)
   }, [])
 
+  const flushPattern = useCallback(() => {
+    if (!patternRef.current) return
+    persistPattern(patternRef.current, true)
+  }, [persistPattern])
+
   useDidShow(() => {
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
@@ -64,9 +69,14 @@ export default function PatternEditPage() {
   })
 
   const handlePatternChange = useCallback((nextPattern: PatternResult) => {
+    patternRef.current = nextPattern
     setPattern(nextPattern)
     persistPattern(nextPattern)
   }, [persistPattern])
+
+  useDidHide(flushPattern)
+
+  useUnload(flushPattern)
 
   const handleDone = () => {
     if (patternRef.current) {

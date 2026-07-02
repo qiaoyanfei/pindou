@@ -1,6 +1,6 @@
 import { View, Text, Button, Canvas, Image } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
 import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
@@ -22,7 +22,13 @@ import {
   getExportClarityLabel,
   STYLE_MODE_LABELS,
 } from '@/utils/constants'
-import { PATTERN_STORAGE_KEY, GENERATE_PAGE_RESET_KEY, type PatternConfig, type StyleMode } from '@/types'
+import {
+  PATTERN_STORAGE_KEY,
+  PUBLISH_STORAGE_KEY,
+  GENERATE_PAGE_RESET_KEY,
+  type PatternConfig,
+  type StyleMode,
+} from '@/types'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 
@@ -44,6 +50,24 @@ function readDraftState(): { imagePath: string; config: PatternConfig } {
   }
 }
 
+function hasRecoverablePattern(): boolean {
+  try {
+    const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as { pattern?: unknown } | undefined
+    return Boolean(stored?.pattern)
+  } catch {
+    return false
+  }
+}
+
+function clearRecoverablePattern(): void {
+  try {
+    Taro.removeStorageSync(PATTERN_STORAGE_KEY)
+    Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 export default function GeneratePage() {
   const initialDraft = readDraftState()
   const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32, headerRight: 96 })
@@ -51,6 +75,7 @@ export default function GeneratePage() {
   const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
   const [authed, setAuthed] = useState(false)
+  const recoverPromptShownRef = useRef(false)
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -65,6 +90,25 @@ export default function GeneratePage() {
 
     if (Taro.getStorageSync(GENERATE_PAGE_RESET_KEY)) {
       Taro.removeStorageSync(GENERATE_PAGE_RESET_KEY)
+      clearRecoverablePattern()
+      recoverPromptShownRef.current = false
+      applyDraftState(resetGenerateDraft())
+      return
+    }
+
+    if (!recoverPromptShownRef.current && hasRecoverablePattern()) {
+      recoverPromptShownRef.current = true
+      const result = await Taro.showModal({
+        title: '继续未完成图纸？',
+        content: '检测到上次未发布成功的图纸，可以继续预览和编辑。',
+        confirmText: '继续',
+        cancelText: '重新转换',
+      })
+      if (result.confirm) {
+        Taro.navigateTo({ url: '/pages/preview/index' })
+        return
+      }
+      clearRecoverablePattern()
       applyDraftState(resetGenerateDraft())
       return
     }

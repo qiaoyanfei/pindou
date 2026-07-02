@@ -13,7 +13,7 @@ import type {
   UserProfile,
 } from '@/types/community'
 import type { PatternConfig, PatternResult } from '@/types'
-import { DEFAULT_CONFIG, normalizeConfig, STYLE_MODE_LABELS } from '@/utils/constants'
+import { normalizeConfig, STYLE_MODE_LABELS } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY } from '@/types'
 import {
   callCloudApi,
@@ -266,9 +266,9 @@ export async function publishPost(payload: PublishPayload): Promise<{
     reviewStatus?: import('@/types/community').PostReviewStatus
   }>('publishPost', {
     draftId: payload.draftId,
-    title: '标题待生成',
+    title: payload.title,
     category: payload.category,
-    description: '',
+    description: payload.description,
     visibility: payload.visibility,
     coverFileId: payload.coverFileId,
     sheetFileId: payload.sheetFileId,
@@ -486,7 +486,7 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
   const post = await fetchPostDetail(postId)
   const pattern = await loadPatternFromPost(post)
   const config: PatternConfig = normalizeConfig({
-    ...DEFAULT_CONFIG,
+    ...(post.config || {}),
     styleMode: post.styleMode,
     paletteId: post.paletteId,
   })

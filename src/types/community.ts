@@ -73,6 +73,7 @@ export interface PostDetail extends PostSummary {
   visibility: PostVisibility
   patternFileId: string
   sheetFileId?: string
+  config?: PatternConfig
   stats: Record<string, number>
   totalBeads: number
   pattern?: PatternResult

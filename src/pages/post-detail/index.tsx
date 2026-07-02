@@ -20,10 +20,10 @@ import { safeNavigateTo } from '@/utils/navigation'
 import { patchPostInteraction } from '@/utils/postInteractionSync'
 import { invalidateMyListCache } from '@/utils/myListCache'
 import { getColorById } from '@/services/palette'
-import { DEFAULT_CONFIG, MINI_PROGRAM_NAME, STYLE_MODE_LABELS, normalizeConfig } from '@/utils/constants'
+import { MINI_PROGRAM_NAME, STYLE_MODE_LABELS } from '@/utils/constants'
 import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
-import { resolvePatternForPreview } from '@/utils/patternPreviewCache'
+import { buildPreviewConfigFromPost, resolvePatternForPreview } from '@/utils/patternPreviewCache'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import { formatColorStatsTitle } from '@/utils/colorStatsTitle'
@@ -219,11 +219,7 @@ export default function PostDetailPage() {
     try {
       const result = await downloadPost(post._id)
       const pattern = await loadPatternFromPost(result.post)
-      const config: PatternConfig = normalizeConfig({
-        ...DEFAULT_CONFIG,
-        styleMode: result.post.styleMode,
-        paletteId: result.post.paletteId,
-      })
+      const config: PatternConfig = buildPreviewConfigFromPost(result.post)
       const payload: ExportPayload = {
         pattern,
         config,

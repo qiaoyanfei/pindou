@@ -75,7 +75,7 @@ export default function AdvancedSettingsPage() {
 
     persistDraft()
     setLoading(true)
-    Taro.showLoading({ title: '生成中...' })
+    Taro.showLoading({ title: '转换中...' })
 
     try {
       const pattern = await generatePatternFromImage(imagePath, configRef.current, PROCESS_CANVAS_ID)
@@ -104,6 +104,9 @@ export default function AdvancedSettingsPage() {
 
           <View className='advanced-settings-page__field'>
             <Text className='advanced-settings-page__field-label'>规格</Text>
+            <Text className='advanced-settings-page__field-hint'>
+              格子数越多，图纸细节越好，转换耗时越长。
+            </Text>
             <View className='advanced-settings-page__control-group'>
               <View className='advanced-settings-page__slider-wrap'>
                 <Slider
@@ -143,7 +146,7 @@ export default function AdvancedSettingsPage() {
           <View className='advanced-settings-page__field'>
             <Text className='advanced-settings-page__field-label'>清晰度</Text>
             <Text className='advanced-settings-page__field-hint'>
-              清晰度越高，图片越大，可能导出失败。
+              清晰度越高，放大后越清晰，图片越大。
             </Text>
             <View className='advanced-settings-page__control-group'>
               <View className='advanced-settings-page__slider-wrap'>

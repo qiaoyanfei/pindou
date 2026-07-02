@@ -1,4 +1,4 @@
-import { View, Text, Image, Switch, Button } from '@tarojs/components'
+import { View, Text, Image, Switch, Button, Input } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import {
@@ -19,6 +19,7 @@ export default function PublishPage() {
   const [payload, setPayload] = useState<ReturnType<typeof readPublishWorkflow>>(null)
   const [category, setCategory] = useState<PostCategory>(CATEGORY_OPTIONS[0])
   const [isPublic, setIsPublic] = useState(true)
+  const [manualTitle, setManualTitle] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [coverPreview, setCoverPreview] = useState('')
 
@@ -38,7 +39,11 @@ export default function PublishPage() {
 
   const handleSubmit = async () => {
     if (!payload?.pattern) return
-    const title = '标题待生成'
+    const title = isPublic ? '' : manualTitle.trim()
+    if (!isPublic && !title) {
+      Taro.showToast({ title: '请输入标题', icon: 'none' })
+      return
+    }
 
     setSubmitting(true)
     Taro.showLoading({ title: isPublic ? '提交审核...' : '保存中...' })
@@ -113,11 +118,22 @@ export default function PublishPage() {
       <View className='publish-page__form'>
         <View className='publish-page__field'>
           <Text className='publish-page__label'>标题</Text>
-          <View className='publish-page__system-title'>
-            <Text className='publish-page__system-title-hint'>
-              标题由系统生成，审核通过后确定
-            </Text>
-          </View>
+          {isPublic ? (
+            <View className='publish-page__system-title'>
+              <Text className='publish-page__system-title-hint'>
+                标题由系统生成，审核通过后确定
+              </Text>
+            </View>
+          ) : (
+            <Input
+              className='publish-page__title-input'
+              value={manualTitle}
+              maxlength={30}
+              placeholder='请输入图纸标题'
+              placeholderClass='publish-page__title-placeholder'
+              onInput={(event) => setManualTitle(event.detail.value)}
+            />
+          )}
         </View>
 
         <View className='publish-page__field'>

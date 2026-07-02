@@ -16,7 +16,7 @@ export function clampLongEdge(longEdge: number, styleMode: StyleMode): number {
 
 export const EXPORT_LIMITS = {
   minCellPx: 20,
-  maxCellPx: 36,
+  maxCellPx: 30,
 }
 
 export const STYLE_MODE_DEFAULT_LONG_EDGE: Record<StyleMode, number> = {

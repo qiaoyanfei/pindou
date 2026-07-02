@@ -1,5 +1,5 @@
 import { fetchPostDetail, loadPatternFromPost } from '@/services/communityService'
-import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
+import { normalizeConfig } from '@/utils/constants'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 
@@ -34,10 +34,10 @@ export function getCachedPreviewData(postId: string): CachedPreviewData | undefi
 }
 
 export function buildPreviewConfigFromPost(
-  post: Pick<PostDetail, 'styleMode' | 'paletteId'>,
+  post: Pick<PostDetail, 'styleMode' | 'paletteId' | 'config'>,
 ): PatternConfig {
   return normalizeConfig({
-    ...DEFAULT_CONFIG,
+    ...(post.config || {}),
     styleMode: post.styleMode,
     paletteId: post.paletteId,
   })
