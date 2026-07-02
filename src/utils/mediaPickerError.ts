@@ -102,7 +102,7 @@ async function promptOpenCameraSettings(): Promise<'granted' | 'denied' | 'cance
   const goSettings = await new Promise<boolean>((resolve) => {
     Taro.showModal({
       title: '需要相机权限',
-      content: `请在设置中允许${MINI_PROGRAM_NAME}使用相机，以便拍摄上传照片。`,
+      content: `请在设置中允许${MINI_PROGRAM_NAME}使用相机，以便拍摄参考图片。`,
       confirmText: '去设置',
       cancelText: '取消',
       success: (res) => resolve(!!res.confirm),

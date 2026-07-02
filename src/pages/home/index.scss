@@ -77,15 +77,16 @@ $home-padding-x: 32px;
 .home-page__hero {
   position: relative;
   margin: 16px $home-padding-x 0;
+  height: 273px;
   border-radius: 24px;
   overflow: hidden;
-  line-height: 0;
+  background: #ead6ff;
 }
 
 .home-page__hero-bg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   vertical-align: top;
 }
 
@@ -130,10 +131,25 @@ $home-padding-x: 32px;
   line-height: 1.2;
 }
 
+.home-page__mode-bar {
+  position: relative;
+  height: 72px;
+}
+
 .home-page__tabs {
+  position: absolute;
+  inset: 0;
   display: flex;
+  align-items: flex-start;
   gap: 40px;
   padding: 24px $home-padding-x 0;
+  height: 72px;
+  box-sizing: border-box;
+}
+
+.home-page__tabs.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .home-page__tab {
@@ -166,12 +182,22 @@ $home-padding-x: 32px;
 }
 
 .home-page__search-hint {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px $home-padding-x 8px;
+  padding: 24px $home-padding-x 12px;
+  height: 72px;
+  box-sizing: border-box;
   font-size: 26px;
+  line-height: 1.2;
   color: $color-text-secondary;
+}
+
+.home-page__search-hint.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .home-page__search-clear {

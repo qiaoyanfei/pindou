@@ -7,7 +7,8 @@ import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyFavoritesPage() {
-  const { list, loading, loadingMore, hasMore, loadMore } = useCachedPostList('my-favorites', fetchMyFavorites)
+  const { list, loading, loadingMore, hasMore, total, loadMore } = useCachedPostList('my-favorites', fetchMyFavorites)
+  const displayedCount = total ?? list.length
 
   const openPost = (postId: string) => {
     Taro.navigateTo({ url: `/pages/post-detail/index?id=${postId}` })
@@ -15,7 +16,7 @@ export default function MyFavoritesPage() {
 
   return (
     <View className='list-page my-favorites-page'>
-      <ScrollView scrollY className='list-page__scroll' onScrollToLower={loadMore}>
+      <ScrollView scrollY className='list-page__scroll' lowerThreshold={120} onScrollToLower={loadMore}>
         <View className='list-page__content'>
           {loading ? (
             <View className='list-page__loading'>加载中...</View>
@@ -27,7 +28,7 @@ export default function MyFavoritesPage() {
           ) : (
             <>
               <Text className='list-page__count'>
-                {hasMore ? '已加载' : '共'} {list.length} 个收藏
+                共 {displayedCount} 个收藏
               </Text>
               {list.map((item, index) => (
                 <PostListItem

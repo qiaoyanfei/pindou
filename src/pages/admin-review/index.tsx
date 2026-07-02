@@ -1,6 +1,6 @@
 import { View, Text, Image, ScrollView, Button, Input } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   checkIsAdmin,
   fetchReviewQueue,
@@ -13,10 +13,12 @@ import type { PostSummary } from '@/types/community'
 import './index.scss'
 
 export default function AdminReviewPage() {
+  const hasLoadedRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [list, setList] = useState<PostSummary[]>([])
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({})
+  const [reviewTitles, setReviewTitles] = useState<Record<string, string>>({})
   const [processingId, setProcessingId] = useState('')
 
   const loadQueue = useCallback(async () => {
@@ -26,6 +28,7 @@ export default function AdminReviewPage() {
       setIsAdmin(adminResult.isAdmin)
       if (!adminResult.isAdmin) return
       setList(await fetchReviewQueue())
+      setReviewTitles({})
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '加载失败',
@@ -37,16 +40,18 @@ export default function AdminReviewPage() {
   }, [])
 
   useDidShow(async () => {
+    if (hasLoadedRef.current) return
     const user = await requireAuthenticated('/pages/admin-review/index')
     if (!user) return
     await loadQueue()
+    hasLoadedRef.current = true
   })
 
   const handleApprove = async (postId: string) => {
     if (processingId) return
     setProcessingId(postId)
     try {
-      await reviewPost(postId, 'approve')
+      await reviewPost(postId, 'approve', undefined, reviewTitles[postId]?.trim())
       Taro.showToast({ title: '已通过', icon: 'success' })
       await loadQueue()
     } catch (error) {
@@ -74,6 +79,18 @@ export default function AdminReviewPage() {
     } finally {
       setProcessingId('')
     }
+  }
+
+  const handleViewAuthorPosts = (authorOpenid?: string, authorName?: string) => {
+    if (!authorOpenid) {
+      Taro.showToast({ title: '缺少作者信息', icon: 'none' })
+      return
+    }
+    const query = [
+      `authorOpenid=${encodeURIComponent(authorOpenid)}`,
+      authorName ? `authorName=${encodeURIComponent(authorName)}` : '',
+    ].filter(Boolean).join('&')
+    Taro.navigateTo({ url: `/pages/admin-author-posts/index?${query}` })
   }
 
   if (loading) {
@@ -124,9 +141,24 @@ export default function AdminReviewPage() {
                     <Text className='admin-review-page__author'>
                       作者：{item.author?.nickName || '未知'}
                     </Text>
+                    <Text
+                      className='admin-review-page__author-link'
+                      onClick={() => handleViewAuthorPosts(item.author?.openid, item.author?.nickName)}
+                    >
+                      查看该用户作品
+                    </Text>
                   </View>
                 </View>
                 <View className='admin-review-page__card-footer'>
+                  <Input
+                    className='admin-review-page__title-input'
+                    placeholder='审核标题（不填则沿用原标题或自动生成）'
+                    value={reviewTitles[item._id] || ''}
+                    maxlength={40}
+                    onInput={(event) => {
+                      setReviewTitles((prev) => ({ ...prev, [item._id]: event.detail.value }))
+                    }}
+                  />
                   <Input
                     className='admin-review-page__reject-input'
                     placeholder='驳回原因（选填）'

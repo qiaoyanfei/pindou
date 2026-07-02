@@ -97,6 +97,15 @@
   margin-bottom: 4px;
 }
 
+.admin-review-page__author-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 24px;
+  color: $color-primary;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .admin-review-page__desc {
   display: block;
   margin-top: 16px;
@@ -138,6 +147,7 @@
   border: 1px solid #fecaca !important;
 }
 
+.admin-review-page__title-input,
 .admin-review-page__reject-input {
   display: block;
   width: 100%;
@@ -149,4 +159,9 @@
   font-size: 26px;
   line-height: 72px;
   box-sizing: border-box;
+}
+
+.admin-review-page__title-input {
+  background: #fff;
+  border: 1px solid #ddd6fe;
 }

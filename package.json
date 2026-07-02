@@ -2,7 +2,7 @@
   "name": "pindou",
   "version": "1.0.0",
   "private": true,
-  "description": "拼豆图纸生成器",
+  "description": "拼豆图纸转换工具",
   "templateInfo": {
     "name": "default",
     "typescript": true,

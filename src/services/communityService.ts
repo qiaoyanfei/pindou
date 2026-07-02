@@ -266,9 +266,9 @@ export async function publishPost(payload: PublishPayload): Promise<{
     reviewStatus?: import('@/types/community').PostReviewStatus
   }>('publishPost', {
     draftId: payload.draftId,
-    title: payload.title,
+    title: '标题待生成',
     category: payload.category,
-    description: payload.description,
+    description: '',
     visibility: payload.visibility,
     coverFileId: payload.coverFileId,
     sheetFileId: payload.sheetFileId,
@@ -311,7 +311,7 @@ function normalizePostSummary(item: PostSummary): PostSummary {
   }
 }
 
-type PagedPostSummaryResult = { list: PostSummary[]; hasMore: boolean }
+type PagedPostSummaryResult = { list: PostSummary[]; hasMore: boolean; total?: number }
 
 function getCloudFileIds(list: PostSummary[]): string[] {
   return list
@@ -335,29 +335,31 @@ async function mapPostSummariesWithCover(
 }
 
 export async function fetchMyPosts(page = 1): Promise<PagedPostSummaryResult> {
-  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyPosts', {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean; total?: number }>('getMyPosts', {
     page,
     pageSize: 20,
   })
   return {
     list: await mapPostSummariesWithCover(result.list),
     hasMore: result.hasMore ?? false,
+    total: result.total,
   }
 }
 
 export async function fetchPendingPosts(page = 1): Promise<PagedPostSummaryResult> {
-  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getPendingPosts', {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean; total?: number }>('getPendingPosts', {
     page,
     pageSize: 20,
   })
   return {
     list: await mapPostSummariesWithCover(result.list),
     hasMore: result.hasMore ?? false,
+    total: result.total,
   }
 }
 
 export async function fetchMyLikes(page = 1): Promise<PagedPostSummaryResult> {
-  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyLikes', {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean; total?: number }>('getMyLikes', {
     page,
     pageSize: 20,
   })
@@ -384,17 +386,19 @@ export async function fetchMyLikes(page = 1): Promise<PagedPostSummaryResult> {
       }
     }),
     hasMore: result.hasMore ?? false,
+    total: result.total,
   }
 }
 
 export async function fetchMyFavorites(page = 1): Promise<PagedPostSummaryResult> {
-  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('getMyFavorites', {
+  const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean; total?: number }>('getMyFavorites', {
     page,
     pageSize: 20,
   })
   return {
     list: await mapPostSummariesWithCover(result.list, { favorited: true }),
     hasMore: result.hasMore ?? false,
+    total: result.total,
   }
 }
 
@@ -451,12 +455,31 @@ export async function fetchReviewQueue(): Promise<PostSummary[]> {
   )
 }
 
+export async function fetchReviewAuthorPosts(authorOpenid: string): Promise<{
+  published: PostSummary[]
+  pending: PostSummary[]
+}> {
+  const result = await callCloudApi<{ published: PostSummary[]; pending: PostSummary[] }>(
+    'getReviewAuthorPosts',
+    { authorOpenid },
+  )
+  const list = [...result.published, ...result.pending]
+  const urlMap = await getTempFileUrls(getCloudFileIds(list))
+  const mapWithCover = (item: PostSummary) =>
+    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId || ''] || '' })
+  return {
+    published: result.published.map(mapWithCover),
+    pending: result.pending.map(mapWithCover),
+  }
+}
+
 export async function reviewPost(
   postId: string,
   action: 'approve' | 'reject',
   note?: string,
+  reviewTitle?: string,
 ): Promise<void> {
-  await callCloudApi('reviewPost', { postId, action, note })
+  await callCloudApi('reviewPost', { postId, action, note, reviewTitle })
 }
 
 export async function prepareRegenerateFromPost(postId: string): Promise<void> {

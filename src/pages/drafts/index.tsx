@@ -20,9 +20,11 @@ export default function DraftsPage() {
     loading,
     loadingMore,
     hasMore,
+    total,
     reload,
     loadMore,
   } = useCachedPostList('drafts', fetchPendingPosts)
+  const displayedCount = total ?? list.length
 
   const handleGoPublic = async (postId: string) => {
     const res = await showModal({
@@ -60,7 +62,7 @@ export default function DraftsPage() {
 
   return (
     <View className='list-page drafts-page'>
-      <ScrollView scrollY className='list-page__scroll' onScrollToLower={loadMore}>
+      <ScrollView scrollY className='list-page__scroll' lowerThreshold={120} onScrollToLower={loadMore}>
         <View className='list-page__content'>
           {loading ? (
             <View className='list-page__loading'>加载中...</View>
@@ -73,7 +75,7 @@ export default function DraftsPage() {
           ) : (
             <>
               <Text className='list-page__count'>
-                {hasMore ? '已加载' : '共'} {list.length} 张待发布图纸
+                共 {displayedCount} 张待发布图纸
               </Text>
               <PageListBanner
                 variant='tip'

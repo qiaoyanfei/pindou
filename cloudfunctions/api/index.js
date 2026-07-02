@@ -66,6 +66,20 @@ function buildPostSearchText(post) {
     .join(' ')
 }
 
+function buildGeneratedPostTitle(post) {
+  const category = String(post?.category || '').trim()
+  const styleMode = post?.styleMode === 'portrait' ? '写实风' : '漫画风'
+  const width = Number(post?.width) || 0
+  const height = Number(post?.height) || 0
+  const size = width > 0 && height > 0 ? `${width}×${height}` : ''
+  const shortId = String(post?._id || '').slice(-4).toUpperCase()
+  return [
+    `${category}${styleMode}拼豆图纸`,
+    size,
+    shortId ? `#${shortId}` : '',
+  ].filter(Boolean).join(' ')
+}
+
 function normalizeAdminOpenIds(value) {
   if (!value) return []
   if (Array.isArray(value)) {
@@ -454,8 +468,8 @@ function mapAuthor(user) {
 async function syncAuthorProfileToPosts(openid, user) {
   if (!user || !openid) return
   const displayNickName = resolveDisplayNickName(user.nickName, openid)
-  const res = await db.collection('posts').where({ _openid: openid }).limit(100).get()
-  const updates = res.data
+  const posts = await fetchAll(() => db.collection('posts').where({ _openid: openid }))
+  const updates = posts
     .filter((post) => isLegacyDefaultNickName(post.authorNickName))
     .map((post) =>
       db.collection('posts').doc(post._id).update({
@@ -488,14 +502,13 @@ async function attachInteractionFlags(openid, posts) {
 
 async function repairOrphanPosts(openid, user) {
   if (!user) return
-  const res = await db.collection('posts')
-    .where({
+  const posts = await fetchAll(() =>
+    db.collection('posts').where({
       authorNickName: user.nickName || '拼豆玩家',
       authorAvatarUrl: user.avatarUrl || '',
-    })
-    .limit(100)
-    .get()
-  const orphans = res.data.filter((post) => !post._openid)
+    }),
+  )
+  const orphans = posts.filter((post) => !post._openid)
   if (!orphans.length) return
   await Promise.all(
     orphans.map((post) =>
@@ -516,6 +529,35 @@ function getPagination(data, defaultPageSize = 20, maxPageSize = 50) {
   const page = Math.max(1, Number(data?.page || 1))
   const pageSize = Math.min(maxPageSize, Math.max(1, Number(data?.pageSize || defaultPageSize)))
   return { page, pageSize, skip: (page - 1) * pageSize }
+}
+
+function hasExplicitPagination(data) {
+  if (!data) return false
+  return Object.prototype.hasOwnProperty.call(data, 'page')
+    || Object.prototype.hasOwnProperty.call(data, 'pageSize')
+}
+
+async function fetchAll(createQuery, pageSize = 100) {
+  const list = []
+  let skip = 0
+  while (true) {
+    const res = await createQuery().skip(skip).limit(pageSize).get()
+    list.push(...res.data)
+    if (res.data.length < pageSize) break
+    skip += pageSize
+  }
+  return list
+}
+
+async function fetchPostsByIds(ids) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))]
+  const list = []
+  for (let start = 0; start < uniqueIds.length; start += 100) {
+    const chunk = uniqueIds.slice(start, start + 100)
+    const res = await db.collection('posts').where({ _id: _.in(chunk) }).get()
+    list.push(...res.data)
+  }
+  return list
 }
 
 async function buildLoginResponse(openid, user, options = {}) {
@@ -760,9 +802,9 @@ async function handleDeleteDraft(openid, data) {
 }
 
 async function handlePublishPost(openid, data) {
-  const title = String(data?.title || '').trim()
-  if (!title) return fail('请填写标题')
   if (!data?.coverFileId || !data?.patternFileId) return fail('缺少图纸文件，请重新发布')
+  const title = String(data?.title || '').trim() || '标题待生成'
+  const description = ''
 
   const publishLimitError = await assertDailyPublishAllowed(openid)
   if (publishLimitError) return publishLimitError
@@ -780,7 +822,7 @@ async function handlePublishPost(openid, data) {
   ]
 
   if (wantsPublic) {
-    const textCheck = await validatePublishText(openid, data.title, data.description)
+    const textCheck = await validatePublishText(openid, title, description)
     if (!textCheck.ok) {
       reviewStatus = 'rejected'
       reviewNote = textCheck.message || '内容不符合规范'
@@ -791,7 +833,7 @@ async function handlePublishPost(openid, data) {
   const postDoc = {
     _openid: openid,
     title,
-    description: data.description || '',
+    description,
     category: data.category,
     visibility: 'private',
     reviewStatus,
@@ -846,7 +888,10 @@ async function handleUpdatePostVisibility(openid, data) {
   const now = db.serverDate()
 
   if (visibility === 'public') {
-    const textCheck = await validatePublishText(openid, post.title, post.description)
+    const currentTitle = String(post.title || '').trim()
+    const title = currentTitle && currentTitle !== '标题待生成' ? currentTitle : '标题待生成'
+    const description = ''
+    const textCheck = await validatePublishText(openid, title, description)
     let reviewStatus = 'pending'
     let reviewNote = ''
     let history = prependHistory(
@@ -861,9 +906,12 @@ async function handleUpdatePostVisibility(openid, data) {
     await db.collection('posts').doc(postId).update({
       data: {
         visibility: 'private',
+        title,
+        description,
         reviewStatus,
         reviewNote,
         reviewHistory: history,
+        searchText: buildPostSearchText({ ...post, title, description }),
         updatedAt: now,
       },
     })
@@ -909,11 +957,36 @@ async function handleGetReviewQueue(openid) {
   return ok({ list: res.data.map(mapPostSummary) })
 }
 
+async function handleGetReviewAuthorPosts(openid, data) {
+  if (!(await isAdmin(openid))) return fail('无审核权限')
+  const authorOpenid = String(data?.authorOpenid || '').trim()
+  if (!authorOpenid) return fail('缺少作者信息')
+
+  const [publishedRes, pendingRes] = await Promise.all([
+    fetchAll(() =>
+      db.collection('posts')
+        .where({ _openid: authorOpenid, visibility: 'public' })
+        .orderBy('publishedAt', 'desc'),
+    ),
+    fetchAll(() =>
+      db.collection('posts')
+        .where({ _openid: authorOpenid, visibility: 'private', reviewStatus: 'pending' })
+        .orderBy('updatedAt', 'desc'),
+    ),
+  ])
+
+  return ok({
+    published: publishedRes.map(mapPostSummary),
+    pending: pendingRes.map(mapPostSummary),
+  })
+}
+
 async function handleReviewPost(openid, data) {
   if (!(await isAdmin(openid))) return fail('无审核权限')
   const postId = data?.postId
   const action = data?.action
   const note = String(data?.note || '').trim()
+  const reviewTitle = String(data?.reviewTitle || '').trim()
   if (!postId || !action) return fail('参数不完整')
 
   const res = await db.collection('posts').doc(postId).get()
@@ -925,6 +998,12 @@ async function handleReviewPost(openid, data) {
   const now = db.serverDate()
 
   if (action === 'approve') {
+    const existingTitle = String(post.title || '').trim()
+    const finalTitle = reviewTitle
+      || (existingTitle && existingTitle !== '标题待生成' ? existingTitle : buildGeneratedPostTitle(post))
+    const textCheck = await validatePublishText(post._openid, finalTitle, post.description)
+    if (!textCheck.ok) return fail(textCheck.message || '标题不符合规范')
+    const nextPost = { ...post, title: finalTitle }
     const history = prependHistory(
       post.reviewHistory,
       buildHistoryEntry('approved', '审核通过'),
@@ -932,10 +1011,11 @@ async function handleReviewPost(openid, data) {
     await db.collection('posts').doc(postId).update({
       data: {
         visibility: 'public',
+        title: finalTitle,
         reviewStatus: 'approved',
         reviewNote: '',
         reviewHistory: history,
-        searchText: buildPostSearchText(post),
+        searchText: buildPostSearchText(nextPost),
         publishedAt: now,
         updatedAt: now,
       },
@@ -945,7 +1025,7 @@ async function handleReviewPost(openid, data) {
       'income',
       config.publishReward,
       '发布图纸奖励',
-      `《${post.title}》`,
+      `《${finalTitle}》`,
     )
     return ok({ postId, reviewStatus: 'approved' })
   }
@@ -974,43 +1054,112 @@ async function handleReviewPost(openid, data) {
 async function handleGetMyPosts(openid, data) {
   const user = await getUser(openid)
   await repairOrphanPosts(openid, user)
+  const filter = { _openid: openid, visibility: 'public' }
+  if (!hasExplicitPagination(data)) {
+    const posts = await fetchAll(() =>
+      db.collection('posts').where(filter).orderBy('publishedAt', 'desc'),
+    )
+    const list = posts.map(mapPostSummary)
+    return ok({ list, page: 1, total: list.length, hasMore: false })
+  }
+
   const { page, pageSize, skip } = getPagination(data)
-  const res = await db.collection('posts')
-    .where({ _openid: openid, visibility: 'public' })
-    .orderBy('publishedAt', 'desc')
-    .skip(skip)
-    .limit(pageSize)
-    .get()
+  const [res, countRes] = await Promise.all([
+    db.collection('posts')
+      .where(filter)
+      .orderBy('publishedAt', 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get(),
+    db.collection('posts').where(filter).count(),
+  ])
   const list = res.data.map(mapPostSummary)
-  return ok({ list, page, hasMore: res.data.length === pageSize })
+  return ok({
+    list,
+    page,
+    total: countRes.total,
+    hasMore: skip + res.data.length < countRes.total,
+  })
 }
 
 async function handleGetPendingPosts(openid, data) {
   const user = await getUser(openid)
   await repairOrphanPosts(openid, user)
+  const filter = { _openid: openid, visibility: 'private' }
+  if (!hasExplicitPagination(data)) {
+    const posts = await fetchAll(() =>
+      db.collection('posts').where(filter).orderBy('publishedAt', 'desc'),
+    )
+    const list = posts.map(mapPostSummary)
+    return ok({ list, page: 1, total: list.length, hasMore: false })
+  }
+
   const { page, pageSize, skip } = getPagination(data)
-  const res = await db.collection('posts')
-    .where({ _openid: openid, visibility: 'private' })
-    .orderBy('publishedAt', 'desc')
-    .skip(skip)
-    .limit(pageSize)
-    .get()
+  const [res, countRes] = await Promise.all([
+    db.collection('posts')
+      .where(filter)
+      .orderBy('publishedAt', 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get(),
+    db.collection('posts').where(filter).count(),
+  ])
   const list = res.data.map(mapPostSummary)
-  return ok({ list, page, hasMore: res.data.length === pageSize })
+  return ok({
+    list,
+    page,
+    total: countRes.total,
+    hasMore: skip + res.data.length < countRes.total,
+  })
 }
 
 async function handleGetMyLikes(openid, data) {
+  const filter = { _openid: openid }
+  if (!hasExplicitPagination(data)) {
+    const likes = await fetchAll(() =>
+      db.collection('likes').where(filter).orderBy('createdAt', 'desc'),
+    )
+    if (!likes.length) return ok({ list: [], page: 1, total: 0, hasMore: false })
+
+    const ids = likes.map((item) => item.postId)
+    const posts = await fetchPostsByIds(ids)
+    const postMap = new Map(posts.map((post) => [post._id, post]))
+    const list = likes
+      .map((like) => {
+        const post = postMap.get(like.postId)
+        if (!post) return null
+        return {
+          ...mapPostSummary(post),
+          liked: true,
+          favorited: false,
+          likedAt: like.createdAt,
+        }
+      })
+      .filter(Boolean)
+    return ok({
+      list: await attachInteractionFlags(openid, list),
+      page: 1,
+      total: likes.length,
+      hasMore: false,
+    })
+  }
+
   const { page, pageSize, skip } = getPagination(data)
-  const likes = await db.collection('likes')
-    .where({ _openid: openid })
-    .orderBy('createdAt', 'desc')
-    .skip(skip)
-    .limit(pageSize)
-    .get()
-  if (!likes.data.length) return ok({ list: [] })
+  const [likes, countRes] = await Promise.all([
+    db.collection('likes')
+      .where(filter)
+      .orderBy('createdAt', 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get(),
+    db.collection('likes').where(filter).count(),
+  ])
+  if (!likes.data.length) {
+    return ok({ list: [], page, total: countRes.total, hasMore: false })
+  }
   const ids = likes.data.map((item) => item.postId)
-  const postsRes = await db.collection('posts').where({ _id: _.in(ids) }).get()
-  const postMap = new Map(postsRes.data.map((post) => [post._id, post]))
+  const posts = await fetchPostsByIds(ids)
+  const postMap = new Map(posts.map((post) => [post._id, post]))
   const list = likes.data
     .map((like) => {
       const post = postMap.get(like.postId)
@@ -1023,21 +1172,56 @@ async function handleGetMyLikes(openid, data) {
       }
     })
     .filter(Boolean)
-  return ok({ list: await attachInteractionFlags(openid, list), page, hasMore: likes.data.length === pageSize })
+  return ok({
+    list: await attachInteractionFlags(openid, list),
+    page,
+    total: countRes.total,
+    hasMore: skip + likes.data.length < countRes.total,
+  })
 }
 
 async function handleGetMyFavorites(openid, data) {
+  const filter = { _openid: openid }
+  if (!hasExplicitPagination(data)) {
+    const favorites = await fetchAll(() =>
+      db.collection('favorites').where(filter).orderBy('createdAt', 'desc'),
+    )
+    if (!favorites.length) return ok({ list: [], page: 1, total: 0, hasMore: false })
+
+    const ids = favorites.map((item) => item.postId)
+    const posts = await fetchPostsByIds(ids)
+    const postMap = new Map(posts.map((post) => [post._id, post]))
+    const list = favorites
+      .map((favorite) => {
+        const post = postMap.get(favorite.postId)
+        if (!post) return null
+        return { ...mapPostSummary(post), favorited: true, favoritedAt: favorite.createdAt }
+      })
+      .filter(Boolean)
+    return ok({
+      list: await attachInteractionFlags(openid, list),
+      page: 1,
+      total: favorites.length,
+      hasMore: false,
+    })
+  }
+
   const { page, pageSize, skip } = getPagination(data)
-  const favorites = await db.collection('favorites')
-    .where({ _openid: openid })
-    .orderBy('createdAt', 'desc')
-    .skip(skip)
-    .limit(pageSize)
-    .get()
-  if (!favorites.data.length) return ok({ list: [] })
+  const [favorites, countRes] = await Promise.all([
+    db.collection('favorites')
+      .where(filter)
+      .orderBy('createdAt', 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get(),
+    db.collection('favorites').where(filter).count(),
+  ])
+  if (!favorites.data.length) {
+    return ok({ list: [], page, total: countRes.total, hasMore: false })
+  }
   const ids = favorites.data.map((item) => item.postId)
-  const postsRes = await db.collection('posts').where({ _id: _.in(ids) }).get()
-  const postMap = new Map(postsRes.data.map((post) => [post._id, post]))
+  const posts = await fetchPostsByIds(ids)
+  const postMap = new Map(posts.map((post) => [post._id, post]))
   const list = favorites.data
     .map((favorite) => {
       const post = postMap.get(favorite.postId)
@@ -1045,7 +1229,12 @@ async function handleGetMyFavorites(openid, data) {
       return { ...mapPostSummary(post), favorited: true, favoritedAt: favorite.createdAt }
     })
     .filter(Boolean)
-  return ok({ list: await attachInteractionFlags(openid, list), page, hasMore: favorites.data.length === pageSize })
+  return ok({
+    list: await attachInteractionFlags(openid, list),
+    page,
+    total: countRes.total,
+    hasMore: skip + favorites.data.length < countRes.total,
+  })
 }
 
 async function handleGetBeanLogs(openid, data) {
@@ -1140,6 +1329,8 @@ exports.main = async (event) => {
         return await handleCheckAdmin(openid)
       case 'getReviewQueue':
         return await handleGetReviewQueue(openid)
+      case 'getReviewAuthorPosts':
+        return await handleGetReviewAuthorPosts(openid, data)
       case 'reviewPost':
         return await handleReviewPost(openid, data)
       default:

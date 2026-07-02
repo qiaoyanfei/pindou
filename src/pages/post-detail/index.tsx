@@ -99,7 +99,6 @@ export default function PostDetailPage() {
   useDidShow(() => {
     restoreSessionFromStorage()
     setIsLoggedIn(isUserAuthenticated(getCachedUser()))
-    Taro.showShareMenu({ withShareTicket: true, showShareItems: ['shareAppMessage'] })
     void loadPost({ silent: Boolean(postRef.current) })
   })
 

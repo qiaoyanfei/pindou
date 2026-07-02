@@ -94,32 +94,33 @@
   color: $color-text-secondary;
 }
 
-.publish-page__input {
-  width: 100%;
-  height: 80px;
-  padding: 0 20px;
-  border-radius: 16px;
-  background: $color-bg;
-  font-size: 28px;
-  color: $color-text;
-  box-sizing: border-box;
-}
-
-.publish-page__textarea {
-  width: 100%;
-  min-height: 180px;
-  padding: 20px;
-  border-radius: 16px;
-  background: $color-bg;
-  font-size: 28px;
-  color: $color-text;
-  box-sizing: border-box;
-}
-
 .publish-page__categories {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
+}
+
+.publish-page__system-title {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: $color-bg;
+  box-sizing: border-box;
+}
+
+.publish-page__system-title-main {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: $color-text;
+  line-height: 1.4;
+}
+
+.publish-page__system-title-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.5;
 }
 
 .publish-page__category {

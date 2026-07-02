@@ -2,7 +2,7 @@
   "miniprogramRoot": "dist/",
   "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "pindou",
-  "description": "拼豆图纸生成器",
+  "description": "拼豆图纸转换工具",
   "appid": "wx109c000e1b6615f4",
   "libVersion": "3.3.5",
   "setting": {

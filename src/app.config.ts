@@ -30,6 +30,7 @@ export default defineAppConfig({
     'pages/feedback/index',
     'pages/feedback-form/index',
     'pages/admin-review/index',
+    'pages/admin-author-posts/index',
   ],
   window: {
     backgroundTextStyle: 'light',
@@ -50,7 +51,7 @@ export default defineAppConfig({
       },
       {
         pagePath: 'pages/generate/index',
-        text: '生成',
+        text: '制作',
       },
       {
         pagePath: 'pages/mine/index',

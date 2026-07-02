@@ -1,4 +1,4 @@
-import Taro, { useShareAppMessage } from '@tarojs/taro'
+import Taro, { useDidShow, useShareAppMessage, useShareTimeline } from '@tarojs/taro'
 import { getCachedUser, rewardShare } from '@/services/communityService'
 import { initCloud } from '@/services/cloudClient'
 import { isUserAuthenticated } from '@/services/wechatAuth'
@@ -9,8 +9,28 @@ export interface ShareContent {
   imageUrl?: string
 }
 
+function getTimelineQuery(path: string): string {
+  const queryIndex = path.indexOf('?')
+  if (queryIndex < 0) return ''
+  return path.slice(queryIndex + 1)
+}
+
 export function useShareContent(getContent: () => ShareContent) {
+  useDidShow(() => {
+    Taro.showShareMenu({
+      withShareTicket: true,
+      showShareItems: ['shareAppMessage', 'shareTimeline'],
+    })
+  })
   useShareAppMessage(() => getContent())
+  useShareTimeline(() => {
+    const content = getContent()
+    return {
+      title: content.title,
+      query: getTimelineQuery(content.path),
+      imageUrl: content.imageUrl,
+    }
+  })
 }
 
 export async function claimShareReward(

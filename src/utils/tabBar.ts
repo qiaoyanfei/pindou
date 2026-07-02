@@ -14,6 +14,8 @@ export const TAB_INDEX = {
 
 export type TabKey = keyof typeof TAB_INDEX
 
+export const GENERATE_TAB_CONVERT_EVENT = 'generateTabConvert'
+
 export function isTabPage(url: string): boolean {
   const path = url.split('?')[0]
   const normalized = path.startsWith('/') ? path : `/${path}`

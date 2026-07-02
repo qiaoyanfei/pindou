@@ -6,6 +6,7 @@ export interface MyListCacheState {
   list: PostSummary[]
   page: number
   hasMore: boolean
+  total?: number
 }
 
 const listCaches = new Map<MyListCacheKey, MyListCacheState>()

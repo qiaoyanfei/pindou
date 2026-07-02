@@ -44,7 +44,7 @@ export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProp
           <View className='image-uploader__cloud-wrap'>
             <Image className='image-uploader__cloud' src={cloudUploadIcon} mode='aspectFit' />
           </View>
-          <Text className='image-uploader__title'>点击上传照片</Text>
+          <Text className='image-uploader__title'>点击上传图片</Text>
           <Text className='image-uploader__format'>支持 JPG / PNG 格式</Text>
 
           <View className='image-uploader__tip-box'>
@@ -54,7 +54,7 @@ export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProp
               <Text className='image-uploader__tip-highlight'>请上传纯白色背景</Text>
             </Text>
             <Text className='image-uploader__tip-suggest'>
-              建议：头像、宠物、卡通、玩偶等效果更佳
+              建议：宠物、卡通、玩偶等主体清晰的图片效果更佳
             </Text>
           </View>
 

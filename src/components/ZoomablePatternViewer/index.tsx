@@ -81,7 +81,7 @@ function ZoomablePatternViewer({
       >
         {loading && (
           <View className='zoom-viewer__loading'>
-            <Text>图纸生成中...</Text>
+            <Text>图纸制作中...</Text>
           </View>
         )}
 

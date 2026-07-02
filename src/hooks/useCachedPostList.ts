@@ -20,12 +20,13 @@ interface LoadOptions {
 
 export function useCachedPostList(
   cacheKey: MyListCacheKey,
-  fetcher: (page?: number) => Promise<{ list: PostSummary[]; hasMore: boolean }>,
+  fetcher: (page?: number) => Promise<{ list: PostSummary[]; hasMore: boolean; total?: number }>,
 ) {
   const initialCache = readMyListCache(cacheKey)
   const [list, setList] = useState<PostSummary[]>(initialCache?.list ?? [])
   const [page, setPage] = useState(initialCache?.page ?? 1)
   const [hasMore, setHasMore] = useState(initialCache?.hasMore ?? false)
+  const [total, setTotal] = useState<number | undefined>(initialCache?.total)
   const [loading, setLoading] = useState(!initialCache)
   const [loadingMore, setLoadingMore] = useState(false)
   const inflightRef = useRef(false)
@@ -41,9 +42,15 @@ export function useCachedPostList(
       const result = await fetcher(nextPage)
       setPage(nextPage)
       setHasMore(result.hasMore)
+      setTotal(result.total)
       setList((prev) => {
         const nextList = append ? [...prev, ...result.list] : result.list
-        writeMyListCache(cacheKey, { list: nextList, page: nextPage, hasMore: result.hasMore })
+        writeMyListCache(cacheKey, {
+          list: nextList,
+          page: nextPage,
+          hasMore: result.hasMore,
+          total: result.total,
+        })
         return nextList
       })
     } catch (error) {
@@ -64,6 +71,7 @@ export function useCachedPostList(
       setList(cached.list)
       setPage(cached.page)
       setHasMore(cached.hasMore)
+      setTotal(cached.total)
       setLoading(false)
       return
     }
@@ -87,5 +95,5 @@ export function useCachedPostList(
     await load(page + 1, { append: true, silent: true })
   }, [hasMore, load, loading, loadingMore, page])
 
-  return { list, loading, loadingMore, hasMore, reload, loadMore }
+  return { list, loading, loadingMore, hasMore, total, reload, loadMore }
 }

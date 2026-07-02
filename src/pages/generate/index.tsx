@@ -1,6 +1,6 @@
 import { View, Text, Button, Canvas, Image } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
 import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
@@ -16,7 +16,7 @@ import { requireAuthenticated } from '@/services/session'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { safeSwitchTab } from '@/utils/navigation'
-import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
+import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import {
   createDefaultConfigForStyleMode,
   getExportClarityLabel,
@@ -100,7 +100,9 @@ export default function GeneratePage() {
     safeSwitchTab('/pages/home/index')
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
+    if (loading) return
+
     if (!imagePath) {
       Taro.showToast({ title: '请先上传图片', icon: 'none' })
       return
@@ -108,7 +110,7 @@ export default function GeneratePage() {
 
     syncGenerateDraftFromPage(imagePath, config)
     setLoading(true)
-    Taro.showLoading({ title: '生成中...' })
+    Taro.showLoading({ title: '转换中...' })
 
     try {
       const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas')
@@ -117,11 +119,21 @@ export default function GeneratePage() {
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       Taro.hideLoading()
-      handleImageProcessError(error, '生成失败')
+      handleImageProcessError(error, '转换失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [config, imagePath, loading])
+
+  useEffect(() => {
+    const handleConvertFromTab = () => {
+      void handleGenerate()
+    }
+    Taro.eventCenter.on(GENERATE_TAB_CONVERT_EVENT, handleConvertFromTab)
+    return () => {
+      Taro.eventCenter.off(GENERATE_TAB_CONVERT_EVENT, handleConvertFromTab)
+    }
+  }, [handleGenerate])
 
   if (!authed) {
     return null
@@ -143,7 +155,7 @@ export default function GeneratePage() {
           <View className='generate-page__nav-back' onClick={handleBack}>
             <Image className='generate-page__nav-back-icon' src={backIcon} mode='aspectFit' />
           </View>
-          <Text className='generate-page__nav-title'>生成图纸</Text>
+          <Text className='generate-page__nav-title'>制作图纸</Text>
         </View>
       </View>
 
@@ -173,7 +185,7 @@ export default function GeneratePage() {
           disabled={loading}
           onClick={handleGenerate}
         >
-          下一步：预览图纸
+          下一步：转换图纸
         </Button>
       </View>
 

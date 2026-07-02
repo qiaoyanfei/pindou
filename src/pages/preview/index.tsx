@@ -30,6 +30,36 @@ interface StoredPayload {
 
 type ExportJob = 'save' | 'cover'
 
+function areConfigsEqual(a: PatternConfig, b: PatternConfig): boolean {
+  return a.paletteId === b.paletteId
+    && a.longEdge === b.longEdge
+    && a.showGrid === b.showGrid
+    && a.showColorCode === b.showColorCode
+    && a.exportCellPx === b.exportCellPx
+    && a.styleMode === b.styleMode
+}
+
+function arePatternStatsEqual(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((key) => a[key] === b[key])
+}
+
+function arePatternsEqual(a: PatternResult | null, b: PatternResult): boolean {
+  if (!a) return false
+  if (
+    a.width !== b.width
+    || a.height !== b.height
+    || a.totalBeads !== b.totalBeads
+    || a.grid.length !== b.grid.length
+    || !arePatternStatsEqual(a.stats, b.stats)
+  ) {
+    return false
+  }
+  return a.grid.every((cell, index) => cell === b.grid[index])
+}
+
 export default function PreviewPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
@@ -44,13 +74,16 @@ export default function PreviewPage() {
     restoreSessionFromStorage()
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
-      Taro.showToast({ title: '请先生成图纸', icon: 'none' })
+      Taro.showToast({ title: '请先制作图纸', icon: 'none' })
       setTimeout(() => Taro.navigateBack(), 800)
       return
     }
 
-    setPattern(stored.pattern)
-    setConfig(normalizeConfig(stored.config))
+    setPattern((prev) => arePatternsEqual(prev, stored.pattern) ? prev : stored.pattern)
+    setConfig((prev) => {
+      const nextConfig = normalizeConfig(stored.config)
+      return areConfigsEqual(prev, nextConfig) ? prev : nextConfig
+    })
     setExportJob(null)
     setExportBusy(false)
     setCreatorNickname(resolveCreatorNickname())

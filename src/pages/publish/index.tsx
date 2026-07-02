@@ -1,4 +1,4 @@
-import { View, Text, Image, Input, Textarea, Switch, Button } from '@tarojs/components'
+import { View, Text, Image, Switch, Button } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import {
@@ -17,9 +17,7 @@ import './index.scss'
 
 export default function PublishPage() {
   const [payload, setPayload] = useState<ReturnType<typeof readPublishWorkflow>>(null)
-  const [title, setTitle] = useState('')
   const [category, setCategory] = useState<PostCategory>(CATEGORY_OPTIONS[0])
-  const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [coverPreview, setCoverPreview] = useState('')
@@ -35,17 +33,12 @@ export default function PublishPage() {
       return
     }
     setPayload(workflow)
-    setTitle(workflow.title || '')
     setCoverPreview(workflow.coverPath || '')
   })
 
   const handleSubmit = async () => {
     if (!payload?.pattern) return
-    const trimmedTitle = title.trim()
-    if (!trimmedTitle) {
-      Taro.showToast({ title: '请填写标题', icon: 'none' })
-      return
-    }
+    const title = '标题待生成'
 
     setSubmitting(true)
     Taro.showLoading({ title: isPublic ? '提交审核...' : '保存中...' })
@@ -58,9 +51,9 @@ export default function PublishPage() {
       const patternFileId = await uploadJsonCloudFile(`posts/patterns/${stamp}.json`, payload.pattern)
 
       const result = await publishPost({
-        title: trimmedTitle,
+        title,
         category,
-        description: description.trim(),
+        description: '',
         visibility: isPublic ? 'public' : 'private',
         coverFileId,
         patternFileId,
@@ -119,16 +112,12 @@ export default function PublishPage() {
 
       <View className='publish-page__form'>
         <View className='publish-page__field'>
-          <Text className='publish-page__label'>
-            标题 <Text className='publish-page__label-hint'>（必填）</Text>
-          </Text>
-          <Input
-            className='publish-page__input'
-            value={title}
-            maxlength={40}
-            placeholder='给作品起个名字'
-            onInput={(event) => setTitle(event.detail.value)}
-          />
+          <Text className='publish-page__label'>标题</Text>
+          <View className='publish-page__system-title'>
+            <Text className='publish-page__system-title-hint'>
+              标题由系统生成，审核通过后确定
+            </Text>
+          </View>
         </View>
 
         <View className='publish-page__field'>
@@ -144,17 +133,6 @@ export default function PublishPage() {
               </Text>
             ))}
           </View>
-        </View>
-
-        <View className='publish-page__field'>
-          <Text className='publish-page__label'>简介</Text>
-          <Textarea
-            className='publish-page__textarea'
-            value={description}
-            maxlength={200}
-            placeholder='介绍一下你的作品（选填）'
-            onInput={(event) => setDescription(event.detail.value)}
-          />
         </View>
 
         <View className='publish-page__field'>
