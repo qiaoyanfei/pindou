@@ -17,6 +17,8 @@ import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { safeSwitchTab } from '@/utils/navigation'
 import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
+import { createConversionLoadingController } from '@/utils/conversionLoading'
+import { useConversionButtonText } from '@/hooks/useConversionButtonText'
 import {
   createDefaultConfigForStyleMode,
   getExportClarityLabel,
@@ -68,6 +70,10 @@ function clearRecoverablePattern(): void {
   }
 }
 
+function waitForLoadingPaint(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 60))
+}
+
 export default function GeneratePage() {
   const initialDraft = readDraftState()
   const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32, headerRight: 96 })
@@ -76,6 +82,7 @@ export default function GeneratePage() {
   const [loading, setLoading] = useState(false)
   const [authed, setAuthed] = useState(false)
   const recoverPromptShownRef = useRef(false)
+  const conversionButton = useConversionButtonText(config.longEdge)
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -154,20 +161,25 @@ export default function GeneratePage() {
 
     syncGenerateDraftFromPage(imagePath, config)
     setLoading(true)
-    Taro.showLoading({ title: '转换中...' })
+    conversionButton.start()
+    const loadingController = createConversionLoadingController()
+    loadingController.start()
 
     try {
-      const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas')
+      const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas', async (message) => {
+        loadingController.show(message)
+        await waitForLoadingPaint()
+      })
       setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config })
-      Taro.hideLoading()
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
-      Taro.hideLoading()
       handleImageProcessError(error, '转换失败')
     } finally {
+      loadingController.stop()
+      conversionButton.stop()
       setLoading(false)
     }
-  }, [config, imagePath, loading])
+  }, [config, conversionButton, imagePath, loading])
 
   useEffect(() => {
     const handleConvertFromTab = () => {
@@ -229,7 +241,7 @@ export default function GeneratePage() {
           disabled={loading}
           onClick={handleGenerate}
         >
-          下一步：转换图纸
+          {conversionButton.buttonText}
         </Button>
       </View>
 

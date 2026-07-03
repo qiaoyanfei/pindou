@@ -12,6 +12,8 @@ import {
 import { PATTERN_STORAGE_KEY, type PatternConfig } from '@/types'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
+import { createConversionLoadingController } from '@/utils/conversionLoading'
+import { useConversionButtonText } from '@/hooks/useConversionButtonText'
 import bannerImage from '@/assets/advanced-settings-banner.jpg'
 import './index.scss'
 
@@ -22,11 +24,16 @@ function clampExportCellPx(value: number): number {
   return Math.max(EXPORT_LIMITS.minCellPx, Math.min(EXPORT_LIMITS.maxCellPx, value))
 }
 
+function waitForLoadingPaint(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 60))
+}
+
 export default function AdvancedSettingsPage() {
   const [config, setConfig] = useState<PatternConfig>(() => normalizeConfig())
   const [imagePath, setImagePath] = useState('')
   const [loading, setLoading] = useState(false)
   const configRef = useRef(config)
+  const conversionButton = useConversionButtonText(config.longEdge)
 
   configRef.current = config
 
@@ -75,17 +82,27 @@ export default function AdvancedSettingsPage() {
 
     persistDraft()
     setLoading(true)
-    Taro.showLoading({ title: '转换中...' })
+    conversionButton.start()
+    const loadingController = createConversionLoadingController()
+    loadingController.start()
 
     try {
-      const pattern = await generatePatternFromImage(imagePath, configRef.current, PROCESS_CANVAS_ID)
+      const pattern = await generatePatternFromImage(
+        imagePath,
+        configRef.current,
+        PROCESS_CANVAS_ID,
+        async (message) => {
+          loadingController.show(message)
+          await waitForLoadingPaint()
+        },
+      )
       setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config: configRef.current })
-      Taro.hideLoading()
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
-      Taro.hideLoading()
       handleImageProcessError(error, '生成失败')
     } finally {
+      loadingController.stop()
+      conversionButton.stop()
       setLoading(false)
     }
   }
@@ -217,7 +234,7 @@ export default function AdvancedSettingsPage() {
           disabled={loading}
           onClick={handlePreview}
         >
-          预览图片
+          {conversionButton.buttonText}
         </Button>
       </View>
 

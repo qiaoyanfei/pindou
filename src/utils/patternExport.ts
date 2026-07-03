@@ -25,6 +25,16 @@ function isAlbumSaveAuthError(message: string): boolean {
   )
 }
 
+function isAlbumSaveCancelled(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower === 'cancel'
+    || lower === 'cancelled'
+    || lower.includes('fail cancel')
+    || lower.includes('user cancel')
+  )
+}
+
 /** 同一次保存内已引导过设置页 */
 let albumSettingsPromptedInCurrentSave = false
 
@@ -52,7 +62,11 @@ export async function saveCanvasToAlbum(canvasId: string): Promise<void> {
 
 export function handleAlbumSaveError(error: unknown): void {
   const message = extractErrorMessage(error)
-  if (message === 'album_scope_cancelled' || message === 'album_auth_cancelled') return
+  if (
+    message === 'album_scope_cancelled'
+    || message === 'album_auth_cancelled'
+    || isAlbumSaveCancelled(message)
+  ) return
   if (isPrivacyAgreementCancelled(error)) return
 
   if (message === 'album_scope_denied') {

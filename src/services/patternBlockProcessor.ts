@@ -20,6 +20,7 @@ import {
 } from '@/utils/constants'
 import type { PatternResult } from '@/types'
 import type { StyleMode } from '@/types'
+import type { PatternProgressCallback } from '@/services/patternPipeline'
 
 export async function processBlockPattern(
   canvas: CanvasNode,
@@ -28,10 +29,12 @@ export async function processBlockPattern(
   targetWidth: number,
   targetHeight: number,
   styleMode: StyleMode = 'portrait',
+  onProgress?: PatternProgressCallback,
 ): Promise<PatternResult> {
   const intermediateWidth = targetWidth * PATTERN_INTERMEDIATE_SCALE
   const intermediateHeight = targetHeight * PATTERN_INTERMEDIATE_SCALE
 
+  await onProgress?.('正在采样颜色...')
   const sample = await extractBlockDominantColors(
     canvas,
     imagePath,
@@ -46,6 +49,7 @@ export async function processBlockPattern(
     },
   )
 
+  await onProgress?.('正在匹配色号...')
   let pattern = matchRgbGridWithExteriorBackground(
     sample.colors,
     intermediateWidth,
@@ -55,6 +59,7 @@ export async function processBlockPattern(
   pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight, styleMode)
 
   if (styleMode === 'portrait') {
+    await onProgress?.('正在优化边缘...')
     const exteriorAtTarget = downsampleExteriorBackground(
       sample.exteriorBackground,
       intermediateWidth,
@@ -65,6 +70,7 @@ export async function processBlockPattern(
     pattern = applyExteriorBackgroundMask(pattern, exteriorAtTarget)
   }
 
+  await onProgress?.('正在生成图纸...')
   pattern = consolidateDarkOutlines(pattern, styleMode)
   pattern = removeIsolatedSpeckles(pattern, PATTERN_SPECKLE_MAX_COUNT, styleMode)
   return pattern
