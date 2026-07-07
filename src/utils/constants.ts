@@ -5,6 +5,11 @@ export const STYLE_MODE_LONG_EDGE_LIMITS: Record<StyleMode, { min: number; max: 
   manga: { min: 20, max: 160 },
 }
 
+export const STYLE_MODE_AUTO_LONG_EDGE_LIMITS: Record<StyleMode, { min: number; max: number }> = {
+  portrait: { min: 60, max: 160 },
+  manga: { min: 20, max: 100 },
+}
+
 export function getLongEdgeLimits(styleMode: StyleMode): { min: number; max: number } {
   return STYLE_MODE_LONG_EDGE_LIMITS[styleMode]
 }
@@ -46,8 +51,8 @@ export const STYLE_MODE_LABELS: Record<StyleMode, string> = {
 }
 
 export const STYLE_MODE_SUBTITLES: Record<StyleMode, string> = {
-  portrait: '适合人物、宠物',
-  manga: '适合插画、卡通、萌宠等',
+  portrait: '真人 / 实物 / 高细节',
+  manga: '插画 / 卡通 / 粗线条',
 }
 
 export const STYLE_MODE_HINTS: Record<StyleMode, string> = {

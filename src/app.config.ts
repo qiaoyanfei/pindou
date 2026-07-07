@@ -12,7 +12,6 @@ export default defineAppConfig({
     'pages/home/index',
     'pages/generate/index',
     'pages/mine/index',
-    'pages/advanced-settings/index',
     'pages/login/index',
     'pages/user-agreement/index',
     'pages/privacy-policy/index',

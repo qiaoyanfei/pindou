@@ -1,8 +1,7 @@
-import { View, Text, Button, Canvas, Image } from '@tarojs/components'
+import { View, Text, Button, Canvas, Image, Slider, Input } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
-import AdvancedSettings from '@/components/AdvancedSettings'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import {
@@ -12,16 +11,20 @@ import {
   setGenerateImageWithDefaultConfig,
   syncGenerateDraftFromPage,
 } from '@/services/generateSession'
+import {
+  getFallbackAutoLongEdge,
+  recommendLongEdgeFromImage,
+} from '@/services/gridRecommendation'
 import { requireAuthenticated } from '@/services/session'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { safeSwitchTab } from '@/utils/navigation'
 import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
-import { useConversionButtonText } from '@/hooks/useConversionButtonText'
 import {
+  clampLongEdge,
   createDefaultConfigForStyleMode,
-  getExportClarityLabel,
+  getLongEdgeLimits,
   STYLE_MODE_LABELS,
 } from '@/utils/constants'
 import {
@@ -33,6 +36,11 @@ import {
 } from '@/types'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
+
+const GRID_PRESETS: Record<StyleMode, number[]> = {
+  portrait: [60, 90, 120, 160],
+  manga: [29, 52, 78, 104],
+}
 
 function createInitialConfig(): PatternConfig {
   return createDefaultConfigForStyleMode('manga')
@@ -80,13 +88,19 @@ export default function GeneratePage() {
   const [imagePath, setImagePath] = useState(initialDraft.imagePath)
   const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
+  const [recommendingGrid, setRecommendingGrid] = useState(false)
+  const [gridSettingsOpen, setGridSettingsOpen] = useState(true)
+  const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
+  const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
   const recoverPromptShownRef = useRef(false)
-  const conversionButton = useConversionButtonText(config.longEdge)
+  const autoGridRequestRef = useRef(0)
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
     setConfig(next.config)
+    setManualLongEdge(null)
+    setManualLongEdgeInput('')
   }
 
   useDidShow(async () => {
@@ -126,9 +140,90 @@ export default function GeneratePage() {
     }
   })
 
+  const applyAutoGridRecommendation = useCallback(async (
+    path: string,
+    styleMode: StyleMode,
+    baseConfig: PatternConfig,
+  ) => {
+    const requestId = autoGridRequestRef.current + 1
+    autoGridRequestRef.current = requestId
+    setRecommendingGrid(true)
+
+    try {
+      const recommendedLongEdge = await recommendLongEdgeFromImage(path, styleMode, 'process-canvas')
+      if (autoGridRequestRef.current !== requestId) return
+
+      const nextConfig = {
+        ...baseConfig,
+        styleMode,
+        longEdge: recommendedLongEdge,
+      }
+      setGenerateDraft(path, nextConfig)
+      setConfig(nextConfig)
+    } catch {
+      if (autoGridRequestRef.current !== requestId) return
+
+      const nextConfig = {
+        ...baseConfig,
+        styleMode,
+        longEdge: getFallbackAutoLongEdge(styleMode),
+      }
+      setGenerateDraft(path, nextConfig)
+      setConfig(nextConfig)
+    } finally {
+      if (autoGridRequestRef.current === requestId) {
+        setRecommendingGrid(false)
+      }
+    }
+  }, [])
+
+  const updateManualLongEdge = (value: number) => {
+    const nextLongEdge = clampLongEdge(value, config.styleMode)
+    const nextConfig = {
+      ...config,
+      longEdge: nextLongEdge,
+    }
+    autoGridRequestRef.current += 1
+    setRecommendingGrid(false)
+    setManualLongEdge(nextLongEdge)
+    setManualLongEdgeInput(String(nextLongEdge))
+    setGenerateDraft(imagePath, nextConfig)
+    setConfig(nextConfig)
+  }
+
+  const resetManualLongEdge = () => {
+    setManualLongEdge(null)
+    setManualLongEdgeInput('')
+    if (imagePath) {
+      void applyAutoGridRecommendation(imagePath, config.styleMode, config)
+    }
+  }
+
+  const adjustManualLongEdge = (delta: number) => {
+    const base = manualLongEdge ?? config.longEdge
+    updateManualLongEdge(base + delta)
+  }
+
+  const handleManualLongEdgeInput = (value: string) => {
+    const normalized = value.replace(/[^\d]/g, '')
+    setManualLongEdgeInput(normalized)
+    if (!normalized) {
+      setManualLongEdge(null)
+      setManualLongEdgeInput('')
+      if (imagePath) {
+        void applyAutoGridRecommendation(imagePath, config.styleMode, config)
+      }
+      return
+    }
+    updateManualLongEdge(Number(normalized))
+  }
+
   const handleImageSelect = (path: string) => {
     const next = setGenerateImageWithDefaultConfig(path, config.styleMode)
+    setManualLongEdge(null)
+    setManualLongEdgeInput('')
     applyDraftState(next)
+    void applyAutoGridRecommendation(path, next.config.styleMode, next.config)
   }
 
   useEffect(() => {
@@ -143,8 +238,13 @@ export default function GeneratePage() {
 
   const handleStyleModeChange = (styleMode: StyleMode) => {
     const nextConfig = createDefaultConfigForStyleMode(styleMode)
+    setManualLongEdge(null)
+    setManualLongEdgeInput('')
     setGenerateDraft(imagePath, nextConfig)
     setConfig(nextConfig)
+    if (imagePath) {
+      void applyAutoGridRecommendation(imagePath, styleMode, nextConfig)
+    }
   }
 
   const handleBack = () => {
@@ -152,7 +252,7 @@ export default function GeneratePage() {
   }
 
   const handleGenerate = useCallback(async () => {
-    if (loading) return
+    if (loading || recommendingGrid) return
 
     if (!imagePath) {
       Taro.showToast({ title: '请先上传图片', icon: 'none' })
@@ -161,7 +261,6 @@ export default function GeneratePage() {
 
     syncGenerateDraftFromPage(imagePath, config)
     setLoading(true)
-    conversionButton.start()
     const loadingController = createConversionLoadingController()
     loadingController.start()
 
@@ -176,10 +275,9 @@ export default function GeneratePage() {
       handleImageProcessError(error, '转换失败')
     } finally {
       loadingController.stop()
-      conversionButton.stop()
       setLoading(false)
     }
-  }, [config, conversionButton, imagePath, loading])
+  }, [config, imagePath, loading, recommendingGrid])
 
   useEffect(() => {
     const handleConvertFromTab = () => {
@@ -194,6 +292,13 @@ export default function GeneratePage() {
   if (!authed) {
     return null
   }
+
+  const longEdgeLimits = getLongEdgeLimits(config.styleMode)
+  const isManualGrid = manualLongEdge !== null
+  const gridSettingClass = `generate-page__grid-setting${isManualGrid ? ' is-manual' : ''}`
+  const gridPresets = GRID_PRESETS[config.styleMode].filter(
+    (item) => item >= longEdgeLimits.min && item <= longEdgeLimits.max,
+  )
 
   return (
     <View className='generate-page'>
@@ -220,28 +325,116 @@ export default function GeneratePage() {
 
         <StyleModeSelector value={config.styleMode} onChange={handleStyleModeChange} />
 
-        <View className='generate-page__config'>
-          <Text className='generate-page__config-title'>当前配置</Text>
-          <View className='generate-page__config-tags'>
-            <Text className='generate-page__config-tag'>{STYLE_MODE_LABELS[config.styleMode]}</Text>
-            <Text className='generate-page__config-tag'>{config.longEdge}格</Text>
-            <Text className='generate-page__config-tag'>MARD 221 标准色</Text>
-            <Text className='generate-page__config-tag'>
-              {getExportClarityLabel(config.exportCellPx)}
-            </Text>
+        <View className='generate-page__settings'>
+          <Text className='generate-page__settings-title'>图纸设置</Text>
+          <View className={gridSettingClass}>
+            <View
+              className='generate-page__grid-head'
+              onClick={() => setGridSettingsOpen((prev) => !prev)}
+            >
+              <View className='generate-page__grid-head-text'>
+                <Text className='generate-page__grid-title'>
+                  {isManualGrid ? '调整格子数' : '格子数设置'}
+                </Text>
+                <Text className='generate-page__grid-desc'>
+                  {isManualGrid ? '格子数越多，细节越丰富，耗时越长' : '自动生成预览'}
+                </Text>
+              </View>
+              <View className='generate-page__grid-head-actions'>
+                <Text className='generate-page__grid-mode'>
+                  {isManualGrid ? `${manualLongEdge}格` : '自动匹配'}
+                </Text>
+                <View className={`generate-page__grid-toggle${gridSettingsOpen ? ' is-open' : ''}`}>
+                  <Text className='generate-page__grid-toggle-icon'>‹</Text>
+                </View>
+              </View>
+            </View>
+
+            {gridSettingsOpen ? (
+              <View className='generate-page__grid-body'>
+                <View className='generate-page__preset-row'>
+                  {gridPresets.map((preset) => (
+                    <View
+                      key={preset}
+                      className={`generate-page__preset${manualLongEdge === preset ? ' is-active' : ''}`}
+                      onClick={() => updateManualLongEdge(preset)}
+                    >
+                      <Text>{preset}格</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View className='generate-page__manual-head'>
+                  <Text className='generate-page__manual-title'>自定义格子数</Text>
+                  <View className='generate-page__reset' onClick={resetManualLongEdge}>
+                    <Text className='generate-page__reset-icon'>↻</Text>
+                    <Text>重置</Text>
+                  </View>
+                </View>
+
+                <View className='generate-page__manual-row'>
+                  <Text className='generate-page__limit'>{longEdgeLimits.min}</Text>
+                  <Slider
+                    className='generate-page__slider'
+                    min={longEdgeLimits.min}
+                    max={longEdgeLimits.max}
+                    step={1}
+                    value={manualLongEdge ?? longEdgeLimits.min}
+                    activeColor={isManualGrid ? '#7c3aed' : '#b79cff'}
+                    backgroundColor='#eee7ff'
+                    blockColor={isManualGrid ? '#7c3aed' : '#b79cff'}
+                    blockSize={18}
+                    showValue={false}
+                    onChanging={(event) => updateManualLongEdge(event.detail.value)}
+                    onChange={(event) => updateManualLongEdge(event.detail.value)}
+                  />
+                  <Text className='generate-page__limit'>{longEdgeLimits.max}</Text>
+                  <View className='generate-page__stepper'>
+                    <View className='generate-page__stepper-btn' onClick={() => adjustManualLongEdge(-1)}>
+                      <Text>−</Text>
+                    </View>
+                    <Input
+                      className='generate-page__stepper-input'
+                      type='number'
+                      value={manualLongEdgeInput}
+                      placeholder=''
+                      onInput={(event) => {
+                        handleManualLongEdgeInput(String(event.detail.value || ''))
+                        return event.detail.value
+                      }}
+                    />
+                    <View className='generate-page__stepper-btn' onClick={() => adjustManualLongEdge(1)}>
+                      <Text>＋</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+          </View>
+
+          <View className='generate-page__palette-row'>
+            <Text>默认色卡</Text>
+            <Text className='generate-page__palette-pill'>MARD 221</Text>
           </View>
         </View>
 
-        <AdvancedSettings config={config} imagePath={imagePath} />
+      </View>
 
+      <View className='generate-page__fixed-action'>
         <Button
           className='generate-page__submit'
           type='primary'
           loading={loading}
-          disabled={loading}
+          disabled={loading || recommendingGrid}
           onClick={handleGenerate}
         >
-          {conversionButton.buttonText}
+          <View className='generate-page__submit-content'>
+            <View className='generate-page__submit-sparkles'>
+              <Text className='generate-page__submit-sparkle-main'>✦</Text>
+              <Text className='generate-page__submit-sparkle-sub'>✦</Text>
+            </View>
+            <Text>{recommendingGrid ? '正在推荐规格...' : '下一步，预览图纸'}</Text>
+          </View>
         </Button>
       </View>
 

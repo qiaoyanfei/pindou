@@ -1,13 +1,7 @@
 import { View, Image, Text } from '@tarojs/components'
 import { chooseMediaWithPermission, handleMediaPickerError, isMediaPickerCancelled, notifyMediaPickerEmptyResult } from '@/utils/mediaPickerError'
 import cloudUploadIcon from '@/assets/icons/cloud-upload.png'
-import exampleBear from '@/assets/generate/example-bear.jpg'
-import exampleDog from '@/assets/generate/example-dog.jpg'
-import exampleBoy from '@/assets/generate/example-boy.jpg'
-import exampleGirl from '@/assets/generate/example-girl.jpg'
 import './index.scss'
-
-const EXAMPLES = [exampleBear, exampleDog, exampleBoy, exampleGirl]
 
 interface ImageUploaderProps {
   imagePath: string
@@ -51,22 +45,8 @@ export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProp
             <Text className='image-uploader__tip-line'>
               <Text className='image-uploader__tip-emoji'>💡 </Text>
               <Text className='image-uploader__tip-prefix'>提示：</Text>
-              <Text className='image-uploader__tip-highlight'>请上传纯白色背景</Text>
+              <Text className='image-uploader__tip-highlight'>纯白背景，主体清晰的照片效果更佳</Text>
             </Text>
-            <Text className='image-uploader__tip-suggest'>
-              建议：宠物、卡通、玩偶等主体清晰的图片效果更佳
-            </Text>
-          </View>
-
-          <View className='image-uploader__examples'>
-            {EXAMPLES.map((src, index) => (
-              <Image
-                key={index}
-                className='image-uploader__example'
-                src={src}
-                mode='aspectFill'
-              />
-            ))}
           </View>
         </View>
       )}
