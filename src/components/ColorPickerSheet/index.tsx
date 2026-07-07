@@ -4,10 +4,14 @@ import { isEmptyCell } from '@/services/patternStats'
 import { getColorById, getPalette } from '@/services/palette'
 import { getColorDisplayName } from '@/utils/colorDisplayName'
 import { countCellsWithColor, getPatternColorIds } from '@/utils/patternEdit'
+import { PATTERN_EMPTY_CELL } from '@/utils/constants'
 import type { PatternResult } from '@/types'
 import './index.scss'
 
 export type ColorPickMode = 'single' | 'batch'
+type ColorPickerTab = 'pattern' | 'all' | 'empty'
+
+const EMPTY_CELL_LABEL = '空白格'
 
 interface ColorPickerSheetProps {
   visible: boolean
@@ -35,7 +39,7 @@ export default function ColorPickerSheet({
   onClose,
 }: ColorPickerSheetProps) {
   const [query, setQuery] = useState('')
-  const [showAll, setShowAll] = useState(false)
+  const [activeTab, setActiveTab] = useState<ColorPickerTab>('pattern')
   const [pickMode, setPickMode] = useState<ColorPickMode>(initialPickMode)
 
   useEffect(() => {
@@ -45,19 +49,28 @@ export default function ColorPickerSheet({
   }, [visible, initialPickMode])
 
   const patternColorIds = useMemo(() => getPatternColorIds(pattern), [pattern])
+  const emptyCellCount = useMemo(
+    () => countCellsWithColor(pattern, PATTERN_EMPTY_CELL),
+    [pattern],
+  )
 
   const filteredPaletteIds = useMemo(() => {
     const q = query.trim().toUpperCase()
-    if (!q) return getPalette().map((color) => color.id)
-    return getPalette()
+    return !q
+      ? getPalette().map((color) => color.id)
+      : getPalette()
       .filter((color) => color.id.toUpperCase().includes(q))
       .map((color) => color.id)
   }, [query])
 
-  const visibleColorIds = showAll ? filteredPaletteIds : patternColorIds
+  const visibleColorIds = activeTab === 'empty'
+    ? [PATTERN_EMPTY_CELL]
+    : activeTab === 'all'
+      ? filteredPaletteIds
+      : patternColorIds
   const isEmpty = isEmptyCell(currentColorId)
   const currentHex = isEmpty ? '#f3f4f6' : (getColorById(currentColorId)?.hex ?? '#ccc')
-  const currentLabel = isEmpty ? '背景格（未填色）' : currentColorId
+  const currentLabel = isEmpty ? '空白格（无色号）' : currentColorId
   const sameColorCount = useMemo(
     () => countCellsWithColor(pattern, currentColorId),
     [pattern, currentColorId],
@@ -131,16 +144,22 @@ export default function ColorPickerSheet({
 
           <View className='color-picker-sheet__tabs'>
             <View
-              className={`color-picker-sheet__tab${showAll ? '' : ' color-picker-sheet__tab--active'}`}
-              onClick={() => setShowAll(false)}
+              className={`color-picker-sheet__tab${activeTab === 'pattern' ? ' color-picker-sheet__tab--active' : ''}`}
+              onClick={() => setActiveTab('pattern')}
             >
               <Text>图纸色号</Text>
             </View>
             <View
-              className={`color-picker-sheet__tab${showAll ? ' color-picker-sheet__tab--active' : ''}`}
-              onClick={() => setShowAll(true)}
+              className={`color-picker-sheet__tab${activeTab === 'all' ? ' color-picker-sheet__tab--active' : ''}`}
+              onClick={() => setActiveTab('all')}
             >
               <Text>全部 221 色</Text>
+            </View>
+            <View
+              className={`color-picker-sheet__tab${activeTab === 'empty' ? ' color-picker-sheet__tab--active' : ''}`}
+              onClick={() => setActiveTab('empty')}
+            >
+              <Text>空白色号</Text>
             </View>
           </View>
         </View>
@@ -149,6 +168,7 @@ export default function ColorPickerSheet({
           <ScrollView scrollY className='color-picker-sheet__list' showScrollbar={false}>
             <View className='color-picker-sheet__grid'>
               {visibleColorIds.map((id) => {
+                const isEmptyOption = isEmptyCell(id)
                 const color = getColorById(id)
                 const active = id === currentColorId
                 return (
@@ -158,11 +178,15 @@ export default function ColorPickerSheet({
                     onClick={() => onSelect(id, pickMode)}
                   >
                     <View
-                      className='color-picker-sheet__swatch'
-                      style={{ backgroundColor: color?.hex ?? '#ccc' }}
+                      className={`color-picker-sheet__swatch${isEmptyOption ? ' color-picker-sheet__swatch--empty' : ''}`}
+                      style={{ backgroundColor: isEmptyOption ? '#f3f4f6' : (color?.hex ?? '#ccc') }}
                     />
-                    <Text className='color-picker-sheet__id'>{id}</Text>
-                    <Text className='color-picker-sheet__name'>{getColorDisplayName(id)}</Text>
+                    <Text className='color-picker-sheet__id'>
+                      {isEmptyOption ? EMPTY_CELL_LABEL : id}
+                    </Text>
+                    <Text className='color-picker-sheet__name'>
+                      {isEmptyOption ? `${emptyCellCount} 格无色号` : getColorDisplayName(id)}
+                    </Text>
                   </View>
                 )
               })}

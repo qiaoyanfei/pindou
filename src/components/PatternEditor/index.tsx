@@ -9,6 +9,7 @@ import {
   paintPatternGrid,
 } from '@/services/patternRenderer'
 import { canvasToTempFile } from '@/utils/canvas'
+import { PATTERN_EMPTY_CELL } from '@/utils/constants'
 import {
   applyPatternCellsReplace,
   applyPatternCellEdit,
@@ -31,6 +32,10 @@ const DOUBLE_TAP_MS = 450
 const TAP_MOVE_TOLERANCE = 16
 const DOUBLE_TAP_SCREEN_TOLERANCE = 40
 const PRELOAD_COMMIT_FALLBACK_MS = 150
+
+function formatEditColorLabel(colorId: string): string {
+  return colorId === PATTERN_EMPTY_CELL ? '空白格' : colorId
+}
 
 interface ScreenTouch {
   clientX: number
@@ -748,7 +753,7 @@ export default function PatternEditor({
       const confirmed = await new Promise<boolean>((resolve) => {
         Taro.showModal({
           title: '批量替换',
-          content: `将已选 ${indices.length} 格替换为「${colorId}」？`,
+          content: `将已选 ${indices.length} 格替换为「${formatEditColorLabel(colorId)}」？`,
           confirmText: '替换',
           success: (res) => resolve(Boolean(res.confirm)),
           fail: () => resolve(false),

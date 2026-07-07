@@ -38,6 +38,8 @@ export interface RenderOptions {
   showSheetHeader?: boolean
   /** 是否绘制全局水印，默认 true */
   showWatermark?: boolean
+  /** 每隔多少格绘制加粗参考线；导出/高清图使用 */
+  majorGridEvery?: number
 }
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'

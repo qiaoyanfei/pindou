@@ -668,7 +668,8 @@ async function handleGetPost(openid, data) {
   const res = await db.collection('posts').doc(postId).get()
   const post = res.data
   if (!post) return fail('图纸不存在')
-  if (post.visibility !== 'public' && post._openid !== openid) return fail('无权查看')
+  const canViewPrivatePost = post._openid === openid || await isAdmin(openid)
+  if (post.visibility !== 'public' && !canViewPrivatePost) return fail('无权查看')
   const [likes, favorites] = await Promise.all([
     db.collection('likes').where({ _openid: openid, postId }).limit(1).get(),
     db.collection('favorites').where({ _openid: openid, postId }).limit(1).get(),

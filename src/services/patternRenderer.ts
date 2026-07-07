@@ -11,6 +11,7 @@ type CanvasNode = {
 }
 
 const GRID_LINE_COLOR = '#d0d0d0'
+const MAJOR_GRID_LINE_COLOR = '#f59e42'
 const EMPTY_CELL_FILL = '#f3f4f6'
 const AXIS_TEXT_COLOR = '#666666'
 const HEADER_TEXT_COLOR = '#333333'
@@ -165,6 +166,41 @@ function drawGridLines(
   }
   for (let j = 0; j <= rows; j += 1) {
     const y = oy + j * cellPx + 0.5
+    ctx.moveTo(ox, y)
+    ctx.lineTo(ox + w, y)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawMajorGridLines(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  cols: number,
+  rows: number,
+  cellPx: number,
+  every: number,
+): void {
+  if (every <= 0) return
+
+  const ox = Math.round(originX)
+  const oy = Math.round(originY)
+  const w = cols * cellPx
+  const h = rows * cellPx
+  const lineWidth = Math.max(1.5, cellPx * 0.1)
+
+  ctx.save()
+  ctx.strokeStyle = MAJOR_GRID_LINE_COLOR
+  ctx.lineWidth = lineWidth
+  ctx.beginPath()
+  for (let i = 0; i <= cols; i += every) {
+    const x = ox + i * cellPx
+    ctx.moveTo(x, oy)
+    ctx.lineTo(x, oy + h)
+  }
+  for (let j = 0; j <= rows; j += every) {
+    const y = oy + j * cellPx
     ctx.moveTo(ox, y)
     ctx.lineTo(ox + w, y)
   }
@@ -383,6 +419,7 @@ export function renderPatternSheetToCanvas(
     appName = MINI_PROGRAM_NAME,
     showSheetHeader = true,
     showWatermark = true,
+    majorGridEvery = 5,
   } = options
   const layout = getSheetLayoutMetrics(pattern, cellPx, { showSheetHeader })
 
@@ -476,6 +513,7 @@ export function renderPatternSheetToCanvas(
   if (showGrid) {
     drawGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx)
   }
+  drawMajorGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx, majorGridEvery)
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
