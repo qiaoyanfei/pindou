@@ -5,23 +5,24 @@ import PatternCanvas from '@/components/PatternCanvas'
 import { getPreviewCellPxForArea } from '@/services/patternRenderer'
 import { canvasToTempFile } from '@/utils/canvas'
 import type { PatternConfig, PatternResult } from '@/types'
+import fullscreenIcon from '@/assets/icons/preview-fullscreen.svg'
 import './index.scss'
 
 interface ZoomablePatternViewerProps {
   pattern: PatternResult
   config: PatternConfig
   onFullscreen?: () => void
-  onEdit?: () => void
 }
 
-const TOOLBAR_HEIGHT = 72
 const VIEWPORT_INSET = 8
+const VIEWPORT_PADDING_X = 0
+const VIEWPORT_PADDING_Y = 0
+const THUMBNAIL_WIDTH_RATIO = 0.82
 
 function ZoomablePatternViewer({
   pattern,
   config,
   onFullscreen,
-  onEdit,
 }: ZoomablePatternViewerProps) {
   const sys = Taro.getWindowInfo()
   const [imageSrc, setImageSrc] = useState('')
@@ -29,13 +30,28 @@ function ZoomablePatternViewer({
   const [needsPreviewCanvas, setNeedsPreviewCanvas] = useState(true)
 
   const areaWidth = sys.windowWidth - 64
-  const areaHeight = Math.floor(sys.windowHeight * 0.38)
-  const viewportHeight = areaHeight - TOOLBAR_HEIGHT
+  const maxViewportHeight = Math.floor(sys.windowHeight * 0.3)
 
   const previewCellPx = useMemo(
-    () => getPreviewCellPxForArea(pattern, areaWidth, viewportHeight, VIEWPORT_INSET),
-    [pattern, areaWidth, viewportHeight],
+    () => getPreviewCellPxForArea(pattern, areaWidth, maxViewportHeight, VIEWPORT_INSET),
+    [pattern, areaWidth, maxViewportHeight],
   )
+  const previewLayout = useMemo(() => {
+    const maxWidth = (areaWidth - VIEWPORT_PADDING_X * 2) * THUMBNAIL_WIDTH_RATIO
+    const maxHeight = maxViewportHeight - VIEWPORT_PADDING_Y * 2
+    const rawWidth = pattern.width * previewCellPx
+    const rawHeight = pattern.height * previewCellPx
+    const scale = Math.min(1, maxWidth / rawWidth, maxHeight / rawHeight)
+    const imageWidth = Math.max(1, Math.floor(rawWidth * scale))
+    const imageHeight = Math.max(1, Math.floor(rawHeight * scale))
+    return {
+      viewportHeight: imageHeight + VIEWPORT_PADDING_Y * 2,
+      imageStyle: {
+        width: `${imageWidth}px`,
+        height: `${imageHeight}px`,
+      },
+    }
+  }, [areaWidth, maxViewportHeight, pattern.height, pattern.width, previewCellPx])
 
   const handleCanvasReady = async () => {
     try {
@@ -61,22 +77,9 @@ function ZoomablePatternViewer({
 
   return (
     <View className='zoom-viewer'>
-      <View className='zoom-viewer__toolbar'>
-        {onEdit ? (
-          <Text className='zoom-viewer__action zoom-viewer__action--left' onClick={onEdit}>
-            编辑
-          </Text>
-        ) : (
-          <View className='zoom-viewer__action-spacer' />
-        )}
-        <Text className='zoom-viewer__action' onClick={handleFullscreen}>
-          全屏预览
-        </Text>
-      </View>
-
       <View
         className='zoom-viewer__viewport'
-        style={{ height: `${viewportHeight}px` }}
+        style={{ height: `${previewLayout.viewportHeight}px` }}
         onClick={handleFullscreen}
       >
         {loading && (
@@ -90,8 +93,15 @@ function ZoomablePatternViewer({
             className='zoom-viewer__image'
             src={imageSrc}
             mode='aspectFit'
+            style={previewLayout.imageStyle}
             showMenuByLongpress={false}
           />
+        )}
+
+        {!loading && imageSrc && (
+          <View className='zoom-viewer__fullscreen' onClick={handleFullscreen}>
+            <Image className='zoom-viewer__fullscreen-icon' src={fullscreenIcon} mode='aspectFit' />
+          </View>
         )}
       </View>
 

@@ -6,6 +6,7 @@ import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import {
   getGenerateDraft,
+  persistGenerateSourceImage,
   resetGenerateDraft,
   setGenerateDraft,
   setGenerateImageWithDefaultConfig,
@@ -219,11 +220,12 @@ export default function GeneratePage() {
   }
 
   const handleImageSelect = (path: string) => {
-    const next = setGenerateImageWithDefaultConfig(path, config.styleMode)
+    const sourcePath = persistGenerateSourceImage(path)
+    const next = setGenerateImageWithDefaultConfig(sourcePath, config.styleMode)
     setManualLongEdge(null)
     setManualLongEdgeInput('')
     applyDraftState(next)
-    void applyAutoGridRecommendation(path, next.config.styleMode, next.config)
+    void applyAutoGridRecommendation(sourcePath, next.config.styleMode, next.config)
   }
 
   useEffect(() => {
@@ -269,7 +271,7 @@ export default function GeneratePage() {
         loadingController.show(message)
         await waitForLoadingPaint()
       })
-      setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config })
+      setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config, sourceImagePath: imagePath })
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       handleImageProcessError(error, '转换失败')
@@ -337,7 +339,7 @@ export default function GeneratePage() {
                   {isManualGrid ? '调整格子数' : '格子数设置'}
                 </Text>
                 <Text className='generate-page__grid-desc'>
-                  {isManualGrid ? '格子数越多，细节越丰富，耗时越长' : '自动生成预览'}
+                  {isManualGrid ? '格子数越多，细节越丰富，耗时越长' : '默认不设置格子数'}
                 </Text>
               </View>
               <View className='generate-page__grid-head-actions'>

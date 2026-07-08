@@ -44,9 +44,13 @@ export interface RenderOptions {
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'
 
+export const COLOR_DETAIL_STORAGE_KEY = 'pindou_color_detail_pattern'
+
 export const ADVANCED_SETTINGS_SESSION_KEY = 'pindou_advanced_settings_session'
 
 export const GENERATE_PAGE_RESET_KEY = 'pindou_generate_page_reset'
+
+export const GENERATE_DRAFT_STORAGE_KEY = 'pindou_generate_draft'
 
 export interface AdvancedSettingsSession {
   imagePath: string

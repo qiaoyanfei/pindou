@@ -1,4 +1,4 @@
-import { View, Text, Canvas } from '@tarojs/components'
+import { View, Text, Canvas, Image } from '@tarojs/components'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import ColorPickerSheet from '@/components/ColorPickerSheet'
@@ -22,6 +22,12 @@ import {
   type PatternUndoEntry,
 } from '@/utils/patternEdit'
 import type { PatternConfig, PatternResult } from '@/types'
+import tapSelectHandIcon from '@/assets/icons/editor-tap-select-hand.svg'
+import gestureDragHandIcon from '@/assets/icons/editor-gesture-drag-hand.svg'
+import gestureZoomHandIcon from '@/assets/icons/editor-gesture-zoom-hand.svg'
+import selectGridIcon from '@/assets/icons/editor-select-grid.svg'
+import editIcon from '@/assets/icons/editor-edit.svg'
+import undoIcon from '@/assets/icons/editor-undo.svg'
 import './index.scss'
 
 const CANVAS_ID = 'pattern-editor-canvas'
@@ -53,6 +59,16 @@ type CanvasNode = {
   width: number
   height: number
 }
+
+interface SelectionSnapshot {
+  indices: number[]
+  anchor: GridCoord | null
+  isPicking: boolean
+}
+
+type EditorUndoEntry =
+  | { type: 'pattern'; edit: PatternUndoEntry }
+  | { type: 'selection'; prev: SelectionSnapshot; next: SelectionSnapshot }
 
 export default function PatternEditor({
   pattern,
@@ -89,7 +105,7 @@ export default function PatternEditor({
   const selectedIndicesRef = useRef<Set<number>>(new Set())
   const isPickingCellsRef = useRef(false)
   const pickerVisibleRef = useRef(false)
-  const undoStackRef = useRef<PatternUndoEntry[]>([])
+  const undoStackRef = useRef<EditorUndoEntry[]>([])
   const tapGestureRef = useRef({
     lastTapTime: 0,
     lastClientX: 0,
@@ -126,6 +142,7 @@ export default function PatternEditor({
   const [selectionCount, setSelectionCount] = useState(0)
   const [initialLoading, setInitialLoading] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
+  const [showGuide, setShowGuide] = useState(true)
 
   patternRef.current = pattern
   imageSizeRef.current = imageSize
@@ -148,19 +165,21 @@ export default function PatternEditor({
     setSelectionCount(selectedIndicesRef.current.size)
   }, [])
 
+  const buildHighlights = useCallback(() => (
+    [...selectedIndicesRef.current].map((index) => ({
+      index,
+      ...cellIndexToCoord(patternRef.current, index),
+    }))
+  ), [])
+
   const syncSelectionHighlights = useCallback(() => {
     const shouldShow = isPickingCellsRef.current || pickerVisibleRef.current
     if (!shouldShow || selectedIndicesRef.current.size === 0) {
       setPickingHighlights([])
       return
     }
-    setPickingHighlights(
-      [...selectedIndicesRef.current].map((index) => ({
-        index,
-        ...cellIndexToCoord(patternRef.current, index),
-      })),
-    )
-  }, [])
+    setPickingHighlights(buildHighlights())
+  }, [buildHighlights])
 
   useEffect(() => {
     syncSelectionHighlights()
@@ -174,9 +193,47 @@ export default function PatternEditor({
 
   const clearSelection = useCallback(() => {
     selectedIndicesRef.current.clear()
+    selectionRef.current = null
     syncSelectionCount()
     syncSelectionHighlights()
   }, [syncSelectionHighlights, syncSelectionCount])
+
+  const captureSelectionSnapshot = useCallback((): SelectionSnapshot => ({
+    indices: [...selectedIndicesRef.current],
+    anchor: selectionRef.current ? { ...selectionRef.current } : null,
+    isPicking: isPickingCellsRef.current,
+  }), [])
+
+  const areSelectionSnapshotsEqual = (a: SelectionSnapshot, b: SelectionSnapshot): boolean => {
+    if (a.isPicking !== b.isPicking) return false
+    if ((a.anchor?.col ?? -1) !== (b.anchor?.col ?? -1)) return false
+    if ((a.anchor?.row ?? -1) !== (b.anchor?.row ?? -1)) return false
+    if (a.indices.length !== b.indices.length) return false
+    const aSet = new Set(a.indices)
+    return b.indices.every((index) => aSet.has(index))
+  }
+
+  const pushSelectionUndo = useCallback((prev: SelectionSnapshot, next: SelectionSnapshot) => {
+    if (areSelectionSnapshotsEqual(prev, next)) return
+    undoStackRef.current.push({ type: 'selection', prev, next })
+    if (undoStackRef.current.length > MAX_UNDO) {
+      undoStackRef.current.shift()
+    }
+    setCanUndo(true)
+  }, [])
+
+  const restoreSelectionSnapshot = useCallback((snapshot: SelectionSnapshot) => {
+    selectedIndicesRef.current = new Set(snapshot.indices)
+    selectionRef.current = snapshot.anchor ? { ...snapshot.anchor } : null
+    isPickingCellsRef.current = snapshot.isPicking
+    setIsPickingCells(snapshot.isPicking)
+    syncSelectionCount()
+    if ((snapshot.isPicking || pickerVisibleRef.current) && snapshot.indices.length > 0) {
+      setPickingHighlights(buildHighlights())
+    } else {
+      setPickingHighlights([])
+    }
+  }, [buildHighlights, syncSelectionCount])
 
   const fullRedraw = useCallback((
     node: CanvasNode,
@@ -463,6 +520,7 @@ export default function PatternEditor({
       : cellPx
     const coord = coordFromTouchNearest(x, y, touchCellPx, patternRef.current)
     if (!coord) return
+    const prevSelection = captureSelectionSnapshot()
     const index = coordToCellIndex(patternRef.current, coord.col, coord.row)
     const selected = selectedIndicesRef.current
     if (selected.has(index)) {
@@ -470,13 +528,27 @@ export default function PatternEditor({
     } else {
       selected.add(index)
     }
+    if (selected.size > 0) {
+      const firstIndex = selected.values().next().value as number
+      selectionRef.current = cellIndexToCoord(patternRef.current, firstIndex)
+    } else {
+      selectionRef.current = null
+    }
     syncSelectionCount()
+    pushSelectionUndo(prevSelection, captureSelectionSnapshot())
     if (isPickingCellsRef.current) {
       syncSelectionHighlights()
       return
     }
     void refreshSelectionOverlay()
-  }, [cellPx, refreshSelectionOverlay, syncSelectionHighlights, syncSelectionCount])
+  }, [
+    captureSelectionSnapshot,
+    cellPx,
+    pushSelectionUndo,
+    refreshSelectionOverlay,
+    syncSelectionHighlights,
+    syncSelectionCount,
+  ])
 
   const openPickerFlow = useCallback(() => {
     setPickerVisible(true)
@@ -561,6 +633,7 @@ export default function PatternEditor({
   const handleWrapTouchStart = (event: {
     touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
   }) => {
+    dismissGuide()
     const touchCount = event.touches?.length ?? 0
     tapGestureRef.current.blockPan = touchCount === 1
     const touch = readScreenTouch(event.touches?.[0] ?? {})
@@ -638,7 +711,7 @@ export default function PatternEditor({
     : cellPx
 
   const pushUndo = (edit: PatternUndoEntry) => {
-    undoStackRef.current.push(edit)
+    undoStackRef.current.push({ type: 'pattern', edit })
     if (undoStackRef.current.length > MAX_UNDO) {
       undoStackRef.current.shift()
     }
@@ -659,6 +732,7 @@ export default function PatternEditor({
   }
 
   const handleContinuePick = () => {
+    const prevSelection = captureSelectionSnapshot()
     if (selectedIndicesRef.current.size === 0 && selectionRef.current) {
       const index = coordToCellIndex(
         patternRef.current,
@@ -669,28 +743,40 @@ export default function PatternEditor({
       syncSelectionCount()
     }
     setPickerVisible(false)
+    isPickingCellsRef.current = true
     setIsPickingCells(true)
+    pushSelectionUndo(prevSelection, captureSelectionSnapshot())
   }
 
   const handleSelectAllSameColor = () => {
+    const prevSelection = captureSelectionSnapshot()
     const indices = getIndicesWithColor(patternRef.current, selectedColorId)
     selectedIndicesRef.current = new Set(indices)
+    if (indices.length > 0) {
+      selectionRef.current = cellIndexToCoord(patternRef.current, indices[0])
+    }
     syncSelectionCount()
+    pushSelectionUndo(prevSelection, captureSelectionSnapshot())
     void refreshSelectionOverlay()
   }
 
   const handleClearSelection = () => {
+    const prevSelection = captureSelectionSnapshot()
     clearSelection()
+    pushSelectionUndo(prevSelection, captureSelectionSnapshot())
     if (isPickingCellsRef.current) return
     void refreshSelectionOverlay()
   }
 
-  const handleFinishPick = () => {
+  const openSelectedCellEditor = () => {
     if (selectedIndicesRef.current.size === 0) {
       Taro.showToast({ title: '请先选择格子', icon: 'none' })
       return
     }
     ensureSelectionAnchor()
+    const firstIndex = selectedIndicesRef.current.values().next().value as number
+    setSelectedColorId(patternRef.current.grid[firstIndex] ?? '')
+    isPickingCellsRef.current = false
     setIsPickingCells(false)
     setPickingHighlights([])
     setPickerVisible(true)
@@ -708,32 +794,46 @@ export default function PatternEditor({
 
   const handleUndo = async () => {
     if (!canUndo) return
-    const edit = undoStackRef.current.pop()
-    if (!edit) {
+    const entry = undoStackRef.current.pop()
+    if (!entry) {
       setCanUndo(false)
       return
     }
 
-    const nextPattern = revertPatternEdit(patternRef.current, edit)
+    if (entry.type === 'selection') {
+      restoreSelectionSnapshot(entry.prev)
+      if (!entry.prev.isPicking) {
+        void refreshSelectionOverlay(true)
+      }
+      setCanUndo(undoStackRef.current.length > 0)
+      return
+    }
+
+    const nextPattern = revertPatternEdit(patternRef.current, entry.edit)
     patternRef.current = nextPattern
     onPatternChange(nextPattern)
     setCanUndo(undoStackRef.current.length > 0)
     await redrawAndRefresh(true)
   }
 
-  const handleToolbarLeft = () => {
-    if (isPickingCells) {
-      handleClearSelection()
-      return
-    }
-    if (canUndo) {
-      void handleUndo()
-    }
+  const startPickMode = () => {
+    isPickingCellsRef.current = true
+    setPickerVisible(false)
+    setIsPickingCells(true)
+    syncSelectionHighlights()
   }
 
-  const handleToolbarRight = () => {
-    if (isPickingCells) {
-      handleFinishPick()
+  const dismissGuide = () => {
+    if (showGuide) setShowGuide(false)
+  }
+
+  const handleRootClick = () => {
+    dismissGuide()
+  }
+
+  const handleUndoAction = () => {
+    if (canUndo) {
+      void handleUndo()
     }
   }
 
@@ -790,36 +890,7 @@ export default function PatternEditor({
   }
 
   return (
-    <View className='pattern-editor pattern-editor--fullscreen'>
-      <View className='pattern-editor__toolbar'>
-        <View className='pattern-editor__toolbar-slot' onClick={handleToolbarLeft}>
-          <Text
-            className={`pattern-editor__action${
-              !isPickingCells && !canUndo ? ' pattern-editor__action--disabled' : ''
-            }`}
-          >
-            {isPickingCells ? '清空' : '撤销'}
-          </Text>
-        </View>
-        <Text className='pattern-editor__hint'>
-          {isPickingCells
-            ? `已选 ${selectionCount} 格 · 点击增删`
-            : '双击改色 · 可批量替换'}
-        </Text>
-        <View
-          className='pattern-editor__toolbar-slot pattern-editor__toolbar-slot--right'
-          onClick={handleToolbarRight}
-        >
-          {isPickingCells ? (
-            <Text className='pattern-editor__action'>选色</Text>
-          ) : (
-            <Text className='pattern-editor__meta'>
-              {pattern.width}×{pattern.height}
-            </Text>
-          )}
-        </View>
-      </View>
-
+    <View className='pattern-editor pattern-editor--fullscreen' onClick={handleRootClick}>
       <View
         id='pattern-editor-viewport-frame'
         className='pattern-editor__viewport'
@@ -849,6 +920,53 @@ export default function PatternEditor({
             onDisplayError={handleDisplayImageError}
           />
         )}
+
+        {showGuide && showEditorViewport ? (
+          <View className='pattern-editor__guide'>
+            <View className='pattern-editor__guide-select-wrap'>
+              <Image className='pattern-editor__guide-select-icon' src={tapSelectHandIcon} mode='aspectFit' />
+              <View className='pattern-editor__guide-select'>
+                <Text>点击选格</Text>
+              </View>
+            </View>
+            <View className='pattern-editor__guide-gesture'>
+              <View className='pattern-editor__guide-row'>
+                <Image className='pattern-editor__guide-icon' src={gestureDragHandIcon} mode='aspectFit' />
+                <Text>单指拖动画布</Text>
+              </View>
+              <View className='pattern-editor__guide-row'>
+                <Image className='pattern-editor__guide-icon' src={gestureZoomHandIcon} mode='aspectFit' />
+                <Text>双指缩放</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </View>
+
+      <View className='pattern-editor__bottom-bar'>
+        <View
+          className={`pattern-editor__tool is-active${isPickingCells || selectionCount > 0 ? ' is-picking' : ''}`}
+          onClick={startPickMode}
+        >
+          <Image className='pattern-editor__tool-icon' src={selectGridIcon} mode='aspectFit' />
+          <Text className='pattern-editor__tool-label'>选格</Text>
+        </View>
+        <View
+          className={`pattern-editor__tool${selectionCount > 0 ? ' is-active' : ' is-disabled'}`}
+          onClick={() => {
+            if (selectionCount > 0) openSelectedCellEditor()
+          }}
+        >
+          <Image className='pattern-editor__tool-icon' src={editIcon} mode='aspectFit' />
+          <Text className='pattern-editor__tool-label'>编辑</Text>
+        </View>
+        <View
+          className={`pattern-editor__tool${canUndo ? ' is-active' : ' is-disabled'}`}
+          onClick={handleUndoAction}
+        >
+          <Image className='pattern-editor__tool-icon' src={undoIcon} mode='aspectFit' />
+          <Text className='pattern-editor__tool-label'>撤销</Text>
+        </View>
       </View>
 
       <View className='pattern-editor__canvas-host'>

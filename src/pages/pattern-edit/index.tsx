@@ -10,6 +10,7 @@ import './index.scss'
 interface StoredPayload {
   pattern: PatternResult
   config: PatternConfig
+  sourceImagePath?: string
 }
 
 const PATTERN_PERSIST_DELAY_MS = 400
@@ -21,6 +22,7 @@ export default function PatternEditPage() {
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const configRef = useRef(config)
   const patternRef = useRef<PatternResult | null>(null)
+  const sourceImagePathRef = useRef('')
 
   configRef.current = config
   patternRef.current = pattern
@@ -40,7 +42,11 @@ export default function PatternEditPage() {
     }
 
     const write = () => {
-      setStorageSafe(PATTERN_STORAGE_KEY, { pattern: nextPattern, config: configRef.current })
+      setStorageSafe(PATTERN_STORAGE_KEY, {
+        pattern: nextPattern,
+        config: configRef.current,
+        sourceImagePath: sourceImagePathRef.current,
+      })
     }
 
     if (immediate) {
@@ -66,6 +72,7 @@ export default function PatternEditPage() {
 
     setPattern(stored.pattern)
     setConfig(normalizeConfig(stored.config))
+    sourceImagePathRef.current = stored.sourceImagePath || ''
   })
 
   const handlePatternChange = useCallback((nextPattern: PatternResult) => {
@@ -108,7 +115,7 @@ export default function PatternEditPage() {
             完成
           </Text>
           <Text className='pattern-edit-page__nav-title'>
-            {pattern.width}×{pattern.height} · 高清预览
+            {pattern.width}×{pattern.height} · 编辑图纸
           </Text>
         </View>
       </View>

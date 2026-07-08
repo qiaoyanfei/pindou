@@ -16,64 +16,14 @@
   background: #fff;
 }
 
-.pattern-editor__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 72px;
-  padding: 0 24px;
-  border-bottom: 1px solid #f3f4f6;
-  box-sizing: border-box;
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.pattern-editor__toolbar-slot {
-  min-width: 88px;
-  display: flex;
-  align-items: center;
-  align-self: stretch;
-  padding: 0 20px;
-  margin: 0 -8px;
-  box-sizing: border-box;
-}
-
-.pattern-editor__toolbar-slot--right {
-  justify-content: flex-end;
-  margin-left: 0;
-  margin-right: -8px;
-}
-
-.pattern-editor__action {
-  font-size: 26px;
-  color: $color-primary;
-  font-weight: 600;
-}
-
-.pattern-editor__action--disabled {
-  color: #c4b5fd;
-}
-
-.pattern-editor__hint {
-  flex: 1;
-  text-align: center;
-  font-size: 24px;
-  color: $color-text-secondary;
-}
-
-.pattern-editor__meta {
-  text-align: right;
-  font-size: 24px;
-  color: $color-text-secondary;
-  font-weight: 500;
-}
-
 .pattern-editor__viewport {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: #fff;
+  padding-bottom: 148px;
+  box-sizing: border-box;
 }
 
 .pattern-editor__area {
@@ -143,8 +93,9 @@
 .pattern-editor__cell-highlight {
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid #7c3aed;
-  background-color: rgba(124, 58, 237, 0.12);
+  border: 3px solid #3b45ff;
+  border-radius: 4px;
+  background-color: rgba(59, 69, 255, 0.08);
   pointer-events: none;
 }
 
@@ -159,4 +110,141 @@
   pointer-events: none;
   background: rgba(238, 240, 243, 0.72);
   z-index: 2;
+}
+
+.pattern-editor__bottom-bar {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0;
+  border: 1px solid #eceef5;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+  z-index: 6;
+}
+
+.pattern-editor__tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #111827;
+  transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.pattern-editor__tool.is-active {
+  color: #4338ff;
+}
+
+.pattern-editor__tool.is-active .pattern-editor__tool-label {
+  font-weight: 600;
+}
+
+.pattern-editor__tool.is-disabled {
+  color: #a8adba;
+}
+
+.pattern-editor__tool-icon {
+  width: 44px;
+  height: 44px;
+  opacity: 0.88;
+}
+
+.pattern-editor__tool-label {
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.pattern-editor__tool.is-active .pattern-editor__tool-icon {
+  opacity: 1;
+  filter: invert(25%) sepia(96%) saturate(3097%) hue-rotate(240deg) brightness(98%) contrast(103%);
+}
+
+.pattern-editor__tool:nth-child(3).is-active {
+  color: #111827;
+}
+
+.pattern-editor__tool:nth-child(3).is-active .pattern-editor__tool-icon {
+  filter: none;
+}
+
+.pattern-editor__tool.is-disabled .pattern-editor__tool-icon {
+  opacity: 0.34;
+}
+
+.pattern-editor__guide {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pattern-editor__guide-select-wrap {
+  position: absolute;
+  left: 170px;
+  top: 360px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pattern-editor__guide-select {
+  min-width: 0;
+  height: 72px;
+  line-height: 72px;
+  padding: 0 24px;
+  border: 4px solid #5d43ff;
+  border-radius: 999px;
+  background: #fff;
+  color: #5d43ff;
+  font-size: 32px;
+  font-weight: 600;
+  box-shadow: 0 8px 20px rgba(93, 67, 255, 0.12);
+  box-sizing: border-box;
+}
+
+.pattern-editor__guide-select-icon {
+  width: 78px;
+  height: 78px;
+  margin-right: 12px;
+}
+
+.pattern-editor__guide-gesture {
+  position: absolute;
+  right: 26px;
+  bottom: 154px;
+  width: 300px;
+  padding: 28px 28px 22px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+.pattern-editor__guide-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: #111827;
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.pattern-editor__guide-row + .pattern-editor__guide-row {
+  margin-top: 22px;
+}
+
+.pattern-editor__guide-icon {
+  width: 54px;
+  height: 54px;
+  opacity: 1;
 }
