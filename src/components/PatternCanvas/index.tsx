@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import Taro from '@tarojs/taro'
 import {
   getExportSheetPixelSize,
+  getMaxExportCellPx,
   getPreviewCellPx,
   getSafeExportCellPx,
   renderPatternSheetToCanvas,
@@ -23,6 +24,8 @@ interface PatternCanvasProps {
   creatorNickname?: string
   showSheetHeader?: boolean
   showWatermark?: boolean
+  /** 导出时使用当前规格在 Canvas 上限内的最大 cellPx */
+  maxExportResolution?: boolean
   onReady?: () => void
 }
 
@@ -32,8 +35,12 @@ function resolveCellPx(
   mode: 'preview' | 'export',
   showSheetHeader: boolean,
   cellPxOverride?: number,
+  maxExportResolution?: boolean,
 ): number {
   if (mode === 'export') {
+    if (maxExportResolution) {
+      return getMaxExportCellPx(pattern, { showSheetHeader })
+    }
     const exportCellPx = cellPxOverride ?? config.exportCellPx
     return getSafeExportCellPx(pattern, exportCellPx, { showSheetHeader })
   }
@@ -51,6 +58,7 @@ export default function PatternCanvas({
   creatorNickname,
   showSheetHeader = true,
   showWatermark = true,
+  maxExportResolution = false,
   onReady,
 }: PatternCanvasProps) {
   const readyRef = useRef(false)
@@ -62,7 +70,7 @@ export default function PatternCanvas({
     }, 120)
 
     return () => clearTimeout(timer)
-  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark])
+  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark, maxExportResolution])
 
   const drawPattern = (retry = 0) => {
     const query = Taro.createSelectorQuery()
@@ -83,7 +91,7 @@ export default function PatternCanvas({
           return
         }
 
-        const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride)
+        const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride, maxExportResolution)
 
         const renderOptions = {
           cellPx,
@@ -110,7 +118,7 @@ export default function PatternCanvas({
       })
   }
 
-  const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride)
+  const cellPx = resolveCellPx(pattern, config, mode, showSheetHeader, cellPxOverride, maxExportResolution)
 
   const canvasStyle =
     mode === 'export'

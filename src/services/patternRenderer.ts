@@ -599,6 +599,28 @@ export function getSafeExportCellPx(
   return 1
 }
 
+/** 导出时在 Canvas 上限内取当前规格可用的最大 cellPx（不受 config.exportCellPx 约束） */
+export function getMaxExportCellPx(
+  pattern: PatternResult,
+  options: Pick<RenderOptions, 'showSheetHeader'> = {},
+  maxDimension = WEAPP_CANVAS_MAX_DIMENSION_PX,
+): number {
+  let lo = 1
+  let hi = maxDimension
+  let best = 1
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    const { width, height } = getExportSheetPixelSize(pattern, mid, options)
+    if (width <= maxDimension && height <= maxDimension) {
+      best = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return best
+}
+
 export function getEditCellPx(
   pattern: PatternResult,
   exportCellPx: number,

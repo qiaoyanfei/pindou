@@ -5,7 +5,7 @@ import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import { canvasToTempFile } from '@/utils/canvas'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
-import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
+import { handleAlbumSaveError, saveCanvasToAlbum, exportSvgAndShare, handleSvgExportError, type PatternExportFormat } from '@/utils/patternExport'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import {
@@ -15,6 +15,7 @@ import {
   normalizeConfig,
 } from '@/utils/constants'
 import { getCoverCellPx } from '@/services/patternRenderer'
+import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import { getGenerateDraft, setGenerateDraft } from '@/services/generateSession'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
@@ -110,6 +111,7 @@ export default function PreviewPage() {
   const [saveOptionsOpen, setSaveOptionsOpen] = useState(false)
   const [saveShowColorCode, setSaveShowColorCode] = useState(true)
   const [saveShowGrid, setSaveShowGrid] = useState(true)
+  const [exportFormat, setExportFormat] = useState<PatternExportFormat>('png')
   const [variant, setVariant] = useState<PreviewVariant>('original')
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [longEdgeInput, setLongEdgeInput] = useState('')
@@ -197,7 +199,7 @@ export default function PreviewPage() {
 
       if (job === 'save') {
         setSaving(true)
-        Taro.showLoading({ title: '保存中...' })
+        Taro.showLoading({ title: '导出中...' })
         await saveCanvasToAlbum('export-canvas')
         Taro.hideLoading()
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
@@ -226,12 +228,41 @@ export default function PreviewPage() {
     if (!displayedPattern || saving || exportBusy) return
     setSaveShowColorCode(true)
     setSaveShowGrid(true)
+    setExportFormat('png')
     setSaveOptionsOpen(true)
   }
 
-  const handleConfirmSave = () => {
+  const handleConfirmExport = async () => {
     if (!displayedPattern || saving || exportBusy) return
     setSaveOptionsOpen(false)
+
+    if (exportFormat === 'svg') {
+      setSaving(true)
+      setExportBusy(true)
+      Taro.showLoading({ title: '导出中...' })
+      try {
+        const svg = buildPatternSheetSvg(displayedPattern, {
+          cellPx: 20,
+          showGrid: saveShowGrid,
+          showColorCode: saveShowColorCode,
+          creatorNickname,
+          showSheetHeader: true,
+          showWatermark: true,
+        })
+        const fileName = `拼豆图纸-${displayedPattern.width}x${displayedPattern.height}.svg`
+        await exportSvgAndShare(svg, fileName)
+        Taro.hideLoading()
+        Taro.showToast({ title: '请选择文件接收方', icon: 'none' })
+      } catch (error) {
+        Taro.hideLoading()
+        handleSvgExportError(error)
+      } finally {
+        setSaving(false)
+        setExportBusy(false)
+      }
+      return
+    }
+
     beginExportJob('save')
   }
 
@@ -492,7 +523,7 @@ export default function PreviewPage() {
         >
           <View className='preview-page__btn-inner'>
             <Image className='preview-page__btn-icon' src={saveIcon} mode='aspectFit' />
-            <Text>保存相册</Text>
+            <Text>导出图片</Text>
           </View>
         </Button>
         <Button
@@ -512,8 +543,28 @@ export default function PreviewPage() {
         <View className='preview-page__save-modal-mask' onClick={() => setSaveOptionsOpen(false)}>
           <View className='preview-page__save-modal' onClick={(event) => event.stopPropagation()}>
             <View className='preview-page__save-modal-head'>
-              <Text className='preview-page__save-modal-title'>保存相册</Text>
-              <Text className='preview-page__save-modal-subtitle'>选择保存到相册的图纸设置</Text>
+              <Text className='preview-page__save-modal-title'>导出图片</Text>
+              <Text className='preview-page__save-modal-subtitle'>选择导出格式与图纸设置</Text>
+            </View>
+
+            <View className='preview-page__format-section'>
+              <Text className='preview-page__save-option-title preview-page__format-label'>导出格式</Text>
+              <View className='preview-page__format-row'>
+                <View
+                  className={`preview-page__format-option${exportFormat === 'png' ? ' is-active' : ''}`}
+                  onClick={() => setExportFormat('png')}
+                >
+                  <Text className='preview-page__format-option-title'>PNG</Text>
+                  <Text className='preview-page__format-option-desc'>高清位图，保存到相册</Text>
+                </View>
+                <View
+                  className={`preview-page__format-option${exportFormat === 'svg' ? ' is-active' : ''}`}
+                  onClick={() => setExportFormat('svg')}
+                >
+                  <Text className='preview-page__format-option-title'>SVG</Text>
+                  <Text className='preview-page__format-option-desc'>矢量文件，分享后在电脑打开</Text>
+                </View>
+              </View>
             </View>
 
             <View className='preview-page__save-option'>
@@ -544,8 +595,8 @@ export default function PreviewPage() {
               <Button className='preview-page__save-modal-btn preview-page__save-modal-btn--ghost' onClick={() => setSaveOptionsOpen(false)}>
                 取消
               </Button>
-              <Button className='preview-page__save-modal-btn preview-page__save-modal-btn--primary' onClick={handleConfirmSave}>
-                确定
+              <Button className='preview-page__save-modal-btn preview-page__save-modal-btn--primary' onClick={handleConfirmExport}>
+                {exportFormat === 'png' ? '保存相册' : '分享文件'}
               </Button>
             </View>
           </View>
@@ -559,6 +610,7 @@ export default function PreviewPage() {
           config={exportConfig}
           mode='export'
           hidden
+          maxExportResolution
           creatorNickname={creatorNickname}
           onReady={handleExportCanvasReady}
         />

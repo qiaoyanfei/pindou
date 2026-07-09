@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 import { canvasToTempFile } from '@/utils/canvas'
+import { isLocalStorageLimitError, notifyOperationError } from '@/utils/localCache'
 import {
   ensurePrivacyForMediaAction,
   isPrivacyAgreementCancelled,
@@ -9,6 +10,8 @@ import {
   ensureWritePhotosAlbumScope,
   promptWritePhotosAlbumSettings,
 } from '@/utils/writePhotosAlbumScope'
+
+export type PatternExportFormat = 'png' | 'svg'
 
 function extractErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
@@ -97,6 +100,71 @@ export function handleAlbumSaveError(error: unknown): void {
   albumSettingsPromptedInCurrentSave = false
   Taro.showToast({
     title: message || '保存失败',
+    icon: 'none',
+    duration: 3000,
+  })
+}
+
+function isShareCancelled(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower === 'cancel'
+    || lower === 'cancelled'
+    || lower.includes('fail cancel')
+    || lower.includes('user cancel')
+  )
+}
+
+function sanitizeExportFileName(name: string): string {
+  return name.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
+}
+
+export async function writeSvgToUserFile(svgContent: string, fileName: string): Promise<string> {
+  if (process.env.TARO_ENV !== 'weapp') {
+    throw new Error('SVG 导出仅支持微信小程序')
+  }
+  const fs = Taro.getFileSystemManager()
+  const safeName = sanitizeExportFileName(fileName.endsWith('.svg') ? fileName : `${fileName}.svg`)
+  const filePath = `${Taro.env.USER_DATA_PATH}/${safeName}`
+  await new Promise<void>((resolve, reject) => {
+    fs.writeFile({
+      filePath,
+      data: svgContent,
+      encoding: 'utf8',
+      success: () => resolve(),
+      fail: (error) => reject(new Error(error.errMsg || '写入 SVG 失败')),
+    })
+  })
+  return filePath
+}
+
+export async function shareSvgFile(filePath: string, fileName: string): Promise<void> {
+  if (process.env.TARO_ENV !== 'weapp') {
+    throw new Error('SVG 导出仅支持微信小程序')
+  }
+  if (typeof Taro.shareFileMessage !== 'function') {
+    throw new Error('当前微信版本过低，请升级后重试')
+  }
+  await Taro.shareFileMessage({
+    filePath,
+    fileName: sanitizeExportFileName(fileName.endsWith('.svg') ? fileName : `${fileName}.svg`),
+  })
+}
+
+export async function exportSvgAndShare(svgContent: string, fileName: string): Promise<void> {
+  const filePath = await writeSvgToUserFile(svgContent, fileName)
+  await shareSvgFile(filePath, fileName)
+}
+
+export function handleSvgExportError(error: unknown): void {
+  const message = extractErrorMessage(error)
+  if (isShareCancelled(message)) return
+  if (isLocalStorageLimitError(error)) {
+    notifyOperationError(error, '导出失败')
+    return
+  }
+  Taro.showToast({
+    title: message || '导出失败',
     icon: 'none',
     duration: 3000,
   })
