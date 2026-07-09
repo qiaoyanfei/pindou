@@ -354,6 +354,10 @@
   box-shadow: none;
 }
 
+.preview-page__regenerate--loading {
+  opacity: 0.92;
+}
+
 .preview-page__regenerate-inner {
   display: inline-flex;
   align-items: center;

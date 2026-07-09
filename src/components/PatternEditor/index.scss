@@ -1,4 +1,5 @@
 @import '@/styles/variables.scss';
+@import '@/styles/editor-tokens.scss';
 
 .pattern-editor {
   background: #fff;
@@ -14,6 +15,7 @@
   min-height: 0;
   border-radius: 0;
   background: #fff;
+  overflow: visible;
 }
 
 .pattern-editor__viewport {
@@ -22,7 +24,7 @@
   min-height: 0;
   overflow: hidden;
   background: #fff;
-  padding-bottom: 148px;
+  padding-bottom: calc(#{$editor-viewport-bottom-reserve} + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -93,9 +95,9 @@
 .pattern-editor__cell-highlight {
   position: absolute;
   box-sizing: border-box;
-  border: 3px solid #3b45ff;
+  border: 3px solid #5b43ff;
   border-radius: 4px;
-  background-color: rgba(59, 69, 255, 0.08);
+  background-color: rgba(91, 67, 255, 0.08);
   pointer-events: none;
 }
 
@@ -112,50 +114,140 @@
   z-index: 2;
 }
 
+.pattern-editor__click-guide {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.pattern-editor__click-guide-hand-wrap {
+  position: relative;
+  width: 216px;
+  height: 216px;
+}
+
+.pattern-editor__click-guide-hand {
+  display: block;
+  width: 216px;
+  height: 216px;
+}
+
+.pattern-editor__click-guide-pill {
+  position: absolute;
+  left: calc(74% + 10px);
+  bottom: 12px;
+  flex-shrink: 0;
+  height: 88px;
+  line-height: 88px;
+  padding: 0 36px;
+  border: 4px solid $editor-primary;
+  border-radius: 999px;
+  background: #fff;
+  color: $editor-primary;
+  font-size: 34px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(91, 67, 255, 0.12);
+  box-sizing: border-box;
+}
+
 .pattern-editor__bottom-bar {
   position: absolute;
   left: 24px;
   right: 24px;
-  bottom: 24px;
-  height: 140px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  height: $editor-toolbar-height;
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0;
-  border: 1px solid #eceef5;
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.96);
+  padding: 8px 0;
+  border: 1px solid $editor-border;
+  border-radius: $editor-toolbar-radius;
+  background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   box-sizing: border-box;
   z-index: 6;
+  overflow: visible;
+}
+
+.pattern-editor__tool--select {
+  position: relative;
+}
+
+.pattern-editor__gesture-guide {
+  position: absolute;
+  left: calc(50% - 56px);
+  bottom: calc(100% + 48px);
+  z-index: 50;
+  pointer-events: none;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  box-sizing: border-box;
+}
+
+.pattern-editor__gesture-guide-img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .pattern-editor__tool {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  color: #111827;
-  transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+  gap: 6px;
+  color: $editor-tool-enabled;
+  transition: color 160ms ease, opacity 160ms ease;
 }
 
-.pattern-editor__tool.is-active {
-  color: #4338ff;
+.pattern-editor__tool.is-enabled {
+  color: $editor-tool-enabled;
 }
 
-.pattern-editor__tool.is-active .pattern-editor__tool-label {
+.pattern-editor__tool.is-enabled .pattern-editor__tool-label {
   font-weight: 600;
 }
 
 .pattern-editor__tool.is-disabled {
-  color: #a8adba;
+  color: $editor-tool-disabled;
+}
+
+.pattern-editor__tool-icon-wrap {
+  width: 116px;
+  height: 116px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  overflow: visible;
+}
+
+.pattern-editor__tool-icon-wrap--stacked {
+  position: relative;
 }
 
 .pattern-editor__tool-icon {
-  width: 44px;
-  height: 44px;
-  opacity: 0.88;
+  width: 100px;
+  height: 100px;
+}
+
+.pattern-editor__tool-icon--layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.pattern-editor__tool-icon--layer.is-hidden {
+  opacity: 0 !important;
+  visibility: hidden;
 }
 
 .pattern-editor__tool-label {
@@ -164,87 +256,10 @@
   line-height: 1;
 }
 
-.pattern-editor__tool.is-active .pattern-editor__tool-icon {
-  opacity: 1;
-  filter: invert(25%) sepia(96%) saturate(3097%) hue-rotate(240deg) brightness(98%) contrast(103%);
+.pattern-editor__tool.is-disabled .pattern-editor__tool-icon--layer:not(.is-hidden) {
+  opacity: 0.38;
 }
 
-.pattern-editor__tool:nth-child(3).is-active {
-  color: #111827;
-}
-
-.pattern-editor__tool:nth-child(3).is-active .pattern-editor__tool-icon {
-  filter: none;
-}
-
-.pattern-editor__tool.is-disabled .pattern-editor__tool-icon {
-  opacity: 0.34;
-}
-
-.pattern-editor__guide {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.pattern-editor__guide-select-wrap {
-  position: absolute;
-  left: 170px;
-  top: 360px;
-  display: inline-flex;
-  align-items: center;
-}
-
-.pattern-editor__guide-select {
-  min-width: 0;
-  height: 72px;
-  line-height: 72px;
-  padding: 0 24px;
-  border: 4px solid #5d43ff;
-  border-radius: 999px;
-  background: #fff;
-  color: #5d43ff;
-  font-size: 32px;
-  font-weight: 600;
-  box-shadow: 0 8px 20px rgba(93, 67, 255, 0.12);
-  box-sizing: border-box;
-}
-
-.pattern-editor__guide-select-icon {
-  width: 78px;
-  height: 78px;
-  margin-right: 12px;
-}
-
-.pattern-editor__guide-gesture {
-  position: absolute;
-  right: 26px;
-  bottom: 154px;
-  width: 300px;
-  padding: 28px 28px 22px;
-  border-radius: 24px;
-  background: #fff;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
-  box-sizing: border-box;
-}
-
-.pattern-editor__guide-row {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  color: #111827;
-  font-size: 32px;
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-.pattern-editor__guide-row + .pattern-editor__guide-row {
-  margin-top: 22px;
-}
-
-.pattern-editor__guide-icon {
-  width: 54px;
-  height: 54px;
+.pattern-editor__tool--select.is-disabled .pattern-editor__tool-icon--layer:not(.is-hidden) {
   opacity: 1;
 }

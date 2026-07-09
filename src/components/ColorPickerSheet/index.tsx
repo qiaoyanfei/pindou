@@ -1,200 +1,297 @@
-import { View, Text, ScrollView, Input } from '@tarojs/components'
+import { View, Text, ScrollView, Input, Image } from '@tarojs/components'
 import { useEffect, useMemo, useState } from 'react'
 import { isEmptyCell } from '@/services/patternStats'
 import { getColorById, getPalette } from '@/services/palette'
-import { getColorDisplayName } from '@/utils/colorDisplayName'
 import { countCellsWithColor, getPatternColorIds } from '@/utils/patternEdit'
-import { PATTERN_EMPTY_CELL } from '@/utils/constants'
 import type { PatternResult } from '@/types'
+import searchIcon from '@/assets/icons/search.svg'
+import closeIcon from '@/assets/icons/editor-close.svg'
 import './index.scss'
 
-export type ColorPickMode = 'single' | 'batch'
-type ColorPickerTab = 'pattern' | 'all' | 'empty'
-
-const EMPTY_CELL_LABEL = '空白格'
+type EditMode = 'color' | 'erase'
+type ColorPickerTab = 'pattern' | 'all'
 
 interface ColorPickerSheetProps {
   visible: boolean
   pattern: PatternResult
   currentColorId: string
+  selectedColorIds: string[]
   selectedCount: number
-  initialPickMode?: ColorPickMode
-  onSelect: (colorId: string, mode: ColorPickMode) => void
-  onContinuePick: () => void
-  onSelectAllSameColor: () => void
+  onConfirmColor: (colorId: string) => void
+  onConfirmErase: () => void
+  onSelectAllSameColor: (colorId: string) => void
   onClearSelection: () => void
   onClose: () => void
+}
+
+function formatColorLabel(colorId: string): string {
+  return isEmptyCell(colorId) ? '空白' : colorId
+}
+
+function colorIdToHex(colorId: string): string {
+  if (isEmptyCell(colorId)) return '#f3f4f6'
+  return getColorById(colorId)?.hex ?? '#ccc'
+}
+
+const STATUS_COLOR_ID_LIMIT = 4
+
+function formatColorIdList(colorIds: string[], limit = STATUS_COLOR_ID_LIMIT): string {
+  if (colorIds.length === 0) return '—'
+  const labels = colorIds.slice(0, limit).map(formatColorLabel)
+  const hiddenCount = colorIds.length - limit
+  if (hiddenCount > 0) {
+    return `${labels.join('、')} 等${colorIds.length}色`
+  }
+  return labels.join('、')
 }
 
 export default function ColorPickerSheet({
   visible,
   pattern,
   currentColorId,
+  selectedColorIds,
   selectedCount,
-  initialPickMode = 'single',
-  onSelect,
-  onContinuePick,
+  onConfirmColor,
+  onConfirmErase,
   onSelectAllSameColor,
   onClearSelection,
   onClose,
 }: ColorPickerSheetProps) {
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<ColorPickerTab>('pattern')
-  const [pickMode, setPickMode] = useState<ColorPickMode>(initialPickMode)
+  const [editMode, setEditMode] = useState<EditMode>('color')
+  const [pendingColorId, setPendingColorId] = useState('')
 
   useEffect(() => {
-    if (visible) {
-      setPickMode(initialPickMode)
-    }
-  }, [visible, initialPickMode])
+    if (!visible) return
+    setQuery('')
+    setActiveTab('pattern')
+    setEditMode('color')
+    setPendingColorId(isEmptyCell(currentColorId) ? '' : currentColorId)
+  }, [visible, currentColorId])
 
   const patternColorIds = useMemo(() => getPatternColorIds(pattern), [pattern])
-  const emptyCellCount = useMemo(
-    () => countCellsWithColor(pattern, PATTERN_EMPTY_CELL),
-    [pattern],
-  )
 
   const filteredPaletteIds = useMemo(() => {
     const q = query.trim().toUpperCase()
     return !q
       ? getPalette().map((color) => color.id)
       : getPalette()
-      .filter((color) => color.id.toUpperCase().includes(q))
-      .map((color) => color.id)
+          .filter((color) => color.id.toUpperCase().includes(q))
+          .map((color) => color.id)
   }, [query])
 
-  const visibleColorIds = activeTab === 'empty'
-    ? [PATTERN_EMPTY_CELL]
-    : activeTab === 'all'
-      ? filteredPaletteIds
-      : patternColorIds
-  const isEmpty = isEmptyCell(currentColorId)
-  const currentHex = isEmpty ? '#f3f4f6' : (getColorById(currentColorId)?.hex ?? '#ccc')
-  const currentLabel = isEmpty ? '空白格（无色号）' : currentColorId
-  const sameColorCount = useMemo(
-    () => countCellsWithColor(pattern, currentColorId),
-    [pattern, currentColorId],
+  const visibleColorIds = activeTab === 'all' ? filteredPaletteIds : patternColorIds
+  const statusColorIds = selectedColorIds.length > 0 ? selectedColorIds : [currentColorId]
+  const statusColorLabel = formatColorIdList(statusColorIds)
+  const visibleStatusColorIds = statusColorIds.slice(0, STATUS_COLOR_ID_LIMIT)
+  const hiddenStatusColorCount = Math.max(statusColorIds.length - STATUS_COLOR_ID_LIMIT, 0)
+  const sameColorOptions = useMemo(
+    () => statusColorIds.map((colorId) => ({
+      colorId,
+      count: countCellsWithColor(pattern, colorId),
+      hex: colorIdToHex(colorId),
+    })),
+    [pattern, statusColorIds],
   )
+  const currentHex = colorIdToHex(currentColorId)
+  const pendingHex = pendingColorId
+    ? colorIdToHex(pendingColorId)
+    : '#f3f4f6'
 
   if (!visible) return null
 
+  const handleConfirm = () => {
+    if (selectedCount === 0) return
+    if (editMode === 'erase') {
+      onConfirmErase()
+      return
+    }
+    if (!pendingColorId) {
+      return
+    }
+    onConfirmColor(pendingColorId)
+  }
+
+  const confirmDisabled = selectedCount === 0
+    || (editMode === 'color' && !pendingColorId)
+
   return (
     <View className='color-picker-sheet'>
-      <View className='color-picker-sheet__mask' catchMove />
-      <View className='color-picker-sheet__panel'>
-        <View className='color-picker-sheet__panel-body'>
-          <View className='color-picker-sheet__header'>
-            <Text className='color-picker-sheet__title'>选择色号</Text>
-            <View className='color-picker-sheet__close' onClick={onClose}>
-              <Text>关闭</Text>
-            </View>
-          </View>
-
-          <View className='color-picker-sheet__current'>
-            <Text className='color-picker-sheet__current-label'>当前格子</Text>
-            <View
-              className='color-picker-sheet__current-swatch'
-              style={{ backgroundColor: currentHex }}
-            />
-            <Text className='color-picker-sheet__current-id'>{currentLabel}</Text>
-          </View>
-
-          <View className='color-picker-sheet__mode'>
-            <View
-              className={`color-picker-sheet__mode-btn${pickMode === 'single' ? ' color-picker-sheet__mode-btn--active' : ''}`}
-              onClick={() => setPickMode('single')}
-            >
-              <Text>单格改色</Text>
-            </View>
-            <View
-              className={`color-picker-sheet__mode-btn${pickMode === 'batch' ? ' color-picker-sheet__mode-btn--active' : ''}`}
-              onClick={() => setPickMode('batch')}
-            >
-              <Text>批量替换</Text>
-            </View>
-          </View>
-
-          <View
-            className={`color-picker-sheet__batch-panel${pickMode === 'batch' ? '' : ' color-picker-sheet__batch-panel--hidden'}`}
-          >
-            <Text className='color-picker-sheet__batch-hint'>
-              已选 {selectedCount} 格，点选图纸可增删选区
-            </Text>
-            <View className='color-picker-sheet__batch-actions'>
-              <View className='color-picker-sheet__batch-action' onClick={onContinuePick}>
-                <Text>继续选格</Text>
-              </View>
-              <View className='color-picker-sheet__batch-action' onClick={onSelectAllSameColor}>
-                <Text>全选同色({sameColorCount})</Text>
-              </View>
-              <View className='color-picker-sheet__batch-action' onClick={onClearSelection}>
-                <Text>清空</Text>
-              </View>
-            </View>
-          </View>
-
-          <View className='color-picker-sheet__search'>
-            <Input
-              className='color-picker-sheet__search-input'
-              placeholder='搜索色号，如 H7'
-              value={query}
-              onInput={(event) => setQuery(event.detail.value)}
-            />
-          </View>
-
-          <View className='color-picker-sheet__tabs'>
-            <View
-              className={`color-picker-sheet__tab${activeTab === 'pattern' ? ' color-picker-sheet__tab--active' : ''}`}
-              onClick={() => setActiveTab('pattern')}
-            >
-              <Text>图纸色号</Text>
-            </View>
-            <View
-              className={`color-picker-sheet__tab${activeTab === 'all' ? ' color-picker-sheet__tab--active' : ''}`}
-              onClick={() => setActiveTab('all')}
-            >
-              <Text>全部 221 色</Text>
-            </View>
-            <View
-              className={`color-picker-sheet__tab${activeTab === 'empty' ? ' color-picker-sheet__tab--active' : ''}`}
-              onClick={() => setActiveTab('empty')}
-            >
-              <Text>空白色号</Text>
-            </View>
+      <View className='color-picker-sheet__mask' onClick={onClose} catchMove />
+      <View className='color-picker-sheet__panel' onClick={(event) => event.stopPropagation()}>
+        <View className='color-picker-sheet__header'>
+          <Text className='color-picker-sheet__title'>编辑格子</Text>
+          <View className='color-picker-sheet__close' onClick={onClose}>
+            <Image className='color-picker-sheet__close-icon' src={closeIcon} mode='aspectFit' />
           </View>
         </View>
 
-        <View className='color-picker-sheet__list-wrap'>
-          <ScrollView scrollY className='color-picker-sheet__list' showScrollbar={false}>
-            <View className='color-picker-sheet__grid'>
-              {visibleColorIds.map((id) => {
-                const isEmptyOption = isEmptyCell(id)
-                const color = getColorById(id)
-                const active = id === currentColorId
-                return (
+        <View className='color-picker-sheet__selection-card'>
+          <View className='color-picker-sheet__selection-head'>
+            {statusColorIds.length > 1 ? (
+              <View className='color-picker-sheet__status-swatches'>
+                {visibleStatusColorIds.map((colorId) => (
                   <View
-                    key={id}
-                    className={`color-picker-sheet__item${active ? ' color-picker-sheet__item--active' : ''}`}
-                    onClick={() => onSelect(id, pickMode)}
+                    key={colorId}
+                    className='color-picker-sheet__status-swatch color-picker-sheet__status-swatch--mini'
+                    style={{ backgroundColor: colorIdToHex(colorId) }}
+                  />
+                ))}
+                {hiddenStatusColorCount > 0 ? (
+                  <Text className='color-picker-sheet__status-more'>+{hiddenStatusColorCount}</Text>
+                ) : null}
+              </View>
+            ) : (
+              <View
+                className='color-picker-sheet__status-swatch'
+                style={{ backgroundColor: currentHex }}
+              />
+            )}
+            <Text className='color-picker-sheet__status-text'>
+              已选 {selectedCount} 格 · {statusColorLabel}
+            </Text>
+            <View className='color-picker-sheet__selection-clear' onClick={onClearSelection}>
+            <Text className='color-picker-sheet__selection-clear-text'>清空</Text>
+          </View>
+          </View>
+
+          <View className='color-picker-sheet__same-color-panel'>
+            <Text className='color-picker-sheet__same-color-label'>按色号全选</Text>
+            <ScrollView scrollX className='color-picker-sheet__same-color-scroll' showScrollbar={false}>
+              <View className='color-picker-sheet__same-color-list'>
+                {sameColorOptions.map(({ colorId, count, hex }) => (
+                  <View
+                    key={colorId}
+                    className='color-picker-sheet__same-color-chip'
+                    onClick={() => onSelectAllSameColor(colorId)}
                   >
                     <View
-                      className={`color-picker-sheet__swatch${isEmptyOption ? ' color-picker-sheet__swatch--empty' : ''}`}
-                      style={{ backgroundColor: isEmptyOption ? '#f3f4f6' : (color?.hex ?? '#ccc') }}
+                      className='color-picker-sheet__same-color-chip-swatch'
+                      style={{ backgroundColor: hex }}
                     />
-                    <Text className='color-picker-sheet__id'>
-                      {isEmptyOption ? EMPTY_CELL_LABEL : id}
-                    </Text>
-                    <Text className='color-picker-sheet__name'>
-                      {isEmptyOption ? `${emptyCellCount} 格无色号` : getColorDisplayName(id)}
+                    <Text className='color-picker-sheet__same-color-chip-text'>
+                      {formatColorLabel(colorId)}({count})
                     </Text>
                   </View>
-                )
-              })}
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+
+        <View className='color-picker-sheet__mode-tabs'>
+          <View
+            className={`color-picker-sheet__mode-tab${editMode === 'color' ? ' color-picker-sheet__mode-tab--active' : ''}`}
+            onClick={() => setEditMode('color')}
+          >
+            <Text>换色</Text>
+          </View>
+          <View
+            className={`color-picker-sheet__mode-tab${editMode === 'erase' ? ' color-picker-sheet__mode-tab--active' : ''}`}
+            onClick={() => setEditMode('erase')}
+          >
+            <Text>擦除</Text>
+          </View>
+        </View>
+
+        {editMode === 'color' ? (
+          <>
+            <View className='color-picker-sheet__search'>
+              <Image className='color-picker-sheet__search-icon' src={searchIcon} mode='aspectFit' />
+              <Input
+                className='color-picker-sheet__search-input'
+                placeholder='搜索色号或名称'
+                value={query}
+                onInput={(event) => setQuery(event.detail.value)}
+              />
             </View>
-            {visibleColorIds.length === 0 && (
-              <Text className='color-picker-sheet__empty'>未找到匹配色号</Text>
-            )}
-          </ScrollView>
+
+            <View className='color-picker-sheet__tabs'>
+              <View
+                className={`color-picker-sheet__tab${activeTab === 'pattern' ? ' color-picker-sheet__tab--active' : ''}`}
+                onClick={() => setActiveTab('pattern')}
+              >
+                <Text>图纸色号</Text>
+              </View>
+              <View
+                className={`color-picker-sheet__tab${activeTab === 'all' ? ' color-picker-sheet__tab--active' : ''}`}
+                onClick={() => setActiveTab('all')}
+              >
+                <Text>全部 221 色</Text>
+              </View>
+            </View>
+
+            <ScrollView scrollY className='color-picker-sheet__list' showScrollbar={false}>
+              <View className='color-picker-sheet__grid'>
+                {visibleColorIds.map((id) => {
+                  const color = getColorById(id)
+                  const active = id === pendingColorId
+                  return (
+                    <View
+                      key={id}
+                      className={`color-picker-sheet__item${active ? ' color-picker-sheet__item--active' : ''}`}
+                      onClick={() => setPendingColorId(id)}
+                    >
+                      <View
+                        className='color-picker-sheet__swatch'
+                        style={{ backgroundColor: color?.hex ?? '#ccc' }}
+                      >
+                        {active ? <Text className='color-picker-sheet__check'>✓</Text> : null}
+                      </View>
+                      <Text className='color-picker-sheet__id'>{id}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+              {visibleColorIds.length === 0 && (
+                <Text className='color-picker-sheet__empty'>未找到匹配色号</Text>
+              )}
+            </ScrollView>
+
+            {pendingColorId ? (
+              <View className='color-picker-sheet__summary'>
+                <Text className='color-picker-sheet__summary-text'>
+                  已选格子统一换为 {pendingColorId}
+                </Text>
+                <View className='color-picker-sheet__summary-row'>
+                  <Text className='color-picker-sheet__summary-count'>{selectedCount}格</Text>
+                  <Text className='color-picker-sheet__summary-arrow'>→</Text>
+                  <View
+                    className='color-picker-sheet__summary-to'
+                    style={{ backgroundColor: pendingHex }}
+                  >
+                    <Text>{pendingColorId}</Text>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <View className='color-picker-sheet__erase-body'>
+            <View className='color-picker-sheet__summary'>
+              <Text className='color-picker-sheet__summary-text'>已选格子将擦除色号</Text>
+              <View className='color-picker-sheet__summary-row'>
+                <Text className='color-picker-sheet__summary-count'>{selectedCount}格</Text>
+                <Text className='color-picker-sheet__summary-arrow'>→</Text>
+                <View className='color-picker-sheet__summary-to color-picker-sheet__summary-to--empty'>
+                  <Text>空白</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View className='color-picker-sheet__footer'>
+          <View className='color-picker-sheet__footer-btn color-picker-sheet__footer-btn--ghost' onClick={onClose}>
+            <Text>取消</Text>
+          </View>
+          <View
+            className={`color-picker-sheet__footer-btn color-picker-sheet__footer-btn--primary${confirmDisabled ? ' is-disabled' : ''}`}
+            onClick={handleConfirm}
+          >
+            <Text>{editMode === 'erase' ? '确认擦除' : '确认换色'}</Text>
+          </View>
         </View>
       </View>
     </View>

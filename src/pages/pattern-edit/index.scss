@@ -1,10 +1,11 @@
 @import '@/styles/variables.scss';
+@import '@/styles/editor-tokens.scss';
 
 .pattern-edit-page {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #fff;
+  background: $editor-surface;
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
@@ -14,35 +15,57 @@
 .pattern-edit-page--empty {
   align-items: center;
   justify-content: center;
-  color: $color-text-secondary;
+  color: $editor-text-secondary;
   font-size: 28px;
 }
 
 .pattern-edit-page__nav {
   flex-shrink: 0;
-  background: #fff;
-  border-bottom: 1px solid #f3f4f6;
+  background: $color-bg;
 }
 
 .pattern-edit-page__nav-row {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 24px;
+  min-height: 72px;
+  padding-left: 24px;
   box-sizing: border-box;
 }
 
-.pattern-edit-page__nav-action {
+.pattern-edit-page__nav-back {
   position: absolute;
   left: 24px;
-  font-size: 30px;
-  font-weight: 600;
-  color: $color-primary;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #eceff3;
+}
+
+.pattern-edit-page__nav-back-icon {
+  width: 36px;
+  height: 36px;
 }
 
 .pattern-edit-page__nav-title {
-  font-size: 28px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 160px);
+  font-size: 34px;
   font-weight: 700;
   color: $color-text;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

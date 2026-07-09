@@ -196,3 +196,19 @@ export function getPatternColorIds(pattern: PatternResult): string[] {
     .sort((a, b) => b[1] - a[1])
     .map(([id]) => id)
 }
+
+export function getUniqueColorIdsFromIndices(
+  pattern: PatternResult,
+  indices: Iterable<number>,
+): string[] {
+  const colorIds = new Set<string>()
+  for (const index of indices) {
+    if (index < 0 || index >= pattern.grid.length) continue
+    colorIds.add(pattern.grid[index] ?? '')
+  }
+  return [...colorIds].sort((a, b) => {
+    if (isEmptyCell(a)) return 1
+    if (isEmptyCell(b)) return -1
+    return a.localeCompare(b)
+  })
+}

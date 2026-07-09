@@ -1,10 +1,11 @@
-import { View, Text } from '@tarojs/components'
+import { View, Text, Image } from '@tarojs/components'
 import Taro, { useDidHide, useDidShow, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PatternEditor from '@/components/PatternEditor'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
+import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 
 interface StoredPayload {
@@ -18,7 +19,11 @@ const PATTERN_PERSIST_DELAY_MS = 400
 export default function PatternEditPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
-  const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32 })
+  const [navLayout, setNavLayout] = useState({
+    paddingTop: 48,
+    rowHeight: 32,
+    capsuleReserve: 96,
+  })
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const configRef = useRef(config)
   const patternRef = useRef<PatternResult | null>(null)
@@ -28,10 +33,13 @@ export default function PatternEditPage() {
   patternRef.current = pattern
 
   useEffect(() => {
+    const windowInfo = Taro.getWindowInfo()
     const menu = Taro.getMenuButtonBoundingClientRect()
+    const gapBeforeCapsule = 8
     setNavLayout({
       paddingTop: menu.top,
       rowHeight: menu.height,
+      capsuleReserve: windowInfo.windowWidth - menu.left + gapBeforeCapsule,
     })
   }, [])
 
@@ -82,10 +90,9 @@ export default function PatternEditPage() {
   }, [persistPattern])
 
   useDidHide(flushPattern)
-
   useUnload(flushPattern)
 
-  const handleDone = () => {
+  const saveAndExit = () => {
     if (patternRef.current) {
       try {
         persistPattern(patternRef.current, true)
@@ -109,11 +116,18 @@ export default function PatternEditPage() {
       >
         <View
           className='pattern-edit-page__nav-row'
-          style={{ height: `${navLayout.rowHeight}px` }}
+          style={{
+            height: `${navLayout.rowHeight}px`,
+            paddingRight: `${navLayout.capsuleReserve}px`,
+          }}
         >
-          <Text className='pattern-edit-page__nav-action' onClick={handleDone}>
-            完成
-          </Text>
+          <View className='pattern-edit-page__nav-back' onClick={saveAndExit}>
+            <Image
+              className='pattern-edit-page__nav-back-icon'
+              src={backIcon}
+              mode='aspectFit'
+            />
+          </View>
           <Text className='pattern-edit-page__nav-title'>
             {pattern.width}×{pattern.height} · 编辑图纸
           </Text>

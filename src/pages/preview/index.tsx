@@ -114,6 +114,7 @@ export default function PreviewPage() {
   const [gridSettingsOpen, setGridSettingsOpen] = useState(false)
   const [longEdgeInput, setLongEdgeInput] = useState('')
   const [regenerating, setRegenerating] = useState(false)
+  const [regeneratingMessage, setRegeneratingMessage] = useState('')
   const [creatorNickname, setCreatorNickname] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
 
@@ -296,6 +297,7 @@ export default function PreviewPage() {
       longEdge: pendingLongEdge,
     })
     setRegenerating(true)
+    setRegeneratingMessage('正在匹配色号...')
 
     const loadingController = createConversionLoadingController()
     loadingController.start()
@@ -306,6 +308,7 @@ export default function PreviewPage() {
         nextConfig,
         PROCESS_CANVAS_ID,
         async (message) => {
+          setRegeneratingMessage(message)
           loadingController.show(message)
           await waitForLoadingPaint()
         },
@@ -321,6 +324,7 @@ export default function PreviewPage() {
     } finally {
       loadingController.stop()
       setRegenerating(false)
+      setRegeneratingMessage('')
     }
   }
 
@@ -462,14 +466,15 @@ export default function PreviewPage() {
                   </View>
                 </View>
                 <Button
-                  className={`preview-page__regenerate${hasPendingGridChange ? '' : ' is-disabled'}`}
-                  loading={regenerating}
+                  className={`preview-page__regenerate${hasPendingGridChange ? '' : ' is-disabled'}${regenerating ? ' preview-page__regenerate--loading' : ''}`}
                   disabled={regenerating || exportBusy || !hasPendingGridChange}
                   onClick={handleRegenerate}
                 >
                   <View className='preview-page__regenerate-inner'>
-                    <Image className='preview-page__regenerate-icon' src={refreshIcon} mode='aspectFit' />
-                    <Text>重新预览</Text>
+                    {!regenerating ? (
+                      <Image className='preview-page__regenerate-icon' src={refreshIcon} mode='aspectFit' />
+                    ) : null}
+                    <Text>{regenerating ? regeneratingMessage || '正在处理...' : '重新预览'}</Text>
                   </View>
                 </Button>
               </View>

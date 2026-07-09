@@ -1,13 +1,9 @@
-@import '@/styles/variables.scss';
+@import '@/styles/editor-tokens.scss';
 
 .color-picker-sheet {
   position: fixed;
   inset: 0;
   z-index: 100000;
-}
-
-.color-picker-sheet--hidden {
-  display: none;
 }
 
 .color-picker-sheet__mask {
@@ -23,226 +19,383 @@
   right: 0;
   bottom: 0;
   z-index: 2;
-  height: 72vh;
-  max-height: 72vh;
+  max-height: 78vh;
   border-radius: 28px 28px 0 0;
   background: #fff;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.color-picker-sheet__panel-body {
-  padding: 24px 24px 0;
-  flex-shrink: 0;
-}
-
-.color-picker-sheet__list-wrap {
-  flex: 1;
-  min-height: 0;
-  padding: 0 24px calc(24px + env(safe-area-inset-bottom));
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.color-picker-sheet__list {
-  height: 100%;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .color-picker-sheet__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  padding: 28px 32px 0;
+  flex-shrink: 0;
 }
 
 .color-picker-sheet__title {
-  font-size: 32px;
+  font-size: 34px;
   font-weight: 700;
-  color: $color-text;
+  color: $editor-text;
 }
 
 .color-picker-sheet__close {
-  font-size: 28px;
-  color: $color-primary;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
 }
 
-.color-picker-sheet__current {
+.color-picker-sheet__close-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.color-picker-sheet__status {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px 16px;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__selection-card {
+  margin: 20px 32px 0;
+  padding: 16px 20px;
   border-radius: 16px;
-  background: $color-bg;
+  background: $editor-bg;
+  flex-shrink: 0;
 }
 
-.color-picker-sheet__current-label {
-  font-size: 24px;
-  color: $color-text-secondary;
-}
-
-.color-picker-sheet__current-swatch {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid $color-border;
-}
-
-.color-picker-sheet__current-id {
-  font-size: 28px;
-  font-weight: 600;
-  color: $color-text;
-}
-
-.color-picker-sheet__mode {
+.color-picker-sheet__selection-head {
   display: flex;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
-.color-picker-sheet__mode-btn {
+.color-picker-sheet__selection-clear {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 4px 0 4px 12px;
+}
+
+.color-picker-sheet__selection-clear-text {
+  font-size: 24px;
+  font-weight: 600;
+  color: $editor-text-secondary;
+}
+
+.color-picker-sheet__status-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__status-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__status-swatch--mini {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.color-picker-sheet__status-text {
   flex: 1;
-  padding: 14px 0;
-  border-radius: 14px;
-  background: $color-bg;
-  color: $color-text-secondary;
+  min-width: 0;
   font-size: 26px;
   font-weight: 500;
-  text-align: center;
+  color: $editor-text;
 }
 
-.color-picker-sheet__mode-btn--active {
-  background: $color-primary-light;
-  color: $color-primary;
-  font-weight: 600;
+.color-picker-sheet__same-color-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
 }
 
-.color-picker-sheet__batch-hint {
+.color-picker-sheet__same-color-label {
   display: block;
-  margin-bottom: 12px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 24px;
-  line-height: 1.5;
+  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 500;
+  color: $editor-text-secondary;
 }
 
-.color-picker-sheet__batch-panel {
-  margin-bottom: 16px;
+.color-picker-sheet__same-color-scroll {
+  width: 100%;
+  white-space: nowrap;
 }
 
-.color-picker-sheet__batch-panel--hidden {
-  display: none;
-}
-
-.color-picker-sheet__batch-actions {
-  display: flex;
+.color-picker-sheet__same-color-list {
+  display: inline-flex;
   gap: 10px;
+  padding-bottom: 2px;
 }
 
-.color-picker-sheet__batch-action {
-  flex: 1;
-  padding: 12px 0;
-  border-radius: 12px;
-  background: $color-primary-light;
-  color: $color-primary;
+.color-picker-sheet__same-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: $editor-primary-bg;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__same-color-chip-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__same-color-chip-text {
   font-size: 24px;
   font-weight: 600;
-  text-align: center;
+  color: $editor-primary;
+  white-space: nowrap;
+}
+
+.color-picker-sheet__mode-tabs {
+  display: flex;
+  gap: 16px;
+  margin: 24px 32px 0;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__mode-tab {
+  flex: 1;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: $editor-bg;
+  font-size: 28px;
+  color: $editor-text;
+  font-weight: 500;
+}
+
+.color-picker-sheet__mode-tab--active {
+  background: $editor-primary;
+  color: #fff;
+  font-weight: 600;
 }
 
 .color-picker-sheet__search {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 32px 0;
+  padding: 0 20px;
+  height: 72px;
+  border-radius: 16px;
+  background: $editor-bg;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__search-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .color-picker-sheet__search-input {
-  height: 72px;
-  padding: 0 24px;
-  border-radius: 16px;
-  background: $color-bg;
+  flex: 1;
   font-size: 28px;
 }
 
 .color-picker-sheet__tabs {
   display: flex;
   gap: 12px;
-  margin-bottom: 16px;
+  margin: 16px 32px 0;
+  flex-shrink: 0;
 }
 
 .color-picker-sheet__tab {
-  padding: 10px 20px;
+  padding: 10px 24px;
   border-radius: 999px;
-  background: $color-bg;
-  color: $color-text-secondary;
+  background: $editor-bg;
+  color: $editor-text-secondary;
   font-size: 24px;
   font-weight: 500;
 }
 
 .color-picker-sheet__tab--active {
-  background: $color-primary-light;
-  color: $color-primary;
+  background: $editor-primary;
+  color: #fff;
   font-weight: 600;
+}
+
+.color-picker-sheet__list {
+  flex: 1;
+  min-height: 180px;
+  max-height: 320px;
+  margin-top: 16px;
+  padding: 0 32px;
+  box-sizing: border-box;
 }
 
 .color-picker-sheet__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px 8px;
+  padding-bottom: 16px;
 }
 
 .color-picker-sheet__item {
-  padding: 12px;
-  border-radius: 16px;
-  border: 2px solid transparent;
-  background: $color-bg;
-}
-
-.color-picker-sheet__item--active {
-  border-color: $color-primary;
-  background: $color-primary-soft;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
 .color-picker-sheet__swatch {
-  width: 100%;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 10px;
-  margin-bottom: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
-.color-picker-sheet__swatch--empty {
-  background-image:
-    linear-gradient(45deg, rgba(156, 163, 175, 0.22) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(156, 163, 175, 0.22) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(156, 163, 175, 0.22) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(156, 163, 175, 0.22) 75%);
-  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
-  background-size: 24px 24px;
-  border-color: rgba(107, 114, 128, 0.28);
+.color-picker-sheet__item--active .color-picker-sheet__swatch {
+  border-color: $editor-primary;
+  box-shadow: 0 0 0 3px rgba(91, 67, 255, 0.15);
+}
+
+.color-picker-sheet__check {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .color-picker-sheet__id {
-  display: block;
-  font-size: 26px;
-  font-weight: 700;
-  color: $color-text;
-}
-
-.color-picker-sheet__name {
-  display: block;
-  margin-top: 2px;
   font-size: 20px;
-  color: $color-text-secondary;
+  font-weight: 600;
+  color: $editor-text;
 }
 
 .color-picker-sheet__empty {
   display: block;
   padding: 48px 0;
   text-align: center;
-  color: $color-text-secondary;
+  color: $editor-text-secondary;
   font-size: 26px;
+}
+
+.color-picker-sheet__summary {
+  margin: 0 32px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: $editor-bg;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.color-picker-sheet__summary-text {
+  display: block;
+  font-size: 24px;
+  font-weight: 500;
+  color: $editor-text;
+  margin-bottom: 12px;
+}
+
+.color-picker-sheet__summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.color-picker-sheet__summary-count,
+.color-picker-sheet__summary-to {
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 24px;
+  font-weight: 600;
+  color: $editor-text;
+}
+
+.color-picker-sheet__summary-to {
+  color: #fff;
+}
+
+.color-picker-sheet__summary-arrow {
+  font-size: 28px;
+  color: $editor-text-secondary;
+}
+
+.color-picker-sheet__summary-to--empty {
+  background: #f3f4f6;
+  color: $editor-text-secondary;
+  border: 1px dashed $editor-border;
+  box-sizing: border-box;
+}
+
+.color-picker-sheet__erase-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 32px;
+  min-height: 200px;
+  box-sizing: border-box;
+}
+
+.color-picker-sheet__erase-body .color-picker-sheet__summary {
+  width: 100%;
+  margin: 0;
+}
+
+.color-picker-sheet__footer {
+  display: flex;
+  gap: 16px;
+  padding: 20px 32px 24px;
+  flex-shrink: 0;
+}
+
+.color-picker-sheet__footer-btn {
+  flex: 1;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.color-picker-sheet__footer-btn--ghost {
+  border: 1px solid $editor-border;
+  color: $editor-text;
+  background: #fff;
+}
+
+.color-picker-sheet__footer-btn--primary {
+  background: $editor-primary;
+  color: #fff;
+}
+
+.color-picker-sheet__footer-btn--primary.is-disabled {
+  background: $editor-bg;
+  color: $editor-text-secondary;
+  opacity: 1;
 }

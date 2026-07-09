@@ -329,6 +329,10 @@
   border: none;
 }
 
+.generate-page__submit--loading {
+  opacity: 0.92;
+}
+
 .generate-page__fixed-action {
   position: fixed;
   left: 0;

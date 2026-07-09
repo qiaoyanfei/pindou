@@ -89,6 +89,7 @@ export default function GeneratePage() {
   const [imagePath, setImagePath] = useState(initialDraft.imagePath)
   const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState('')
   const [recommendingGrid, setRecommendingGrid] = useState(false)
   const [gridSettingsOpen, setGridSettingsOpen] = useState(true)
   const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
@@ -263,11 +264,13 @@ export default function GeneratePage() {
 
     syncGenerateDraftFromPage(imagePath, config)
     setLoading(true)
+    setLoadingMessage('正在匹配色号...')
     const loadingController = createConversionLoadingController()
     loadingController.start()
 
     try {
       const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas', async (message) => {
+        setLoadingMessage(message)
         loadingController.show(message)
         await waitForLoadingPaint()
       })
@@ -278,6 +281,7 @@ export default function GeneratePage() {
     } finally {
       loadingController.stop()
       setLoading(false)
+      setLoadingMessage('')
     }
   }, [config, imagePath, loading, recommendingGrid])
 
@@ -301,6 +305,11 @@ export default function GeneratePage() {
   const gridPresets = GRID_PRESETS[config.styleMode].filter(
     (item) => item >= longEdgeLimits.min && item <= longEdgeLimits.max,
   )
+  const submitLabel = loading
+    ? loadingMessage || '正在处理...'
+    : recommendingGrid
+      ? '正在推荐规格...'
+      : '下一步，预览图纸'
 
   return (
     <View className='generate-page'>
@@ -424,18 +433,19 @@ export default function GeneratePage() {
 
       <View className='generate-page__fixed-action'>
         <Button
-          className='generate-page__submit'
+          className={`generate-page__submit${loading ? ' generate-page__submit--loading' : ''}`}
           type='primary'
-          loading={loading}
           disabled={loading || recommendingGrid}
           onClick={handleGenerate}
         >
           <View className='generate-page__submit-content'>
-            <View className='generate-page__submit-sparkles'>
-              <Text className='generate-page__submit-sparkle-main'>✦</Text>
-              <Text className='generate-page__submit-sparkle-sub'>✦</Text>
-            </View>
-            <Text>{recommendingGrid ? '正在推荐规格...' : '下一步，预览图纸'}</Text>
+            {!loading ? (
+              <View className='generate-page__submit-sparkles'>
+                <Text className='generate-page__submit-sparkle-main'>✦</Text>
+                <Text className='generate-page__submit-sparkle-sub'>✦</Text>
+              </View>
+            ) : null}
+            <Text>{submitLabel}</Text>
           </View>
         </Button>
       </View>
