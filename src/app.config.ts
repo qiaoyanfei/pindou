@@ -51,7 +51,7 @@ export default defineAppConfig({
       },
       {
         pagePath: 'pages/generate/index',
-        text: '制作',
+        text: '生成',
       },
       {
         pagePath: 'pages/mine/index',

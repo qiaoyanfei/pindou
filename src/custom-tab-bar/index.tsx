@@ -5,8 +5,8 @@ import { getCachedUser } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { restoreSessionFromStorage, refreshSessionIfLoggedIn } from '@/services/session'
 import { buildLoginUrl } from '@/utils/authRoute'
-import { redirectToGeneratePage, safeNavigateTo } from '@/utils/navigation'
-import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, TAB_URLS } from '@/utils/tabBar'
+import { safeNavigateTo } from '@/utils/navigation'
+import { TAB_INDEX, TAB_URLS } from '@/utils/tabBar'
 import tabHomeIcon from '@/assets/icons/tab-home.svg'
 import tabHomeActiveIcon from '@/assets/icons/tab-home-active.svg'
 import tabMineIcon from '@/assets/icons/tab-mine.svg'
@@ -20,7 +20,7 @@ const TABS = [
     icon: tabHomeIcon,
     activeIcon: tabHomeActiveIcon,
   },
-  { key: 'generate' as const, label: '制作' },
+  { key: 'generate' as const, label: '生成' },
   {
     key: 'mine' as const,
     label: '我的',
@@ -43,12 +43,7 @@ export default class CustomTabBar extends Component<object, CustomTabBarState> {
   }
 
   switchTab = async (index: number) => {
-    if (index === this.state.selected) {
-      if (index === TAB_INDEX.generate) {
-        Taro.eventCenter.trigger(GENERATE_TAB_CONVERT_EVENT)
-      }
-      return
-    }
+    if (index === this.state.selected) return
 
     const url = TAB_URLS[index]
     restoreSessionFromStorage()
@@ -59,12 +54,6 @@ export default class CustomTabBar extends Component<object, CustomTabBarState> {
         safeNavigateTo(buildLoginUrl(url))
         return
       }
-    }
-
-    if (index === TAB_INDEX.generate) {
-      redirectToGeneratePage(false)
-      this.setSelected(index)
-      return
     }
 
     Taro.switchTab({ url })
@@ -93,7 +82,7 @@ export default class CustomTabBar extends Component<object, CustomTabBarState> {
                     </View>
                   </View>
                   <Text className={`custom-tab-bar__label${isActive ? ' is-active' : ''}`}>
-                    {isActive ? '转换' : tab.label}
+                    {tab.label}
                   </Text>
                 </View>
               )

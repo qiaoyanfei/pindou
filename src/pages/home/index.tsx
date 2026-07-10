@@ -168,9 +168,9 @@ const HomeHero = memo(function HomeHero({ onClick }: { onClick: () => void }) {
     <View className='home-page__hero' onClick={onClick}>
       <Image className='home-page__hero-bg' src={heroBanner} mode='aspectFill' />
       <View className='home-page__hero-content'>
-        <Text className='home-page__hero-line1'>上传图片 一键制作</Text>
+        <Text className='home-page__hero-line1'>上传图片 一键生成</Text>
         <Text className='home-page__hero-line2'>拼豆图纸</Text>
-        <View className='home-page__hero-btn'>去制作 →</View>
+        <View className='home-page__hero-btn'>去生成 →</View>
       </View>
     </View>
   )
@@ -188,7 +188,7 @@ const HomeBrand = memo(function HomeBrand({ layout }: { layout: HeaderLayout }) 
           <Text className='home-page__heart'>♥</Text>
         </View>
       </View>
-      <Text className='home-page__subtitle'>图片一键制作拼豆图纸</Text>
+      <Text className='home-page__subtitle'>图片一键生成拼豆图纸</Text>
     </View>
   )
 })
@@ -359,7 +359,7 @@ export default function HomePage() {
   const inflightRef = useRef<Partial<Record<FeedTab, boolean>>>({})
 
   useShareContent(() => ({
-    title: `${MINI_PROGRAM_NAME}，图片一键制作拼豆图纸`,
+    title: `${MINI_PROGRAM_NAME}，图片一键生成拼豆图纸`,
     path: '/pages/home/index',
   }))
 
@@ -652,7 +652,7 @@ export default function HomePage() {
               ? '加载中...'
               : isSearching
                 ? '没有找到相关图纸'
-                : '暂无作品，快去制作吧'}
+                : '暂无作品，快去生成吧'}
           </Text>
         </View>
       ) : (

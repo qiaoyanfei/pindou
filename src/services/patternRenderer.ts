@@ -525,8 +525,8 @@ export function renderPatternSheetToCanvas(
 
   if (showGrid) {
     drawGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx)
+    drawMajorGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx, majorGridEvery)
   }
-  drawMajorGridLines(ctx, gridOriginX, gridOriginY, width, height, cellPx, majorGridEvery)
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {

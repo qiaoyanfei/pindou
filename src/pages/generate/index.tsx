@@ -21,13 +21,12 @@ import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { createGeneratePreviewStoragePayload, isRecoverableGeneratePattern } from '@/utils/patternStorage'
 import { safeSwitchTab } from '@/utils/navigation'
-import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
+import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
 import {
   clampLongEdge,
   createDefaultConfigForStyleMode,
   getLongEdgeLimits,
-  STYLE_MODE_LABELS,
 } from '@/utils/constants'
 import {
   PATTERN_STORAGE_KEY,
@@ -79,6 +78,36 @@ function waitForLoadingPaint(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 60))
 }
 
+async function resolveGenerateConfig(
+  imagePath: string,
+  config: PatternConfig,
+  manualLongEdge: number | null,
+): Promise<PatternConfig> {
+  if (manualLongEdge !== null) {
+    return {
+      ...config,
+      longEdge: manualLongEdge,
+    }
+  }
+
+  try {
+    const recommendedLongEdge = await recommendLongEdgeFromImage(
+      imagePath,
+      config.styleMode,
+      'process-canvas',
+    )
+    return {
+      ...config,
+      longEdge: recommendedLongEdge,
+    }
+  } catch {
+    return {
+      ...config,
+      longEdge: getFallbackAutoLongEdge(config.styleMode),
+    }
+  }
+}
+
 export default function GeneratePage() {
   const initialDraft = readDraftState()
   const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32, headerRight: 96 })
@@ -86,13 +115,11 @@ export default function GeneratePage() {
   const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
-  const [recommendingGrid, setRecommendingGrid] = useState(false)
   const [gridSettingsOpen, setGridSettingsOpen] = useState(true)
   const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
   const recoverPromptShownRef = useRef(false)
-  const autoGridRequestRef = useRef(0)
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -121,7 +148,7 @@ export default function GeneratePage() {
         title: '继续未完成图纸？',
         content: '检测到上次未发布成功的图纸，可以继续预览和编辑。',
         confirmText: '继续',
-        cancelText: '重新转换',
+        cancelText: '重新生成',
       })
       if (result.confirm) {
         Taro.navigateTo({ url: '/pages/preview/index' })
@@ -140,51 +167,12 @@ export default function GeneratePage() {
     }
   })
 
-  const applyAutoGridRecommendation = useCallback(async (
-    path: string,
-    styleMode: StyleMode,
-    baseConfig: PatternConfig,
-  ) => {
-    const requestId = autoGridRequestRef.current + 1
-    autoGridRequestRef.current = requestId
-    setRecommendingGrid(true)
-
-    try {
-      const recommendedLongEdge = await recommendLongEdgeFromImage(path, styleMode, 'process-canvas')
-      if (autoGridRequestRef.current !== requestId) return
-
-      const nextConfig = {
-        ...baseConfig,
-        styleMode,
-        longEdge: recommendedLongEdge,
-      }
-      setGenerateDraft(path, nextConfig)
-      setConfig(nextConfig)
-    } catch {
-      if (autoGridRequestRef.current !== requestId) return
-
-      const nextConfig = {
-        ...baseConfig,
-        styleMode,
-        longEdge: getFallbackAutoLongEdge(styleMode),
-      }
-      setGenerateDraft(path, nextConfig)
-      setConfig(nextConfig)
-    } finally {
-      if (autoGridRequestRef.current === requestId) {
-        setRecommendingGrid(false)
-      }
-    }
-  }, [])
-
   const updateManualLongEdge = (value: number) => {
     const nextLongEdge = clampLongEdge(value, config.styleMode)
     const nextConfig = {
       ...config,
       longEdge: nextLongEdge,
     }
-    autoGridRequestRef.current += 1
-    setRecommendingGrid(false)
     setManualLongEdge(nextLongEdge)
     setManualLongEdgeInput(String(nextLongEdge))
     setGenerateDraft(imagePath, nextConfig)
@@ -194,9 +182,6 @@ export default function GeneratePage() {
   const resetManualLongEdge = () => {
     setManualLongEdge(null)
     setManualLongEdgeInput('')
-    if (imagePath) {
-      void applyAutoGridRecommendation(imagePath, config.styleMode, config)
-    }
   }
 
   const adjustManualLongEdge = (delta: number) => {
@@ -210,9 +195,6 @@ export default function GeneratePage() {
     if (!normalized) {
       setManualLongEdge(null)
       setManualLongEdgeInput('')
-      if (imagePath) {
-        void applyAutoGridRecommendation(imagePath, config.styleMode, config)
-      }
       return
     }
     updateManualLongEdge(Number(normalized))
@@ -221,10 +203,7 @@ export default function GeneratePage() {
   const handleImageSelect = (path: string) => {
     const sourcePath = persistGenerateSourceImage(path)
     const next = setGenerateImageWithDefaultConfig(sourcePath, config.styleMode)
-    setManualLongEdge(null)
-    setManualLongEdgeInput('')
     applyDraftState(next)
-    void applyAutoGridRecommendation(sourcePath, next.config.styleMode, next.config)
   }
 
   useEffect(() => {
@@ -243,9 +222,6 @@ export default function GeneratePage() {
     setManualLongEdgeInput('')
     setGenerateDraft(imagePath, nextConfig)
     setConfig(nextConfig)
-    if (imagePath) {
-      void applyAutoGridRecommendation(imagePath, styleMode, nextConfig)
-    }
   }
 
   const handleBack = () => {
@@ -253,45 +229,39 @@ export default function GeneratePage() {
   }
 
   const handleGenerate = useCallback(async () => {
-    if (loading || recommendingGrid) return
+    if (loading) return
 
     if (!imagePath) {
       Taro.showToast({ title: '请先上传图片', icon: 'none' })
       return
     }
 
-    syncGenerateDraftFromPage(imagePath, config)
-    setLoading(true)
-    setLoadingMessage('正在匹配色号...')
     const loadingController = createConversionLoadingController()
-    loadingController.start()
 
     try {
-      const pattern = await generatePatternFromImage(imagePath, config, 'process-canvas', async (message) => {
+      const finalConfig = await resolveGenerateConfig(imagePath, config, manualLongEdge)
+      syncGenerateDraftFromPage(imagePath, finalConfig)
+      setConfig(finalConfig)
+
+      setLoading(true)
+      setLoadingMessage('正在匹配色号...')
+      loadingController.start()
+
+      const pattern = await generatePatternFromImage(imagePath, finalConfig, 'process-canvas', async (message) => {
         setLoadingMessage(message)
         loadingController.show(message)
         await waitForLoadingPaint()
       })
-      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, config, imagePath))
+      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, finalConfig, imagePath))
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
-      handleImageProcessError(error, '转换失败')
+      handleImageProcessError(error, '生成失败')
     } finally {
       loadingController.stop()
       setLoading(false)
       setLoadingMessage('')
     }
-  }, [config, imagePath, loading, recommendingGrid])
-
-  useEffect(() => {
-    const handleConvertFromTab = () => {
-      void handleGenerate()
-    }
-    Taro.eventCenter.on(GENERATE_TAB_CONVERT_EVENT, handleConvertFromTab)
-    return () => {
-      Taro.eventCenter.off(GENERATE_TAB_CONVERT_EVENT, handleConvertFromTab)
-    }
-  }, [handleGenerate])
+  }, [config, imagePath, loading, manualLongEdge])
 
   if (!authed) {
     return null
@@ -305,9 +275,8 @@ export default function GeneratePage() {
   )
   const submitLabel = loading
     ? loadingMessage || '正在处理...'
-    : recommendingGrid
-      ? '正在推荐规格...'
-      : '下一步，预览图纸'
+    : '下一步，预览图纸'
+  const canSubmit = Boolean(imagePath) && !loading
 
   return (
     <View className='generate-page'>
@@ -325,7 +294,7 @@ export default function GeneratePage() {
           <View className='generate-page__nav-back' onClick={handleBack}>
             <Image className='generate-page__nav-back-icon' src={backIcon} mode='aspectFit' />
           </View>
-          <Text className='generate-page__nav-title'>制作图纸</Text>
+          <Text className='generate-page__nav-title'>生成图纸</Text>
         </View>
       </View>
 
@@ -431,13 +400,13 @@ export default function GeneratePage() {
 
       <View className='generate-page__fixed-action'>
         <Button
-          className={`generate-page__submit${loading ? ' generate-page__submit--loading' : ''}`}
+          className={`generate-page__submit${loading ? ' generate-page__submit--loading' : ''}${!canSubmit ? ' generate-page__submit--disabled' : ''}`}
           type='primary'
-          disabled={loading || recommendingGrid}
+          disabled={!canSubmit}
           onClick={handleGenerate}
         >
           <View className='generate-page__submit-content'>
-            {!loading ? (
+            {canSubmit && !loading ? (
               <View className='generate-page__submit-sparkles'>
                 <Text className='generate-page__submit-sparkle-main'>✦</Text>
                 <Text className='generate-page__submit-sparkle-sub'>✦</Text>

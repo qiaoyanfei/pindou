@@ -1,9 +1,10 @@
 import { View, Text, Image } from '@tarojs/components'
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import PatternCanvas from '@/components/PatternCanvas'
 import { getPreviewCellPxForArea } from '@/services/patternRenderer'
 import { canvasToTempFile } from '@/utils/canvas'
+import { serializePatternFingerprint } from '@/utils/patternStorage'
 import type { PatternConfig, PatternResult } from '@/types'
 import fullscreenIcon from '@/assets/icons/preview-fullscreen.svg'
 import './index.scss'
@@ -18,6 +19,17 @@ const VIEWPORT_INSET = 8
 const VIEWPORT_PADDING_X = 0
 const VIEWPORT_PADDING_Y = 0
 const THUMBNAIL_WIDTH_RATIO = 0.82
+
+/** 同一份图纸预览缩略图缓存，避免页面返回时重复 Canvas 渲染 */
+const previewThumbnailCache = new Map<string, string>()
+
+function buildPreviewThumbnailCacheKey(
+  pattern: PatternResult,
+  config: PatternConfig,
+  cellPx: number,
+): string {
+  return `${serializePatternFingerprint(pattern)}:${Number(config.showGrid)}:${Number(config.showColorCode)}:${cellPx}`
+}
 
 function ZoomablePatternViewer({
   pattern,
@@ -36,6 +48,11 @@ function ZoomablePatternViewer({
     () => getPreviewCellPxForArea(pattern, areaWidth, maxViewportHeight, VIEWPORT_INSET),
     [pattern, areaWidth, maxViewportHeight],
   )
+  const cacheKey = useMemo(
+    () => buildPreviewThumbnailCacheKey(pattern, config, previewCellPx),
+    [pattern, config, previewCellPx],
+  )
+  const cacheKeyRef = useRef(cacheKey)
   const previewLayout = useMemo(() => {
     const maxWidth = (areaWidth - VIEWPORT_PADDING_X * 2) * THUMBNAIL_WIDTH_RATIO
     const maxHeight = maxViewportHeight - VIEWPORT_PADDING_Y * 2
@@ -54,8 +71,12 @@ function ZoomablePatternViewer({
   }, [areaWidth, maxViewportHeight, pattern.height, pattern.width, previewCellPx])
 
   const handleCanvasReady = async () => {
+    if (cacheKeyRef.current !== cacheKey) return
+
     try {
       const tempFilePath = await canvasToTempFile('preview-canvas')
+      if (cacheKeyRef.current !== cacheKey) return
+      previewThumbnailCache.set(cacheKey, tempFilePath)
       setImageSrc(tempFilePath)
       setNeedsPreviewCanvas(false)
     } catch {
@@ -66,10 +87,19 @@ function ZoomablePatternViewer({
   }
 
   useEffect(() => {
+    cacheKeyRef.current = cacheKey
+    const cached = previewThumbnailCache.get(cacheKey)
+    if (cached) {
+      setImageSrc(cached)
+      setLoading(false)
+      setNeedsPreviewCanvas(false)
+      return
+    }
+
     setLoading(true)
     setImageSrc('')
     setNeedsPreviewCanvas(true)
-  }, [pattern, config, previewCellPx])
+  }, [cacheKey])
 
   const handleFullscreen = () => {
     onFullscreen?.()
@@ -84,7 +114,7 @@ function ZoomablePatternViewer({
       >
         {loading && (
           <View className='zoom-viewer__loading'>
-            <Text>图纸制作中...</Text>
+            <Text>图纸生成中...</Text>
           </View>
         )}
 

@@ -74,7 +74,7 @@ export default function PatternEditPage() {
   useDidShow(() => {
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
-      Taro.showToast({ title: '请先制作图纸', icon: 'none' })
+      Taro.showToast({ title: '请先生成图纸', icon: 'none' })
       setTimeout(() => Taro.navigateBack(), 800)
       return
     }

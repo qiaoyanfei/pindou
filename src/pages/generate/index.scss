@@ -333,6 +333,13 @@
   opacity: 0.92;
 }
 
+.generate-page__submit--disabled {
+  background: #d1d5db !important;
+  color: #fff !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
 .generate-page__fixed-action {
   position: fixed;
   left: 0;

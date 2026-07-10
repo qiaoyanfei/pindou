@@ -5,6 +5,7 @@ import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import { canvasToTempFile } from '@/utils/canvas'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
+import { getCoverCellPx } from '@/services/patternRenderer'
 import { handleAlbumSaveError, saveCanvasToAlbum, exportSvgAndShareSync, handleSvgExportError, type PatternExportFormat } from '@/utils/patternExport'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
@@ -14,7 +15,6 @@ import {
   getLongEdgeLimits,
   normalizeConfig,
 } from '@/utils/constants'
-import { getCoverCellPx } from '@/services/patternRenderer'
 import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import { setGenerateDraft } from '@/services/generateSession'
@@ -121,7 +121,6 @@ export default function PreviewPage() {
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
   const [draftImagePath, setDraftImagePath] = useState('')
   const [saving, setSaving] = useState(false)
-  const [publishing, setPublishing] = useState(false)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportJob, setExportJob] = useState<ExportJob | null>(null)
   const [saveOptionsOpen, setSaveOptionsOpen] = useState(false)
@@ -156,7 +155,7 @@ export default function PreviewPage() {
     restoreSessionFromStorage()
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
-      Taro.showToast({ title: '请先制作图纸', icon: 'none' })
+      Taro.showToast({ title: '请先生成图纸', icon: 'none' })
       setTimeout(() => Taro.navigateBack(), 800)
       return
     }
@@ -216,9 +215,9 @@ export default function PreviewPage() {
 
     try {
       if (job === 'cover') {
-        setPublishing(true)
         const coverPath = await canvasToTempFile('cover-canvas')
         setStorageSafe(PUBLISH_STORAGE_KEY, { config, coverPath } satisfies PublishStoragePayload)
+        Taro.hideLoading()
         Taro.navigateTo({ url: '/pages/publish/index' })
         return
       }
@@ -231,15 +230,15 @@ export default function PreviewPage() {
         Taro.showToast({ title: '已保存到相册', icon: 'success' })
       }
     } catch (error) {
-      Taro.hideLoading()
       if (job === 'save') {
+        Taro.hideLoading()
         handleAlbumSaveError(error)
       } else {
-        notifyOperationError(error, '准备发布失败')
+        Taro.hideLoading()
+        notifyOperationError(error, '封面生成失败')
       }
     } finally {
       if (job === 'save') setSaving(false)
-      if (job === 'cover') setPublishing(false)
       finishExportJob()
     }
   }
@@ -308,7 +307,7 @@ export default function PreviewPage() {
   )
 
   const handlePublish = async () => {
-    if (!displayedPattern || publishing || exportBusy) return
+    if (!displayedPattern || exportBusy) return
     const user = await requireAuthenticated('/pages/publish/index')
     if (!user) return
     setStorageSafe(PATTERN_STORAGE_KEY, {
@@ -320,6 +319,7 @@ export default function PreviewPage() {
       creatorNickname,
       previewSessionId: previewSessionKey,
     })
+    Taro.showLoading({ title: '准备发布...', mask: true })
     beginExportJob('cover')
   }
 
@@ -359,7 +359,7 @@ export default function PreviewPage() {
 
   const handleRegenerate = async () => {
     if (!draftImagePath || regenerating || exportBusy || !hasPendingGridChange) {
-      if (!draftImagePath) Taro.showToast({ title: '未找到原图，请重新制作', icon: 'none' })
+      if (!draftImagePath) Taro.showToast({ title: '未找到原图，请重新生成', icon: 'none' })
       return
     }
 
@@ -446,24 +446,34 @@ export default function PreviewPage() {
           </View>
 
           <View className='preview-page__stats-card'>
-            <View className='preview-page__stat-item'>
-              <Text className='preview-page__stat-label'>规格</Text>
-              <Text className='preview-page__stat-value'>{config.longEdge}格</Text>
+            <View className='preview-page__stats-row'>
+              <View className='preview-page__stat-item'>
+                <Text className='preview-page__stat-label'>规格</Text>
+                <Text className='preview-page__stat-value'>{config.longEdge}格</Text>
+              </View>
+              <View className='preview-page__stat-divider' />
+              <View className='preview-page__stat-item'>
+                <Text className='preview-page__stat-label'>颜色</Text>
+                <Text className='preview-page__stat-value'>{Object.keys(displayedPattern.stats).length}种</Text>
+              </View>
+              <View className='preview-page__stat-divider' />
+              <View className='preview-page__stat-item'>
+                <Text className='preview-page__stat-label'>颗数</Text>
+                <Text className='preview-page__stat-value preview-page__stat-value--compact'>
+                  {displayedPattern.totalBeads}颗
+                </Text>
+              </View>
+              <View className='preview-page__stat-divider' />
+              <View className='preview-page__stat-item'>
+                <Text className='preview-page__stat-label'>色卡</Text>
+                <Text className='preview-page__stat-value preview-page__stat-value--compact'>MARD 221</Text>
+              </View>
             </View>
-            <View className='preview-page__stat-divider' />
-            <View className='preview-page__stat-item'>
-              <Text className='preview-page__stat-label'>颜色</Text>
-              <Text className='preview-page__stat-value'>{Object.keys(displayedPattern.stats).length}种</Text>
+            <View className='preview-page__stats-footer'>
+              <Text className='preview-page__color-link' onClick={handleColorDetail}>
+                查看色号详情 ›
+              </Text>
             </View>
-            <View className='preview-page__stat-divider' />
-            <View className='preview-page__stat-item'>
-              <Text className='preview-page__stat-label'>颗数</Text>
-              <Text className='preview-page__stat-value'>{displayedPattern.totalBeads}颗</Text>
-            </View>
-            <View className='preview-page__stat-divider' />
-            <Text className='preview-page__color-link' onClick={handleColorDetail}>
-              查看色号详情 ›
-            </Text>
           </View>
 
           <View className='preview-page__edit-hint'>
@@ -581,7 +591,7 @@ export default function PreviewPage() {
         </Button>
         <Button
           className='preview-page__btn preview-page__btn--ghost'
-          loading={publishing || (exportBusy && exportJob === 'cover')}
+          loading={exportBusy && exportJob === 'cover'}
           disabled={saving || exportBusy}
           onClick={handlePublish}
         >
@@ -670,7 +680,7 @@ export default function PreviewPage() {
         />
       )}
 
-      {exportJob === 'cover' && (
+      {exportJob === 'cover' && displayedPattern && (
         <PatternCanvas
           canvasId='cover-canvas'
           pattern={displayedPattern}
@@ -692,7 +702,7 @@ export default function PreviewPage() {
       />
       ) : null}
 
-      {exportBusy && <CoverView className='preview-page__export-mask' />}
+      {exportBusy && exportJob === 'save' && <CoverView className='preview-page__export-mask' />}
 
       <HdPatternPreviewHost />
     </View>

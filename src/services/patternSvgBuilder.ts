@@ -256,8 +256,8 @@ export function buildPatternSheetSvg(
 
   if (showGrid) {
     appendGridLinesSvg(parts, gridOriginX, gridOriginY, width, height, cellPx)
+    appendMajorGridLinesSvg(parts, gridOriginX, gridOriginY, width, height, cellPx, majorGridEvery)
   }
-  appendMajorGridLinesSvg(parts, gridOriginX, gridOriginY, width, height, cellPx, majorGridEvery)
 
   if (showColorCode && cellPx >= minCellPxForLabel) {
     const fontSize = Math.max(8, Math.floor(cellPx * 0.38))
