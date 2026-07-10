@@ -2,6 +2,7 @@ import Taro, { useDidShow, useShareAppMessage, useShareTimeline } from '@tarojs/
 import { getCachedUser, rewardShare } from '@/services/communityService'
 import { initCloud } from '@/services/cloudClient'
 import { isUserAuthenticated } from '@/services/wechatAuth'
+import { MINI_PROGRAM_NAME } from '@/utils/constants'
 
 export interface ShareContent {
   title: string
@@ -15,12 +16,16 @@ function getTimelineQuery(path: string): string {
   return path.slice(queryIndex + 1)
 }
 
+function openShareMenu() {
+  Taro.showShareMenu({
+    withShareTicket: true,
+    menus: ['shareAppMessage', 'shareTimeline'],
+  })
+}
+
 export function useShareContent(getContent: () => ShareContent) {
   useDidShow(() => {
-    Taro.showShareMenu({
-      withShareTicket: true,
-      showShareItems: ['shareAppMessage', 'shareTimeline'],
-    })
+    openShareMenu()
   })
   useShareAppMessage(() => getContent())
   useShareTimeline(() => {
@@ -29,6 +34,18 @@ export function useShareContent(getContent: () => ShareContent) {
       title: content.title,
       query: getTimelineQuery(content.path),
       imageUrl: content.imageUrl,
+    }
+  })
+}
+
+export function useDefaultPageShare(
+  options?: ShareContent | (() => ShareContent),
+) {
+  useShareContent(() => {
+    if (typeof options === 'function') return options()
+    return options ?? {
+      title: MINI_PROGRAM_NAME,
+      path: '/pages/home/index',
     }
   })
 }

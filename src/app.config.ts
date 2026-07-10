@@ -19,6 +19,8 @@ export default defineAppConfig({
     'pages/color-detail/index',
     'pages/pattern-edit/index',
     'pages/post-detail/index',
+    'pages/my-published-detail/index',
+    'pages/my-pending-detail/index',
     'pages/my-post-detail/index',
     'pages/publish/index',
     'pages/publish-success/index',
@@ -37,6 +39,8 @@ export default defineAppConfig({
     navigationBarBackgroundColor: '#fff',
     navigationBarTitleText: 'happy拼豆嘛',
     navigationBarTextStyle: 'black',
+    enableShareAppMessage: true,
+    enableShareTimeline: true,
   },
   tabBar: {
     custom: true,

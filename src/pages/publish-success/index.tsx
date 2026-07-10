@@ -4,9 +4,12 @@ import { getCachedConfig } from '@/services/communityService'
 import { reLaunchGeneratePage, safeRedirect, safeSwitchTab } from '@/utils/navigation'
 import type { PostReviewStatus } from '@/types/community'
 import { REVIEW_STATUS_LABELS } from '@/utils/postReview'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 export default function PublishSuccessPage() {
+  useDefaultPageShare({ title: 'happy拼豆嘛', path: '/pages/drafts/index' })
+
   const router = useRouter()
   const visibility = router.params.visibility === 'private' ? 'private' : 'public'
   const reviewStatus = (router.params.reviewStatus || (visibility === 'public' ? 'pending' : 'draft')) as PostReviewStatus

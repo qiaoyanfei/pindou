@@ -4,15 +4,18 @@ import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
 import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { fetchMyPosts } from '@/services/communityService'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyPostsPage() {
+  useDefaultPageShare({ title: '已发布', path: '/pages/my-posts/index' })
+
   const { list, loading, loadingMore, hasMore, total, loadMore } = useCachedPostList('my-posts', fetchMyPosts)
   const displayedCount = total ?? list.length
 
   const openPost = (postId: string) => {
-    Taro.navigateTo({ url: `/pages/my-post-detail/index?type=published&id=${postId}` })
+    Taro.navigateTo({ url: `/pages/my-published-detail/index?id=${postId}` })
   }
 
   return (

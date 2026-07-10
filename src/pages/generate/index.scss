@@ -7,55 +7,6 @@
   padding-bottom: calc(env(safe-area-inset-bottom) + #{$tabbar-height} + 148px);
 }
 
-.generate-page__nav {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: $color-bg;
-}
-
-.generate-page__nav-inner {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 72px;
-  padding-left: 24px;
-  box-sizing: border-box;
-}
-
-.generate-page__nav-back {
-  position: absolute;
-  left: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 16px;
-  background: #fff;
-  border: 1px solid #eceff3;
-}
-
-.generate-page__nav-back-icon {
-  width: 36px;
-  height: 36px;
-}
-
-.generate-page__nav-title {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 34px;
-  font-weight: 700;
-  color: $color-text;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .generate-page__body {
   padding: 12px 28px 0;
 }

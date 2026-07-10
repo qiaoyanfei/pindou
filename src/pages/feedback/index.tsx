@@ -3,9 +3,12 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
 import { checkIsAdmin, getCachedConfig } from '@/services/communityService'
 import { getTempFileUrl } from '@/services/cloudClient'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 export default function FeedbackPage() {
+  useDefaultPageShare({ title: '联系反馈', path: '/pages/feedback/index' })
+
   const config = getCachedConfig()
   const wechatId = config?.feedbackWechatId || 'doudou_shouzuo'
   const qrFileId = config?.feedbackQrUrl || ''

@@ -13,9 +13,12 @@ import { safeNavigateBack, navigateAfterAuth } from '@/utils/navigation'
 import WechatLoginIcon from '@/components/WechatLoginIcon'
 import loginLogo from '@/assets/login-logo.jpg'
 import backIcon from '@/assets/icons/back-chevron.svg'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 export default function LoginPage() {
+  useDefaultPageShare({ title: '登录', path: '/pages/home/index' })
+
   const [loading, setLoading] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const [redirectUrl, setRedirectUrl] = useState('/pages/mine/index')

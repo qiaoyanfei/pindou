@@ -1,3 +1,5 @@
 export default definePageConfig({
-  navigationStyle: 'custom',
+  navigationBarTitleText: '生成图纸',
+  enableShareAppMessage: true,
+  enableShareTimeline: true,
 })

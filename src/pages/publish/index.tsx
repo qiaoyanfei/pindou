@@ -13,9 +13,12 @@ import { readPublishWorkflow } from '@/utils/publishWorkflow'
 import { invalidateMyListCache } from '@/utils/myListCache'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
 import type { PostCategory } from '@/types/community'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 export default function PublishPage() {
+  useDefaultPageShare({ title: '发布图纸', path: '/pages/home/index' })
+
   const [payload, setPayload] = useState<ReturnType<typeof readPublishWorkflow>>(null)
   const [category, setCategory] = useState<PostCategory>(CATEGORY_OPTIONS[0])
   const [isPublic, setIsPublic] = useState(true)

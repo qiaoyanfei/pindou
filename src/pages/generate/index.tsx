@@ -1,6 +1,6 @@
-import { View, Text, Button, Canvas, Image, Slider, Input } from '@tarojs/components'
+import { View, Text, Button, Canvas, Slider, Input } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
@@ -20,8 +20,8 @@ import { requireAuthenticated } from '@/services/session'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { createGeneratePreviewStoragePayload, isRecoverableGeneratePattern } from '@/utils/patternStorage'
-import { safeSwitchTab } from '@/utils/navigation'
 import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
 import {
   clampLongEdge,
@@ -36,7 +36,6 @@ import {
   type PatternStoragePayload,
   type StyleMode,
 } from '@/types'
-import backIcon from '@/assets/icons/back-chevron.svg'
 import './index.scss'
 
 const GRID_PRESETS: Record<StyleMode, number[]> = {
@@ -110,7 +109,6 @@ async function resolveGenerateConfig(
 
 export default function GeneratePage() {
   const initialDraft = readDraftState()
-  const [navLayout, setNavLayout] = useState({ paddingTop: 48, rowHeight: 32, headerRight: 96 })
   const [imagePath, setImagePath] = useState(initialDraft.imagePath)
   const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
@@ -120,6 +118,8 @@ export default function GeneratePage() {
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
   const recoverPromptShownRef = useRef(false)
+
+  useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -206,26 +206,12 @@ export default function GeneratePage() {
     applyDraftState(next)
   }
 
-  useEffect(() => {
-    const windowInfo = Taro.getWindowInfo()
-    const menu = Taro.getMenuButtonBoundingClientRect()
-    setNavLayout({
-      paddingTop: menu.top,
-      rowHeight: menu.height,
-      headerRight: windowInfo.windowWidth - menu.left + 8,
-    })
-  }, [])
-
   const handleStyleModeChange = (styleMode: StyleMode) => {
     const nextConfig = createDefaultConfigForStyleMode(styleMode)
     setManualLongEdge(null)
     setManualLongEdgeInput('')
     setGenerateDraft(imagePath, nextConfig)
     setConfig(nextConfig)
-  }
-
-  const handleBack = () => {
-    safeSwitchTab('/pages/home/index')
   }
 
   const handleGenerate = useCallback(async () => {
@@ -280,24 +266,6 @@ export default function GeneratePage() {
 
   return (
     <View className='generate-page'>
-      <View
-        className='generate-page__nav'
-        style={{ paddingTop: `${navLayout.paddingTop}px` }}
-      >
-        <View
-          className='generate-page__nav-inner'
-          style={{
-            height: `${navLayout.rowHeight}px`,
-            paddingRight: `${navLayout.headerRight}px`,
-          }}
-        >
-          <View className='generate-page__nav-back' onClick={handleBack}>
-            <Image className='generate-page__nav-back-icon' src={backIcon} mode='aspectFit' />
-          </View>
-          <Text className='generate-page__nav-title'>生成图纸</Text>
-        </View>
-      </View>
-
       <View className='generate-page__body'>
         <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
 

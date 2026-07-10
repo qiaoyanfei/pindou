@@ -3,10 +3,13 @@ import Taro from '@tarojs/taro'
 import PostListItem from '@/components/PostListItem'
 import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { fetchMyFavorites } from '@/services/communityService'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyFavoritesPage() {
+  useDefaultPageShare({ title: '我的收藏', path: '/pages/my-favorites/index' })
+
   const { list, loading, loadingMore, hasMore, total, loadMore } = useCachedPostList('my-favorites', fetchMyFavorites)
   const displayedCount = total ?? list.length
 

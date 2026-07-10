@@ -516,7 +516,9 @@ export function buildPostDetailUrl(
 ): string {
   if (isOwnPost(authorOpenid)) {
     const type = visibility === 'private' ? 'pending' : 'published'
-    return `/pages/my-post-detail/index?type=${type}&id=${postId}`
+    return type === 'pending'
+      ? `/pages/my-pending-detail/index?id=${postId}`
+      : `/pages/my-published-detail/index?id=${postId}`
   }
   return `/pages/post-detail/index?id=${postId}`
 }

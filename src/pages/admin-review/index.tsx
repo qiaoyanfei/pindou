@@ -10,9 +10,12 @@ import {
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { requireAuthenticated } from '@/services/session'
 import type { PostSummary } from '@/types/community'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 export default function AdminReviewPage() {
+  useDefaultPageShare({ title: '作品审核', path: '/pages/home/index' })
+
   const hasLoadedRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)

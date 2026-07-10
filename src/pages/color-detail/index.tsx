@@ -10,6 +10,7 @@ import {
   type PatternConfig,
   type PatternResult,
 } from '@/types'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 interface StoredPayload {
@@ -86,6 +87,8 @@ async function drawDonut(entries: ColorEntry[]): Promise<string> {
 }
 
 export default function ColorDetailPage() {
+  useDefaultPageShare({ title: '色号详情', path: '/pages/home/index' })
+
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [donutSrc, setDonutSrc] = useState('')

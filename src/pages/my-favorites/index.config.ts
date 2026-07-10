@@ -1,3 +1,5 @@
 export default definePageConfig({
   navigationBarTitleText: '我的收藏',
+  enableShareAppMessage: true,
+  enableShareTimeline: true,
 })

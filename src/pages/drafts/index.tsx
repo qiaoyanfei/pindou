@@ -3,62 +3,23 @@ import Taro from '@tarojs/taro'
 import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
 import { useCachedPostList } from '@/hooks/useCachedPostList'
-import {
-  fetchPendingPosts,
-  prepareRegenerateFromPost,
-  updatePostVisibility,
-} from '@/services/communityService'
-import { showModal } from '@/utils/dialog'
-import { resolveErrorMessage } from '@/utils/errorMessage'
-import { invalidateMyListCache } from '@/utils/myListCache'
+import { fetchPendingPosts } from '@/services/communityService'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function DraftsPage() {
+  useDefaultPageShare({ title: '待发布', path: '/pages/drafts/index' })
+
   const {
     list,
     loading,
     loadingMore,
     hasMore,
     total,
-    reload,
     loadMore,
   } = useCachedPostList('drafts', fetchPendingPosts)
   const displayedCount = total ?? list.length
-
-  const handleGoPublic = async (postId: string) => {
-    const res = await showModal({
-      title: '提交公开审核',
-      content: '提交后将进入人工审核，通过前作品保存在待发布列表，审核通过后将公开展示并获得小豆奖励',
-      confirmText: '提交审核',
-    })
-    if (!res?.confirm) return
-    try {
-      await updatePostVisibility(postId, 'public')
-      invalidateMyListCache(['my-posts', 'drafts'])
-      Taro.showToast({ title: '已提交审核', icon: 'success' })
-      await reload()
-    } catch (error) {
-      Taro.showToast({
-        title: resolveErrorMessage(error, '操作失败'),
-        icon: 'none',
-        duration: 3000,
-      })
-    }
-  }
-
-  const handleRegenerate = async (postId: string) => {
-    Taro.showLoading({ title: '加载图纸...' })
-    try {
-      await prepareRegenerateFromPost(postId)
-    } catch (error) {
-      Taro.hideLoading()
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '加载失败',
-        icon: 'none',
-      })
-    }
-  }
 
   return (
     <View className='list-page drafts-page'>
@@ -88,9 +49,7 @@ export default function DraftsPage() {
                   item={item}
                   mode='pending'
                   tintIndex={index}
-                  onClick={() => Taro.navigateTo({ url: `/pages/my-post-detail/index?type=pending&id=${item._id}` })}
-                  onPublish={() => handleGoPublic(item._id)}
-                  onRegenerate={() => handleRegenerate(item._id)}
+                  onClick={() => Taro.navigateTo({ url: `/pages/my-pending-detail/index?id=${item._id}` })}
                 />
               ))}
               <Text className='list-page__end'>

@@ -10,6 +10,7 @@ import {
 import { requireAuthenticated } from '@/services/session'
 import type { PostSummary } from '@/types/community'
 import { formatDateTime } from '@/utils/formatDate'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 type AuthorPostsTab = 'published' | 'pending'
@@ -30,6 +31,8 @@ function getPostTimeLabel(post: PostSummary, type: 'published' | 'pending'): str
 }
 
 export default function AdminAuthorPostsPage() {
+  useDefaultPageShare({ title: '用户作品', path: '/pages/home/index' })
+
   const router = useRouter()
   const authorOpenid = decodeParam(String(router.params.authorOpenid || ''))
   const authorName = decodeParam(String(router.params.authorName || ''))

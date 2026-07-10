@@ -18,8 +18,6 @@ interface PostListItemProps {
   tintIndex?: number
   coverTint?: string
   onClick?: () => void
-  onPublish?: () => void
-  onRegenerate?: () => void
 }
 
 function renderIconStats(item: PostSummary) {
@@ -57,8 +55,6 @@ export default function PostListItem({
   tintIndex = 0,
   coverTint,
   onClick,
-  onPublish,
-  onRegenerate,
 }: PostListItemProps) {
   const tint = coverTint || ['#f3e8ff', '#fef3c7', '#dcfce7', '#ffe4e6', '#e0f2fe'][tintIndex % 5]
   const authorName = resolveAuthorNickName(item.author?.nickName, item.author?.openid)
@@ -129,31 +125,7 @@ export default function PostListItem({
         </View>
       ) : null}
 
-      {mode === 'pending' && reviewStatus === 'draft' ? (
-        <View
-          className='post-list-item__publish'
-          onClick={(event) => {
-            event.stopPropagation()
-            onPublish?.()
-          }}
-        >
-          去公开
-        </View>
-      ) : null}
-
-      {mode === 'pending' && reviewStatus === 'rejected' ? (
-        <View
-          className='post-list-item__publish post-list-item__publish--regenerate'
-          onClick={(event) => {
-            event.stopPropagation()
-            onRegenerate?.()
-          }}
-        >
-          重新生成
-        </View>
-      ) : null}
-
-      {mode === 'published' || mode === 'default' ? (
+      {mode === 'published' || mode === 'default' || mode === 'pending' ? (
         <Image className='post-list-item__arrow' src={chevronRightIcon} mode='aspectFit' />
       ) : null}
     </View>

@@ -22,12 +22,14 @@ export interface HdPatternPreviewRequest {
   pattern?: PatternResult
   config?: PatternConfig
   creatorNickname?: string
+  showMirrorLabel?: boolean
 }
 
 interface PreviewPayload {
   pattern: PatternResult
   config: PatternConfig
   creatorNickname: string
+  showMirrorLabel: boolean
 }
 
 const CANVAS_ID = 'hd-pattern-preview-canvas'
@@ -81,6 +83,7 @@ export default function HdPatternPreviewHost() {
           pattern: request.pattern,
           config: request.config,
           creatorNickname: request.creatorNickname || resolveCreatorNickname(),
+          showMirrorLabel: Boolean(request.showMirrorLabel),
         })
         return
       }
@@ -97,6 +100,7 @@ export default function HdPatternPreviewHost() {
           pattern: cachedPreview.pattern,
           config: request.config || cachedPreview.config,
           creatorNickname: request.creatorNickname || request.post?.author?.nickName || resolveCreatorNickname(),
+          showMirrorLabel: Boolean(request.showMirrorLabel),
         })
         return
       }
@@ -108,6 +112,7 @@ export default function HdPatternPreviewHost() {
         pattern: previewData.pattern,
         config: request.config || previewData.config,
         creatorNickname: request.creatorNickname || post.author?.nickName || resolveCreatorNickname(),
+        showMirrorLabel: Boolean(request.showMirrorLabel),
       })
     } catch (error) {
       Taro.hideLoading()
@@ -173,6 +178,7 @@ export default function HdPatternPreviewHost() {
           mode='export'
           hidden
           creatorNickname={payload.creatorNickname}
+          showMirrorLabel={payload.showMirrorLabel}
           showSheetHeader={false}
           showWatermark={false}
           onReady={handleCanvasReady}

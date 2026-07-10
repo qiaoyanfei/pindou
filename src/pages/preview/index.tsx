@@ -40,12 +40,14 @@ import {
   resolvePreviewSessionKey,
   serializePatternFingerprint,
 } from '@/utils/patternStorage'
+import { resolveDisplayedPattern, type PreviewVariant } from '@/utils/patternVariant'
+import { MINI_PROGRAM_NAME } from '@/utils/constants'
+import { useShareContent } from '@/utils/shareReward'
 import './index.scss'
 
 interface StoredPayload extends PatternStoragePayload {}
 
 type ExportJob = 'save' | 'cover'
-type PreviewVariant = 'original' | 'mirror'
 
 const PROCESS_CANVAS_ID = 'preview-process-canvas'
 const GRID_PRESETS: Record<PatternConfig['styleMode'], number[]> = {
@@ -100,22 +102,6 @@ function applyStoredPreview(
     setGenerateDraft(sourceImagePath, nextConfig)
   }
 }
-
-function mirrorPattern(pattern: PatternResult): PatternResult {
-  const grid: string[] = []
-  for (let row = 0; row < pattern.height; row += 1) {
-    const start = row * pattern.width
-    const rowCells = pattern.grid.slice(start, start + pattern.width)
-    grid.push(...rowCells.reverse())
-  }
-
-  return {
-    ...pattern,
-    grid,
-    stats: { ...pattern.stats },
-  }
-}
-
 export default function PreviewPage() {
   const [basePattern, setBasePattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
@@ -138,10 +124,24 @@ export default function PreviewPage() {
   const [postId, setPostId] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
   const pristinePostPatternRef = useRef<string | null>(null)
+  const sharePostIdRef = useRef('')
+  const shareTitleRef = useRef(MINI_PROGRAM_NAME)
+
+  sharePostIdRef.current = postId
+  shareTitleRef.current = basePattern
+    ? `${Math.max(basePattern.width, basePattern.height)}格拼豆图纸`
+    : MINI_PROGRAM_NAME
+
+  useShareContent(() => ({
+    title: shareTitleRef.current,
+    path: sharePostIdRef.current
+      ? `/pages/post-detail/index?id=${sharePostIdRef.current}`
+      : '/pages/home/index',
+  }))
 
   const displayedPattern = useMemo(() => {
     if (!basePattern) return null
-    return variant === 'mirror' ? mirrorPattern(basePattern) : basePattern
+    return resolveDisplayedPattern(basePattern, variant)
   }, [basePattern, variant])
 
   const pendingLongEdge = useMemo(
@@ -329,8 +329,9 @@ export default function PreviewPage() {
       pattern: displayedPattern,
       config,
       creatorNickname,
+      showMirrorLabel: variant === 'mirror',
     })
-  }, [displayedPattern, config, creatorNickname])
+  }, [displayedPattern, config, creatorNickname, variant])
 
   const handleColorDetail = () => {
     if (!displayedPattern) return

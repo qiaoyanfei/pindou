@@ -6,6 +6,7 @@ import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternStoragePayload } from '@/types'
 import { bumpPatternPreviewSession } from '@/utils/patternStorage'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 interface StoredPayload extends PatternStoragePayload {}
@@ -13,6 +14,8 @@ interface StoredPayload extends PatternStoragePayload {}
 const PATTERN_PERSIST_DELAY_MS = 400
 
 export default function PatternEditPage() {
+  useDefaultPageShare({ title: '编辑图纸', path: '/pages/home/index' })
+
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
   const [navLayout, setNavLayout] = useState({

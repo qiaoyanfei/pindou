@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react'
 import { submitFeedback } from '@/services/communityService'
 import { uploadCloudFile } from '@/services/cloudClient'
 import { FEEDBACK_TYPES, type FeedbackType } from '@/types/community'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 const MAX_IMAGES = 3
 
 export default function FeedbackFormPage() {
+  useDefaultPageShare({ title: '问题反馈', path: '/pages/feedback/index' })
+
   const router = useRouter()
   const [type, setType] = useState<FeedbackType | ''>('')
   const [content, setContent] = useState('')

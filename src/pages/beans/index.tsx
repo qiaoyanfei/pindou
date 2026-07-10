@@ -12,6 +12,7 @@ import { safeSwitchTab } from '@/utils/navigation'
 import { formatDateTime } from '@/utils/formatDate'
 import { getBeanLogIconStyle } from '@/utils/beanLogIcon'
 import type { BeanTransaction } from '@/types/community'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
 type BeanFilter = 'all' | 'income' | 'expense'
@@ -23,6 +24,8 @@ const TABS: { key: BeanFilter; label: string }[] = [
 ]
 
 export default function BeansPage() {
+  useDefaultPageShare({ title: '我的小豆', path: '/pages/beans/index' })
+
   const [balance, setBalance] = useState(0)
   const [filter, setFilter] = useState<BeanFilter>('all')
   const [logs, setLogs] = useState<BeanTransaction[]>([])

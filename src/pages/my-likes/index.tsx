@@ -6,10 +6,13 @@ import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { buildPostDetailUrl, fetchMyLikes } from '@/services/communityService'
 import { restoreSessionFromStorage } from '@/services/session'
 import type { PostSummary } from '@/types/community'
+import { useDefaultPageShare } from '@/utils/shareReward'
 import '@/styles/list-page.scss'
 import './index.scss'
 
 export default function MyLikesPage() {
+  useDefaultPageShare({ title: '我的点赞', path: '/pages/my-likes/index' })
+
   const { list, loading, loadingMore, hasMore, total, loadMore } = useCachedPostList('my-likes', fetchMyLikes)
   const displayedCount = total ?? list.length
 
