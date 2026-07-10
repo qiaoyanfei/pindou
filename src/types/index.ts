@@ -40,9 +40,24 @@ export interface RenderOptions {
   showWatermark?: boolean
   /** 每隔多少格绘制加粗参考线；导出/高清图使用 */
   majorGridEvery?: number
+  /** 导出图右上角显示「镜像」标识 */
+  showMirrorLabel?: boolean
 }
 
 export const PATTERN_STORAGE_KEY = 'pindou_pattern_result'
+
+export type PreviewOrigin = 'generate' | 'post' | 'edit'
+
+export interface PatternStoragePayload {
+  pattern: PatternResult
+  config: PatternConfig
+  sourceImagePath?: string
+  previewOrigin?: PreviewOrigin
+  /** 用于预览页强制刷新，避免页面栈复用时残留旧草稿状态 */
+  previewSessionId?: string
+  postId?: string
+  creatorNickname?: string
+}
 
 export const COLOR_DETAIL_STORAGE_KEY = 'pindou_color_detail_pattern'
 

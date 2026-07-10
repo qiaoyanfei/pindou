@@ -33,7 +33,7 @@
   box-sizing: border-box;
 }
 
-.pattern-edit-page__nav-back {
+.pattern-edit-page__nav-done {
   position: absolute;
   left: 24px;
   top: 50%;
@@ -42,16 +42,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 16px;
-  background: #fff;
-  border: 1px solid #eceff3;
+  min-height: 64px;
+  padding: 0 8px;
 }
 
-.pattern-edit-page__nav-back-icon {
-  width: 36px;
-  height: 36px;
+.pattern-edit-page__nav-done-text {
+  font-size: 34px;
+  font-weight: 700;
+  color: $editor-primary;
+  line-height: 1;
 }
 
 .pattern-edit-page__nav-title {

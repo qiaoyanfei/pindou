@@ -26,6 +26,7 @@ interface PatternCanvasProps {
   showWatermark?: boolean
   /** 导出时使用当前规格在 Canvas 上限内的最大 cellPx */
   maxExportResolution?: boolean
+  showMirrorLabel?: boolean
   onReady?: () => void
 }
 
@@ -59,6 +60,7 @@ export default function PatternCanvas({
   showSheetHeader = true,
   showWatermark = true,
   maxExportResolution = false,
+  showMirrorLabel = false,
   onReady,
 }: PatternCanvasProps) {
   const readyRef = useRef(false)
@@ -70,7 +72,7 @@ export default function PatternCanvas({
     }, 120)
 
     return () => clearTimeout(timer)
-  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark, maxExportResolution])
+  }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark, maxExportResolution, showMirrorLabel])
 
   const drawPattern = (retry = 0) => {
     const query = Taro.createSelectorQuery()
@@ -106,6 +108,7 @@ export default function PatternCanvas({
             creatorNickname,
             showSheetHeader,
             showWatermark,
+            showMirrorLabel,
           })
         } else {
           renderPatternToCanvas(canvas, pattern, renderOptions)

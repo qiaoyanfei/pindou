@@ -182,6 +182,7 @@ export function buildPatternSheetSvg(
     showSheetHeader = true,
     showWatermark = true,
     majorGridEvery = 5,
+    showMirrorLabel = false,
   } = options
 
   const layout = getSheetLayoutMetrics(pattern, cellPx, { showSheetHeader })
@@ -221,6 +222,12 @@ export function buildPatternSheetSvg(
       headerMetrics.metaFontSize,
       metaSegmentGap,
     )
+
+    if (showMirrorLabel) {
+      parts.push(
+        `<text x="${layout.width - layout.padding}" y="${layout.padding + headerMetrics.titleLineHeight / 2}" fill="${HEADER_TITLE_COLOR}" font-size="${headerMetrics.titleFontSize}" font-weight="700" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">镜像</text>`,
+      )
+    }
   }
 
   const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))

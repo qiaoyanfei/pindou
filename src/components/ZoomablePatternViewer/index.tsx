@@ -121,7 +121,4 @@ function ZoomablePatternViewer({
   )
 }
 
-export default memo(
-  ZoomablePatternViewer,
-  (prev, next) => prev.pattern === next.pattern && prev.config === next.config,
-)
+export default memo(ZoomablePatternViewer)

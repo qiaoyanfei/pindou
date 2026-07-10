@@ -1,11 +1,11 @@
 import { View, Text, Button, ScrollView, CoverView, Image, Slider, Input, Canvas, Switch } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
+import Taro, { useDidShow, useDidHide } from '@tarojs/taro'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
 import { canvasToTempFile } from '@/utils/canvas'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
-import { handleAlbumSaveError, saveCanvasToAlbum, exportSvgAndShare, handleSvgExportError, type PatternExportFormat } from '@/utils/patternExport'
+import { handleAlbumSaveError, saveCanvasToAlbum, exportSvgAndShareSync, handleSvgExportError, type PatternExportFormat } from '@/utils/patternExport'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import {
@@ -17,7 +17,7 @@ import {
 import { getCoverCellPx } from '@/services/patternRenderer'
 import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
-import { getGenerateDraft, setGenerateDraft } from '@/services/generateSession'
+import { setGenerateDraft } from '@/services/generateSession'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
@@ -32,15 +32,17 @@ import {
   PUBLISH_STORAGE_KEY,
   type PatternConfig,
   type PatternResult,
+  type PatternStoragePayload,
   type PublishStoragePayload,
 } from '@/types'
+import {
+  isRecoverableGeneratePattern,
+  resolvePreviewSessionKey,
+  serializePatternFingerprint,
+} from '@/utils/patternStorage'
 import './index.scss'
 
-interface StoredPayload {
-  pattern: PatternResult
-  config: PatternConfig
-  sourceImagePath?: string
-}
+interface StoredPayload extends PatternStoragePayload {}
 
 type ExportJob = 'save' | 'cover'
 type PreviewVariant = 'original' | 'mirror'
@@ -55,34 +57,48 @@ function waitForLoadingPaint(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 60))
 }
 
-function areConfigsEqual(a: PatternConfig, b: PatternConfig): boolean {
-  return a.paletteId === b.paletteId
-    && a.longEdge === b.longEdge
-    && a.showGrid === b.showGrid
-    && a.showColorCode === b.showColorCode
-    && a.exportCellPx === b.exportCellPx
-    && a.styleMode === b.styleMode
-}
+function applyStoredPreview(
+  stored: PatternStoragePayload,
+  setters: {
+    setPreviewSessionKey: (value: string) => void
+    setBasePattern: (value: PatternResult) => void
+    setConfig: (value: PatternConfig) => void
+    setDraftImagePath: (value: string) => void
+    setLongEdgeInput: (value: string) => void
+    setVariant: (value: PreviewVariant) => void
+    setGridSettingsOpen: (value: boolean) => void
+    setCreatorNickname: (value: string) => void
+    setPreviewOrigin: (value: PatternStoragePayload['previewOrigin']) => void
+    setPostId: (value: string) => void
+    setSaveOptionsOpen: (value: boolean) => void
+    setExportJob: (value: ExportJob | null) => void
+    setExportBusy: (value: boolean) => void
+    setRegenerating: (value: boolean) => void
+    setRegeneratingMessage: (value: string) => void
+  },
+): void {
+  const nextConfig = normalizeConfig(stored.config)
+  const sourceImagePath = stored.sourceImagePath?.trim() || ''
 
-function arePatternStatsEqual(a: Record<string, number>, b: Record<string, number>): boolean {
-  const aKeys = Object.keys(a)
-  const bKeys = Object.keys(b)
-  if (aKeys.length !== bKeys.length) return false
-  return aKeys.every((key) => a[key] === b[key])
-}
+  setters.setPreviewSessionKey(resolvePreviewSessionKey(stored))
+  setters.setBasePattern(stored.pattern)
+  setters.setConfig(nextConfig)
+  setters.setDraftImagePath(sourceImagePath)
+  setters.setLongEdgeInput(String(nextConfig.longEdge))
+  setters.setVariant('original')
+  setters.setGridSettingsOpen(false)
+  setters.setCreatorNickname(stored.creatorNickname?.trim() || resolveCreatorNickname())
+  setters.setPreviewOrigin(stored.previewOrigin)
+  setters.setPostId(stored.postId || '')
+  setters.setSaveOptionsOpen(false)
+  setters.setExportJob(null)
+  setters.setExportBusy(false)
+  setters.setRegenerating(false)
+  setters.setRegeneratingMessage('')
 
-function arePatternsEqual(a: PatternResult | null, b: PatternResult): boolean {
-  if (!a) return false
-  if (
-    a.width !== b.width
-    || a.height !== b.height
-    || a.totalBeads !== b.totalBeads
-    || a.grid.length !== b.grid.length
-    || !arePatternStatsEqual(a.stats, b.stats)
-  ) {
-    return false
+  if (sourceImagePath && stored.previewOrigin !== 'post') {
+    setGenerateDraft(sourceImagePath, nextConfig)
   }
-  return a.grid.every((cell, index) => cell === b.grid[index])
 }
 
 function mirrorPattern(pattern: PatternResult): PatternResult {
@@ -118,7 +134,11 @@ export default function PreviewPage() {
   const [regenerating, setRegenerating] = useState(false)
   const [regeneratingMessage, setRegeneratingMessage] = useState('')
   const [creatorNickname, setCreatorNickname] = useState('')
+  const [previewSessionKey, setPreviewSessionKey] = useState('')
+  const [previewOrigin, setPreviewOrigin] = useState<PatternStoragePayload['previewOrigin']>()
+  const [postId, setPostId] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
+  const pristinePostPatternRef = useRef<string | null>(null)
 
   const displayedPattern = useMemo(() => {
     if (!basePattern) return null
@@ -130,6 +150,7 @@ export default function PreviewPage() {
     [config.longEdge, config.styleMode, longEdgeInput],
   )
   const hasPendingGridChange = pendingLongEdge !== config.longEdge
+  const canAdjustGrid = Boolean(draftImagePath.trim())
 
   useDidShow(() => {
     restoreSessionFromStorage()
@@ -140,35 +161,40 @@ export default function PreviewPage() {
       return
     }
 
-    const draft = getGenerateDraft()
-    const sourceImagePath = draft?.imagePath || stored.sourceImagePath || ''
-    setDraftImagePath(sourceImagePath)
-    if (sourceImagePath) {
-      const nextConfig = normalizeConfig(stored.config)
-      setGenerateDraft(sourceImagePath, nextConfig)
-      if (stored.sourceImagePath !== sourceImagePath) {
-        setStorageSafe(PATTERN_STORAGE_KEY, {
-          pattern: stored.pattern,
-          config: nextConfig,
-          sourceImagePath,
-        })
-      }
+    applyStoredPreview(stored, {
+      setPreviewSessionKey,
+      setBasePattern,
+      setConfig,
+      setDraftImagePath,
+      setLongEdgeInput,
+      setVariant,
+      setGridSettingsOpen,
+      setCreatorNickname,
+      setPreviewOrigin,
+      setPostId,
+      setSaveOptionsOpen,
+      setExportJob,
+      setExportBusy,
+      setRegenerating,
+      setRegeneratingMessage,
+    })
+
+    pristinePostPatternRef.current = stored.previewOrigin === 'post'
+      ? serializePatternFingerprint(stored.pattern)
+      : null
+  })
+
+  useDidHide(() => {
+    if (!pristinePostPatternRef.current) return
+    try {
+      const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
+      if (stored?.previewOrigin !== 'post' || !stored.pattern) return
+      if (serializePatternFingerprint(stored.pattern) !== pristinePostPatternRef.current) return
+      Taro.removeStorageSync(PATTERN_STORAGE_KEY)
+      Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
+    } catch {
+      // ignore
     }
-    setBasePattern((prev) => {
-      const shouldReplacePattern = !prev || !arePatternsEqual(prev, stored.pattern)
-      if (shouldReplacePattern) setVariant('original')
-      return shouldReplacePattern ? stored.pattern : prev
-    })
-    setConfig((prev) => {
-      const nextConfig = normalizeConfig(stored.config)
-      if (!areConfigsEqual(prev, nextConfig) || !longEdgeInput) {
-        setLongEdgeInput(String(nextConfig.longEdge))
-      }
-      return areConfigsEqual(prev, nextConfig) ? prev : nextConfig
-    })
-    setExportJob(null)
-    setExportBusy(false)
-    setCreatorNickname(resolveCreatorNickname())
   })
 
   const beginExportJob = (job: ExportJob) => {
@@ -220,7 +246,16 @@ export default function PreviewPage() {
 
   const handleStartEdit = () => {
     if (exportBusy || !displayedPattern) return
-    setStorageSafe(PATTERN_STORAGE_KEY, { pattern: displayedPattern, config, sourceImagePath: draftImagePath })
+    const nextSessionId = `${previewSessionKey || 'preview'}:edit:${Date.now()}`
+    setStorageSafe(PATTERN_STORAGE_KEY, {
+      pattern: displayedPattern,
+      config,
+      sourceImagePath: draftImagePath || undefined,
+      previewOrigin,
+      postId: postId || undefined,
+      creatorNickname,
+      previewSessionId: nextSessionId,
+    })
     Taro.navigateTo({ url: '/pages/pattern-edit/index' })
   }
 
@@ -232,14 +267,11 @@ export default function PreviewPage() {
     setSaveOptionsOpen(true)
   }
 
-  const handleConfirmExport = async () => {
+  const handleConfirmExport = () => {
     if (!displayedPattern || saving || exportBusy) return
-    setSaveOptionsOpen(false)
 
     if (exportFormat === 'svg') {
-      setSaving(true)
-      setExportBusy(true)
-      Taro.showLoading({ title: '导出中...' })
+      setSaveOptionsOpen(false)
       try {
         const svg = buildPatternSheetSvg(displayedPattern, {
           cellPx: 20,
@@ -248,21 +280,21 @@ export default function PreviewPage() {
           creatorNickname,
           showSheetHeader: true,
           showWatermark: true,
+          showMirrorLabel: variant === 'mirror',
         })
         const fileName = `拼豆图纸-${displayedPattern.width}x${displayedPattern.height}.svg`
-        await exportSvgAndShare(svg, fileName)
-        Taro.hideLoading()
-        Taro.showToast({ title: '请选择文件接收方', icon: 'none' })
+        exportSvgAndShareSync(svg, fileName, {
+          onFail: (error) => {
+            handleSvgExportError(error)
+          },
+        })
       } catch (error) {
-        Taro.hideLoading()
         handleSvgExportError(error)
-      } finally {
-        setSaving(false)
-        setExportBusy(false)
       }
       return
     }
 
+    setSaveOptionsOpen(false)
     beginExportJob('save')
   }
 
@@ -279,7 +311,15 @@ export default function PreviewPage() {
     if (!displayedPattern || publishing || exportBusy) return
     const user = await requireAuthenticated('/pages/publish/index')
     if (!user) return
-    setStorageSafe(PATTERN_STORAGE_KEY, { pattern: displayedPattern, config, sourceImagePath: draftImagePath })
+    setStorageSafe(PATTERN_STORAGE_KEY, {
+      pattern: displayedPattern,
+      config,
+      sourceImagePath: draftImagePath || undefined,
+      previewOrigin,
+      postId: postId || undefined,
+      creatorNickname,
+      previewSessionId: previewSessionKey,
+    })
     beginExportJob('cover')
   }
 
@@ -348,7 +388,17 @@ export default function PreviewPage() {
       setConfig(nextConfig)
       setLongEdgeInput(String(nextConfig.longEdge))
       setGenerateDraft(draftImagePath, nextConfig)
-      setStorageSafe(PATTERN_STORAGE_KEY, { pattern: nextPattern, config: nextConfig, sourceImagePath: draftImagePath })
+      const nextSessionId = `generate:regenerate:${Date.now()}`
+      setPreviewSessionKey(nextSessionId)
+      setPreviewOrigin('generate')
+      setPostId('')
+      setStorageSafe(PATTERN_STORAGE_KEY, {
+        pattern: nextPattern,
+        config: nextConfig,
+        sourceImagePath: draftImagePath,
+        previewOrigin: 'generate',
+        previewSessionId: nextSessionId,
+      })
       Taro.showToast({ title: '已重新预览', icon: 'success' })
     } catch (error) {
       handleImageProcessError(error, '重新预览失败')
@@ -388,6 +438,7 @@ export default function PreviewPage() {
 
           <View className='preview-page__preview-slot'>
             <ZoomablePatternViewer
+              key={previewSessionKey || 'preview-default'}
               pattern={displayedPattern}
               config={config}
               onFullscreen={handleFullscreen}
@@ -406,8 +457,8 @@ export default function PreviewPage() {
             </View>
             <View className='preview-page__stat-divider' />
             <View className='preview-page__stat-item'>
-              <Text className='preview-page__stat-label'>MARD</Text>
-              <Text className='preview-page__stat-value'>221</Text>
+              <Text className='preview-page__stat-label'>颗数</Text>
+              <Text className='preview-page__stat-value'>{displayedPattern.totalBeads}颗</Text>
             </View>
             <View className='preview-page__stat-divider' />
             <Text className='preview-page__color-link' onClick={handleColorDetail}>
@@ -431,6 +482,7 @@ export default function PreviewPage() {
             </View>
           </Button>
 
+          {canAdjustGrid ? (
           <View className='preview-page__grid-setting'>
             <View
               className='preview-page__grid-head'
@@ -511,6 +563,7 @@ export default function PreviewPage() {
               </View>
             ) : null}
           </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -612,6 +665,7 @@ export default function PreviewPage() {
           hidden
           maxExportResolution
           creatorNickname={creatorNickname}
+          showMirrorLabel={variant === 'mirror'}
           onReady={handleExportCanvasReady}
         />
       )}
@@ -629,12 +683,14 @@ export default function PreviewPage() {
         />
       )}
 
+      {canAdjustGrid ? (
       <Canvas
         type='2d'
         id={PROCESS_CANVAS_ID}
         canvasId={PROCESS_CANVAS_ID}
         className='preview-page__hidden-canvas'
       />
+      ) : null}
 
       {exportBusy && <CoverView className='preview-page__export-mask' />}
 

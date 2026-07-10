@@ -1,18 +1,14 @@
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import Taro, { useDidHide, useDidShow, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PatternEditor from '@/components/PatternEditor'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
-import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
-import backIcon from '@/assets/icons/back-chevron.svg'
+import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternStoragePayload } from '@/types'
+import { bumpPatternPreviewSession } from '@/utils/patternStorage'
 import './index.scss'
 
-interface StoredPayload {
-  pattern: PatternResult
-  config: PatternConfig
-  sourceImagePath?: string
-}
+interface StoredPayload extends PatternStoragePayload {}
 
 const PATTERN_PERSIST_DELAY_MS = 400
 
@@ -28,6 +24,7 @@ export default function PatternEditPage() {
   const configRef = useRef(config)
   const patternRef = useRef<PatternResult | null>(null)
   const sourceImagePathRef = useRef('')
+  const previewMetaRef = useRef<Pick<PatternStoragePayload, 'previewOrigin' | 'postId' | 'creatorNickname'>>({})
 
   configRef.current = config
   patternRef.current = pattern
@@ -50,11 +47,15 @@ export default function PatternEditPage() {
     }
 
     const write = () => {
-      setStorageSafe(PATTERN_STORAGE_KEY, {
+      const payload = bumpPatternPreviewSession({
         pattern: nextPattern,
         config: configRef.current,
-        sourceImagePath: sourceImagePathRef.current,
-      })
+        sourceImagePath: sourceImagePathRef.current || undefined,
+        previewOrigin: previewMetaRef.current.previewOrigin,
+        postId: previewMetaRef.current.postId,
+        creatorNickname: previewMetaRef.current.creatorNickname,
+      }, 'edit')
+      setStorageSafe(PATTERN_STORAGE_KEY, payload)
     }
 
     if (immediate) {
@@ -81,6 +82,11 @@ export default function PatternEditPage() {
     setPattern(stored.pattern)
     setConfig(normalizeConfig(stored.config))
     sourceImagePathRef.current = stored.sourceImagePath || ''
+    previewMetaRef.current = {
+      previewOrigin: stored.previewOrigin,
+      postId: stored.postId,
+      creatorNickname: stored.creatorNickname,
+    }
   })
 
   const handlePatternChange = useCallback((nextPattern: PatternResult) => {
@@ -121,12 +127,8 @@ export default function PatternEditPage() {
             paddingRight: `${navLayout.capsuleReserve}px`,
           }}
         >
-          <View className='pattern-edit-page__nav-back' onClick={saveAndExit}>
-            <Image
-              className='pattern-edit-page__nav-back-icon'
-              src={backIcon}
-              mode='aspectFit'
-            />
+          <View className='pattern-edit-page__nav-done' onClick={saveAndExit}>
+            <Text className='pattern-edit-page__nav-done-text'>完成</Text>
           </View>
           <Text className='pattern-edit-page__nav-title'>
             {pattern.width}×{pattern.height} · 编辑图纸

@@ -420,6 +420,7 @@ export function renderPatternSheetToCanvas(
     showSheetHeader = true,
     showWatermark = true,
     majorGridEvery = 5,
+    showMirrorLabel = false,
   } = options
   const layout = getSheetLayoutMetrics(pattern, cellPx, { showSheetHeader })
 
@@ -473,6 +474,18 @@ export function renderPatternSheetToCanvas(
       metaSegmentGap,
     )
     drawSheetMetaLine(ctx, metaSegments, layout.padding, metaY, metaFontSize, metaSegmentGap)
+
+    if (showMirrorLabel) {
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = HEADER_TITLE_COLOR
+      ctx.font = `700 ${headerMetrics.titleFontSize}px sans-serif`
+      ctx.fillText(
+        '镜像',
+        layout.width - layout.padding,
+        layout.padding + headerMetrics.titleLineHeight / 2,
+      )
+    }
   }
 
   const axisFontSize = Math.max(9, Math.round(cellPx * 0.45))

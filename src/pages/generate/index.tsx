@@ -19,6 +19,7 @@ import {
 import { requireAuthenticated } from '@/services/session'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
+import { createGeneratePreviewStoragePayload, isRecoverableGeneratePattern } from '@/utils/patternStorage'
 import { safeSwitchTab } from '@/utils/navigation'
 import { GENERATE_TAB_CONVERT_EVENT, TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
@@ -33,6 +34,7 @@ import {
   PUBLISH_STORAGE_KEY,
   GENERATE_PAGE_RESET_KEY,
   type PatternConfig,
+  type PatternStoragePayload,
   type StyleMode,
 } from '@/types'
 import backIcon from '@/assets/icons/back-chevron.svg'
@@ -49,22 +51,16 @@ function createInitialConfig(): PatternConfig {
 
 function readDraftState(): { imagePath: string; config: PatternConfig } {
   const draft = getGenerateDraft()
-  if (draft) {
-    return {
-      imagePath: draft.imagePath,
-      config: draft.config,
-    }
-  }
   return {
     imagePath: '',
-    config: createInitialConfig(),
+    config: draft?.config ?? createInitialConfig(),
   }
 }
 
 function hasRecoverablePattern(): boolean {
   try {
-    const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as { pattern?: unknown } | undefined
-    return Boolean(stored?.pattern)
+    const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as PatternStoragePayload | undefined
+    return isRecoverableGeneratePattern(stored)
   } catch {
     return false
   }
@@ -137,8 +133,10 @@ export default function GeneratePage() {
     }
 
     const draft = getGenerateDraft()
-    if (draft) {
-      applyDraftState(draft)
+    if (draft?.config) {
+      setConfig(draft.config)
+      setManualLongEdge(null)
+      setManualLongEdgeInput('')
     }
   })
 
@@ -274,7 +272,7 @@ export default function GeneratePage() {
         loadingController.show(message)
         await waitForLoadingPaint()
       })
-      setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config, sourceImagePath: imagePath })
+      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, config, imagePath))
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       handleImageProcessError(error, '转换失败')

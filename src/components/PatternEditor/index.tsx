@@ -42,6 +42,9 @@ const PRELOAD_COMMIT_FALLBACK_MS = 150
 const GESTURE_GUIDE_WIDTH = 228
 const GESTURE_GUIDE_HEIGHT = Math.round(GESTURE_GUIDE_WIDTH * 181 / 313)
 
+/** 本次启动内编辑页选格引导已关闭（点击选格 + 手势引导） */
+let editorPickGuidesDismissedThisLaunch = false
+
 interface ScreenTouch {
   clientX: number
   clientY: number
@@ -166,8 +169,8 @@ export default function PatternEditor({
   const [selectionCount, setSelectionCount] = useState(0)
   const [initialLoading, setInitialLoading] = useState(true)
   const [canUndo, setCanUndo] = useState(false)
-  const [guidesVisible, setGuidesVisible] = useState(true)
-  const guidesVisibleRef = useRef(true)
+  const [guidesVisible, setGuidesVisible] = useState(() => !editorPickGuidesDismissedThisLaunch)
+  const guidesVisibleRef = useRef(!editorPickGuidesDismissedThisLaunch)
 
   patternRef.current = pattern
   imageSizeRef.current = imageSize
@@ -177,6 +180,7 @@ export default function PatternEditor({
 
   const dismissGuides = useCallback(() => {
     if (!guidesVisibleRef.current) return
+    editorPickGuidesDismissedThisLaunch = true
     guidesVisibleRef.current = false
     setGuidesVisible(false)
   }, [])
@@ -530,8 +534,6 @@ export default function PatternEditor({
     setCanvasAreaHeight(0)
     setPickingHighlights([])
     setInitialLoading(true)
-    guidesVisibleRef.current = true
-    setGuidesVisible(true)
     const timer = setTimeout(() => initCanvas(), 80)
     return () => clearTimeout(timer)
   }, [pattern.width, pattern.height, cellPx, config.showGrid, config.showColorCode, initCanvas, clearSelection])
@@ -926,8 +928,10 @@ export default function PatternEditor({
 
       <View className='pattern-editor__bottom-bar'>
         <View
-          className={`pattern-editor__tool pattern-editor__tool--select${isPickingCells ? ' is-disabled' : ' is-enabled'}`}
-          onClick={startPickMode}
+          className={`pattern-editor__tool pattern-editor__tool--select${selectionCount === 0 ? ' is-enabled' : ' is-disabled'}`}
+          onClick={() => {
+            if (selectionCount === 0) startPickMode()
+          }}
         >
           {showPickGuides ? (
             <View
@@ -947,7 +951,7 @@ export default function PatternEditor({
           <ToolIconStack
             enabledSrc={selectGridIcon}
             disabledSrc={selectGridIconDisabled}
-            showEnabled={!isPickingCells}
+            showEnabled={selectionCount === 0}
           />
           <Text className='pattern-editor__tool-label'>选框</Text>
         </View>

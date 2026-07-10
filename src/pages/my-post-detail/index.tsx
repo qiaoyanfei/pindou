@@ -27,6 +27,7 @@ import { showActionSheet, showModal } from '@/utils/dialog'
 import { safeNavigateTo } from '@/utils/navigation'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import { PATTERN_STORAGE_KEY, type PatternResult } from '@/types'
+import { createPostPreviewStoragePayload } from '@/utils/patternStorage'
 import type { PostCategory, PostDetail, PostReviewHistoryItem, PostReviewStatus, PostVisibility } from '@/types/community'
 import './index.scss'
 
@@ -186,10 +187,14 @@ export default function MyPostDetailPage() {
         throw new Error('图纸加载失败')
       }
 
-      setStorageSafe(PATTERN_STORAGE_KEY, {
-        pattern: previewData.pattern,
-        config: previewData.config,
-      })
+      setStorageSafe(PATTERN_STORAGE_KEY, createPostPreviewStoragePayload(
+        previewData.pattern,
+        previewData.config,
+        {
+          postId: source.id,
+          creatorNickname: postRef.current?.author?.nickName,
+        },
+      ))
       Taro.hideLoading()
       safeNavigateTo('/pages/preview/index')
     } catch (error) {

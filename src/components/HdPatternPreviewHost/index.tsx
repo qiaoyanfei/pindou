@@ -67,7 +67,6 @@ export default function HdPatternPreviewHost() {
 
   const startPreview = useCallback(async (request: HdPatternPreviewRequest) => {
     if (inflightRef.current) {
-      Taro.showToast({ title: '预览加载中，请稍候', icon: 'none' })
       return
     }
 

@@ -119,46 +119,61 @@ function sanitizeExportFileName(name: string): string {
   return name.replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
 }
 
-export async function writeSvgToUserFile(svgContent: string, fileName: string): Promise<string> {
+function resolveSvgFilePath(fileName: string): { filePath: string; safeName: string } {
+  const safeName = sanitizeExportFileName(fileName.endsWith('.svg') ? fileName : `${fileName}.svg`)
+  return {
+    filePath: `${Taro.env.USER_DATA_PATH}/${safeName}`,
+    safeName,
+  }
+}
+
+/** 同步写入 SVG，便于在用户点击事件栈内紧接着调用 shareFileMessage */
+export function writeSvgToUserFileSync(svgContent: string, fileName: string): string {
   if (process.env.TARO_ENV !== 'weapp') {
     throw new Error('SVG 导出仅支持微信小程序')
   }
   const fs = Taro.getFileSystemManager()
-  const safeName = sanitizeExportFileName(fileName.endsWith('.svg') ? fileName : `${fileName}.svg`)
-  const filePath = `${Taro.env.USER_DATA_PATH}/${safeName}`
-  await new Promise<void>((resolve, reject) => {
-    fs.writeFile({
-      filePath,
-      data: svgContent,
-      encoding: 'utf8',
-      success: () => resolve(),
-      fail: (error) => reject(new Error(error.errMsg || '写入 SVG 失败')),
-    })
-  })
+  const { filePath } = resolveSvgFilePath(fileName)
+  fs.writeFileSync(filePath, svgContent, 'utf8')
   return filePath
 }
 
-export async function shareSvgFile(filePath: string, fileName: string): Promise<void> {
+/**
+ * 必须在用户 TAP 手势回调中同步调用（不可前置 await）。
+ * shareFileMessage 的 success/fail 通过回调处理。
+ */
+export function exportSvgAndShareSync(
+  svgContent: string,
+  fileName: string,
+  callbacks?: {
+    onSuccess?: () => void
+    onFail?: (error: unknown) => void
+  },
+): void {
   if (process.env.TARO_ENV !== 'weapp') {
     throw new Error('SVG 导出仅支持微信小程序')
   }
   if (typeof Taro.shareFileMessage !== 'function') {
     throw new Error('当前微信版本过低，请升级后重试')
   }
-  await Taro.shareFileMessage({
+  const { filePath, safeName } = resolveSvgFilePath(fileName)
+  const fs = Taro.getFileSystemManager()
+  fs.writeFileSync(filePath, svgContent, 'utf8')
+  Taro.shareFileMessage({
     filePath,
-    fileName: sanitizeExportFileName(fileName.endsWith('.svg') ? fileName : `${fileName}.svg`),
+    fileName: safeName,
+    success: () => callbacks?.onSuccess?.(),
+    fail: (error) => callbacks?.onFail?.(error),
   })
-}
-
-export async function exportSvgAndShare(svgContent: string, fileName: string): Promise<void> {
-  const filePath = await writeSvgToUserFile(svgContent, fileName)
-  await shareSvgFile(filePath, fileName)
 }
 
 export function handleSvgExportError(error: unknown): void {
   const message = extractErrorMessage(error)
   if (isShareCancelled(message)) return
+  if (message.includes('user TAP') || message.includes('user tap')) {
+    Taro.showToast({ title: '请直接点击分享文件按钮', icon: 'none', duration: 3000 })
+    return
+  }
   if (isLocalStorageLimitError(error)) {
     notifyOperationError(error, '导出失败')
     return
