@@ -2,10 +2,12 @@ import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  deletePost,
   fetchPostDetail,
   formatCount,
   getCachedConfig,
   prepareRegenerateFromPost,
+  resolvePostSourceImagePath,
   updatePostVisibility,
 } from '@/services/communityService'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
@@ -21,8 +23,8 @@ import {
   REVIEW_STATUS_LABELS,
 } from '@/utils/postReview'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
-import { getCachedPreviewData, resolvePatternForPreview, resolvePreviewData } from '@/utils/patternPreviewCache'
-import { showActionSheet, showModal } from '@/utils/dialog'
+import { getCachedPreviewData, removeCachedPreview, resolvePatternForPreview, resolvePreviewData } from '@/utils/patternPreviewCache'
+import { showModal } from '@/utils/dialog'
 import { safeNavigateTo } from '@/utils/navigation'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import { PATTERN_STORAGE_KEY } from '@/types'
@@ -63,6 +65,8 @@ export default function MyPostDetail() {
   const [source, setSource] = useState<DetailSource | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewing, setPreviewing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [hiding, setHiding] = useState(false)
   const loadTokenRef = useRef(0)
   const postRef = useRef<PostDetail | null>(null)
   const sourceRef = useRef<DetailSource | null>(null)
@@ -169,12 +173,20 @@ export default function MyPostDetail() {
         throw new Error('图纸加载失败')
       }
 
+      const sourceImagePath = postRef.current
+        ? await resolvePostSourceImagePath(postRef.current)
+        : ''
+
       setStorageSafe(PATTERN_STORAGE_KEY, createPostPreviewStoragePayload(
         previewData.pattern,
         previewData.config,
         {
           postId: source.id,
           creatorNickname: postRef.current?.author?.nickName,
+          sourceImagePath,
+          title: postRef.current?.title,
+          category: postRef.current?.category,
+          existingSourceImageFileId: postRef.current?.sourceImageFileId,
         },
       ))
       Taro.hideLoading()
@@ -215,25 +227,34 @@ export default function MyPostDetail() {
     }
   }
 
-  const handleChangeVisibility = async () => {
-    if (!source) return
-    if (isDraft || isRejected) {
-      handleGoPublic()
-      return
-    }
-    if (isPendingReview) return
-    const res = await showActionSheet({ itemList: ['保持公开', '转为待发布'] })
-    if (!res || res.tapIndex !== 1) return
+  const handleHideWork = async () => {
+    if (!source || hiding || deleting || !isApproved) return
+    const res = await showModal({
+      title: '隐藏作品',
+      content: '隐藏后作品将从已发布列表中移除，并移至待发布，可随时再次提交公开审核。确定要隐藏吗？',
+      confirmText: '隐藏',
+      confirmColor: '#7c3aed',
+      cancelText: '取消',
+    })
+    if (!res?.confirm) return
+
+    setHiding(true)
+    Taro.showLoading({ title: '处理中...', mask: true })
     try {
       await updatePostVisibility(source.id, 'private')
       invalidateMyListCache(['my-posts', 'drafts'])
-      Taro.showToast({ title: '已转为待发布', icon: 'success' })
+      Taro.hideLoading()
+      Taro.showToast({ title: '已隐藏作品', icon: 'success' })
       loadDetail()
     } catch (error) {
+      Taro.hideLoading()
       Taro.showToast({
-        title: error instanceof Error ? error.message : '更新失败',
+        title: resolveErrorMessage(error, '操作失败'),
         icon: 'none',
+        duration: 3000,
       })
+    } finally {
+      setHiding(false)
     }
   }
 
@@ -242,12 +263,47 @@ export default function MyPostDetail() {
     Taro.showLoading({ title: '加载图纸...' })
     try {
       await prepareRegenerateFromPost(source.id)
+      Taro.hideLoading()
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({
         title: error instanceof Error ? error.message : '加载失败',
         icon: 'none',
       })
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!source || deleting || previewing || hiding) return
+    const isPublished = source.mode === 'published'
+    const res = await showModal({
+      title: '删除作品',
+      content: isPublished
+        ? '删除后作品将从已发布列表中移除，且无法恢复。确定要删除吗？'
+        : '删除后该图纸将从待发布中移除，且无法恢复。确定要删除吗？',
+      confirmText: '删除',
+      confirmColor: '#dc2626',
+      cancelText: '取消',
+    })
+    if (!res?.confirm) return
+
+    setDeleting(true)
+    Taro.showLoading({ title: '删除中...', mask: true })
+    try {
+      await deletePost(source.id)
+      removeCachedPreview(source.id)
+      Taro.hideLoading()
+      Taro.showToast({ title: '已删除', icon: 'success' })
+      setTimeout(() => Taro.navigateBack(), 500)
+    } catch (error) {
+      Taro.hideLoading()
+      Taro.showToast({
+        title: resolveErrorMessage(error, '删除失败'),
+        icon: 'none',
+        duration: 3000,
+      })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -335,7 +391,7 @@ export default function MyPostDetail() {
             ) : null}
           </View>
 
-          <View className='owner-section'>
+          <View className='owner-section owner-section--status'>
             <Text className='owner-section__title'>发布状态</Text>
             <View className='owner-status'>
               <View className='owner-status__main'>
@@ -351,11 +407,26 @@ export default function MyPostDetail() {
                   </Text>
                 </View>
               </View>
+            </View>
+            <View className={`owner-status__actions${isApproved ? '' : ' owner-status__actions--single'}`}>
               {isApproved ? (
-                <View className='owner-status__btn' onClick={() => void handleChangeVisibility()}>
-                  <Text>修改状态</Text>
+                <View
+                  className={`owner-status__btn${hiding || deleting ? ' owner-status__btn--disabled' : ''}`}
+                  onClick={() => {
+                    if (!hiding && !deleting) void handleHideWork()
+                  }}
+                >
+                  <Text>{hiding ? '处理中...' : '隐藏作品'}</Text>
                 </View>
               ) : null}
+              <View
+                className={`owner-status__btn owner-status__btn--danger${deleting || hiding ? ' owner-status__btn--disabled' : ''}`}
+                onClick={() => {
+                  if (!deleting && !hiding) void handleDelete()
+                }}
+              >
+                <Text>{deleting ? '删除中...' : '删除作品'}</Text>
+              </View>
             </View>
           </View>
 

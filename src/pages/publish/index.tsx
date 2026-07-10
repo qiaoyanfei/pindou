@@ -16,6 +16,11 @@ import type { PostCategory } from '@/types/community'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
+function guessImageExtension(path: string): string {
+  const match = path.match(/\.(jpe?g|png|webp|gif)(?=\?|$)/i)
+  return match ? `.${match[1].toLowerCase()}` : '.jpg'
+}
+
 export default function PublishPage() {
   useDefaultPageShare({ title: '发布图纸', path: '/pages/home/index' })
 
@@ -38,6 +43,12 @@ export default function PublishPage() {
     }
     setPayload(workflow)
     setCoverPreview(workflow.coverPath || '')
+    if (workflow.category && CATEGORY_OPTIONS.includes(workflow.category)) {
+      setCategory(workflow.category)
+    }
+    if (workflow.title && workflow.title !== '标题待生成') {
+      setManualTitle(workflow.title)
+    }
   })
 
   const handleSubmit = async () => {
@@ -57,14 +68,28 @@ export default function PublishPage() {
       const stamp = Date.now()
       const coverFileId = await uploadCloudFile(`posts/covers/${stamp}.png`, payload.coverPath)
       const patternFileId = await uploadJsonCloudFile(`posts/patterns/${stamp}.json`, payload.pattern)
+      let sourceImageFileId = payload.existingSourceImageFileId || ''
+      if (payload.sourceImagePath) {
+        try {
+          const extension = guessImageExtension(payload.sourceImagePath)
+          sourceImageFileId = await uploadCloudFile(
+            `posts/sources/${stamp}${extension}`,
+            payload.sourceImagePath,
+          )
+        } catch {
+          // 原图上传失败时保留已有 fileId
+        }
+      }
 
       const result = await publishPost({
+        postId: payload.postId,
         title,
         category,
         description: '',
         visibility: isPublic ? 'public' : 'private',
         coverFileId,
         patternFileId,
+        sourceImageFileId: sourceImageFileId || undefined,
         pattern: payload.pattern,
         config: payload.config,
       })
@@ -73,7 +98,7 @@ export default function PublishPage() {
       invalidateMyListCache(['my-posts', 'drafts'])
       Taro.hideLoading()
       Taro.redirectTo({
-        url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}&visibility=${isPublic ? 'public' : 'private'}&reviewStatus=${result.reviewStatus || (isPublic ? 'pending' : 'draft')}`,
+        url: `/pages/publish-success/index?reward=${result.reward}&postId=${result.postId}&visibility=${isPublic ? 'public' : 'private'}&reviewStatus=${result.reviewStatus || (isPublic ? 'pending' : 'draft')}&update=${payload.postId ? '1' : '0'}`,
       })
     } catch (error) {
       Taro.hideLoading()
@@ -96,6 +121,7 @@ export default function PublishPage() {
   }
 
   const { pattern, config } = payload
+  const isUpdate = Boolean(payload.postId)
 
   return (
     <View className='publish-page'>
@@ -124,7 +150,9 @@ export default function PublishPage() {
           {isPublic ? (
             <View className='publish-page__system-title'>
               <Text className='publish-page__system-title-hint'>
-                标题由系统生成，审核通过后确定
+                {isUpdate && manualTitle
+                  ? `当前标题「${manualTitle}」，公开审核通过后仍可使用；也可关闭公开后修改`
+                  : '标题由系统生成，审核通过后确定'}
               </Text>
             </View>
           ) : (
@@ -174,7 +202,7 @@ export default function PublishPage() {
           disabled={submitting}
           onClick={handleSubmit}
         >
-          {isPublic ? '提交公开审核' : '保存到待发布'}
+          {isPublic ? (isUpdate ? '更新并提交审核' : '提交公开审核') : (isUpdate ? '更新保存' : '保存到待发布')}
         </Button>
       </View>
 

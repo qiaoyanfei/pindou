@@ -167,6 +167,16 @@ export async function getTempFileUrls(fileIds: string[]): Promise<Record<string,
   return map
 }
 
+export async function downloadCloudFile(fileId: string): Promise<string> {
+  if (!fileId) throw new Error('缺少文件 ID')
+  ensureCloudReady()
+  const response = await Taro.cloud.downloadFile({ fileID: fileId })
+  if (!response.tempFilePath) {
+    throw new Error('文件下载失败')
+  }
+  return response.tempFilePath
+}
+
 export async function downloadJsonFile<T>(fileId: string): Promise<T> {
   ensureCloudReady()
   const response = await Taro.cloud.downloadFile({ fileID: fileId })

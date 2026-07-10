@@ -57,6 +57,11 @@ export interface PatternStoragePayload {
   previewSessionId?: string
   postId?: string
   creatorNickname?: string
+  /** 更新已有作品时携带的标题与分类 */
+  postTitle?: string
+  postCategory?: string
+  /** 已有原图云文件 ID，更新时可复用避免重复上传 */
+  existingSourceImageFileId?: string
 }
 
 export const COLOR_DETAIL_STORAGE_KEY = 'pindou_color_detail_pattern'
@@ -79,6 +84,9 @@ export interface PublishStoragePayload {
   coverPath?: string
   config?: PatternConfig
   title?: string
+  category?: string
+  postId?: string
+  existingSourceImageFileId?: string
   /** 兼容旧版：曾在此冗余存 pattern */
   pattern?: PatternResult
 }

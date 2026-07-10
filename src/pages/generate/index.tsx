@@ -50,7 +50,7 @@ function createInitialConfig(): PatternConfig {
 function readDraftState(): { imagePath: string; config: PatternConfig } {
   const draft = getGenerateDraft()
   return {
-    imagePath: '',
+    imagePath: draft?.imagePath ?? '',
     config: draft?.config ?? createInitialConfig(),
   }
 }
@@ -160,6 +160,9 @@ export default function GeneratePage() {
     }
 
     const draft = getGenerateDraft()
+    if (draft?.imagePath) {
+      setImagePath(draft.imagePath)
+    }
     if (draft?.config) {
       setConfig(draft.config)
       setManualLongEdge(null)

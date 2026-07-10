@@ -802,8 +802,28 @@ async function handleDeleteDraft(openid, data) {
   return ok({ draftId })
 }
 
+async function handleDeletePost(openid, data) {
+  const postId = data?.postId
+  if (!postId) return fail('缺少 postId')
+  const res = await db.collection('posts').doc(postId).get()
+  if (!res.data || res.data._openid !== openid) return fail('无权操作')
+
+  const cleanupTasks = [
+    db.collection('likes').where({ postId }).remove(),
+    db.collection('favorites').where({ postId }).remove(),
+    db.collection('downloads').where({ postId }).remove(),
+  ]
+  await Promise.allSettled(cleanupTasks)
+  await db.collection('posts').doc(postId).remove()
+  return ok({ postId })
+}
+
 async function handlePublishPost(openid, data) {
   if (!data?.coverFileId || !data?.patternFileId) return fail('缺少图纸文件，请重新发布')
+  if (data.postId) {
+    return handleUpdatePostContent(openid, data)
+  }
+
   const title = String(data?.title || '').trim() || '标题待生成'
   const description = ''
 
@@ -843,6 +863,7 @@ async function handlePublishPost(openid, data) {
     coverFileId: data.coverFileId,
     sheetFileId: data.sheetFileId || '',
     patternFileId: data.patternFileId,
+    sourceImageFileId: data.sourceImageFileId || '',
     width: data.width,
     height: data.height,
     styleMode: data.styleMode,
@@ -874,6 +895,72 @@ async function handlePublishPost(openid, data) {
 
   return ok({
     postId: addRes._id,
+    reward: 0,
+    reviewStatus,
+  })
+}
+
+async function handleUpdatePostContent(openid, data) {
+  const postId = data.postId
+  const res = await db.collection('posts').doc(postId).get()
+  if (!res.data || res.data._openid !== openid) return fail('无权操作')
+  const post = res.data
+  const now = db.serverDate()
+  const user = await getUser(openid)
+  const wantsPublic = data.visibility === 'public'
+  const providedTitle = String(data?.title || '').trim()
+  const existingTitle = String(post.title || '').trim()
+  const title = providedTitle
+    || (wantsPublic ? (existingTitle || '标题待生成') : (existingTitle || '标题待生成'))
+  const description = String(post.description || '').trim() || ''
+
+  let reviewStatus = wantsPublic ? 'pending' : 'draft'
+  let reviewNote = ''
+  let history = prependHistory(
+    post.reviewHistory,
+    buildHistoryEntry(reviewStatus, wantsPublic ? '更新并提交审核' : '更新保存'),
+  )
+
+  if (wantsPublic) {
+    const textCheck = await validatePublishText(openid, title, description)
+    if (!textCheck.ok) {
+      reviewStatus = 'rejected'
+      reviewNote = textCheck.message || '内容不符合规范'
+      history = prependHistory(history, buildHistoryEntry('rejected', '审核未通过', reviewNote))
+    }
+  }
+
+  const sourceImageFileId = data.sourceImageFileId || post.sourceImageFileId || ''
+  const updateDoc = {
+    title,
+    description,
+    category: data.category,
+    visibility: 'private',
+    reviewStatus,
+    reviewNote,
+    reviewHistory: history,
+    coverFileId: data.coverFileId,
+    sheetFileId: data.sheetFileId || post.sheetFileId || '',
+    patternFileId: data.patternFileId,
+    sourceImageFileId,
+    width: data.width,
+    height: data.height,
+    styleMode: data.styleMode,
+    paletteId: data.paletteId || 'mard221',
+    stats: data.stats || {},
+    totalBeads: data.totalBeads || 0,
+    colorCount: data.colorCount || 0,
+    config: data.config || {},
+    authorNickName: resolveDisplayNickName(user?.nickName, openid),
+    authorAvatarUrl: user?.avatarUrl || '',
+    updatedAt: now,
+  }
+  updateDoc.searchText = buildPostSearchText({ ...post, ...updateDoc })
+
+  await db.collection('posts').doc(postId).update({ data: updateDoc })
+
+  return ok({
+    postId,
     reward: 0,
     reviewStatus,
   })
@@ -1310,6 +1397,8 @@ exports.main = async (event) => {
         return await handlePublishPost(openid, data)
       case 'updatePostVisibility':
         return await handleUpdatePostVisibility(openid, data)
+      case 'deletePost':
+        return await handleDeletePost(openid, data)
       case 'getMyPosts':
         return await handleGetMyPosts(openid, data)
       case 'getPendingPosts':

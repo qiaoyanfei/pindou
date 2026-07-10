@@ -27,7 +27,10 @@ export default function PatternEditPage() {
   const configRef = useRef(config)
   const patternRef = useRef<PatternResult | null>(null)
   const sourceImagePathRef = useRef('')
-  const previewMetaRef = useRef<Pick<PatternStoragePayload, 'previewOrigin' | 'postId' | 'creatorNickname'>>({})
+  const previewMetaRef = useRef<Pick<
+    PatternStoragePayload,
+    'previewOrigin' | 'postId' | 'creatorNickname' | 'postTitle' | 'postCategory' | 'existingSourceImageFileId'
+  >>({})
 
   configRef.current = config
   patternRef.current = pattern
@@ -57,6 +60,9 @@ export default function PatternEditPage() {
         previewOrigin: previewMetaRef.current.previewOrigin,
         postId: previewMetaRef.current.postId,
         creatorNickname: previewMetaRef.current.creatorNickname,
+        postTitle: previewMetaRef.current.postTitle,
+        postCategory: previewMetaRef.current.postCategory,
+        existingSourceImageFileId: previewMetaRef.current.existingSourceImageFileId,
       }, 'edit')
       setStorageSafe(PATTERN_STORAGE_KEY, payload)
     }
@@ -89,6 +95,9 @@ export default function PatternEditPage() {
       previewOrigin: stored.previewOrigin,
       postId: stored.postId,
       creatorNickname: stored.creatorNickname,
+      postTitle: stored.postTitle,
+      postCategory: stored.postCategory,
+      existingSourceImageFileId: stored.existingSourceImageFileId,
     }
   })
 

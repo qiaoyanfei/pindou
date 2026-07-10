@@ -73,6 +73,7 @@ export interface PostDetail extends PostSummary {
   visibility: PostVisibility
   patternFileId: string
   sheetFileId?: string
+  sourceImageFileId?: string
   config?: PatternConfig
   stats: Record<string, number>
   totalBeads: number
@@ -140,6 +141,7 @@ export const FEEDBACK_TYPES: FeedbackType[] = [
 
 export interface PublishPayload {
   draftId?: string
+  postId?: string
   title: string
   category: PostCategory
   description: string
@@ -149,4 +151,5 @@ export interface PublishPayload {
   patternFileId: string
   pattern: PatternResult
   config: PatternConfig
+  sourceImageFileId?: string
 }

@@ -17,16 +17,19 @@ import { normalizeConfig, STYLE_MODE_LABELS } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY } from '@/types'
 import {
   callCloudApi,
+  downloadCloudFile,
   downloadJsonFile,
   getTempFileUrl,
   getTempFileUrls,
   uploadCloudFile,
   uploadJsonCloudFile,
 } from '@/services/cloudClient'
+import { persistGenerateSourceImage, setGenerateDraft } from '@/services/generateSession'
 import { getSessionConfig, persistSession, setSessionConfig } from '@/services/session'
 import { resolveAuthorNickName } from '@/utils/userProfile'
 import { safeSwitchTab } from '@/utils/navigation'
 import { setStorageSafe } from '@/utils/localCache'
+import { invalidateMyListCache } from '@/utils/myListCache'
 
 let cachedUser: UserProfile | null = null
 let loginPromise: Promise<LoginResult> | null = null
@@ -204,6 +207,18 @@ export async function loadPatternFromPost(post: PostDetail): Promise<PatternResu
   return downloadJsonFile<PatternResult>(post.patternFileId)
 }
 
+export async function resolvePostSourceImagePath(
+  post: Pick<PostDetail, 'sourceImageFileId'>,
+): Promise<string> {
+  if (!post.sourceImageFileId) return ''
+  try {
+    const tempPath = await downloadCloudFile(post.sourceImageFileId)
+    return persistGenerateSourceImage(tempPath)
+  } catch {
+    return ''
+  }
+}
+
 export async function saveDraft(payload: {
   draftId?: string
   title?: string
@@ -265,6 +280,7 @@ export async function publishPost(payload: PublishPayload): Promise<{
     reward: number
     reviewStatus?: import('@/types/community').PostReviewStatus
   }>('publishPost', {
+    postId: payload.postId,
     draftId: payload.draftId,
     title: payload.title,
     category: payload.category,
@@ -273,6 +289,7 @@ export async function publishPost(payload: PublishPayload): Promise<{
     coverFileId: payload.coverFileId,
     sheetFileId: payload.sheetFileId,
     patternFileId: payload.patternFileId,
+    sourceImageFileId: payload.sourceImageFileId,
     width: payload.pattern.width,
     height: payload.pattern.height,
     styleMode: payload.config.styleMode,
@@ -282,7 +299,7 @@ export async function publishPost(payload: PublishPayload): Promise<{
     colorCount: Object.keys(payload.pattern.stats).length,
     config: payload.config,
   })
-  if (cachedUser) {
+  if (cachedUser && !payload.postId) {
     cachedUser = {
       ...cachedUser,
       draftCount: (cachedUser.draftCount || 0) + 1,
@@ -432,6 +449,16 @@ export async function updatePostVisibility(
   return result.reviewStatus
 }
 
+export async function deletePost(postId: string): Promise<void> {
+  await callCloudApi('deletePost', { postId })
+  invalidateMyListCache(['my-posts', 'drafts'])
+  try {
+    await refreshCounts()
+  } catch {
+    // count sync failure should not block delete
+  }
+}
+
 export interface AdminCheckResult {
   isAdmin: boolean
   openid?: string
@@ -490,7 +517,21 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
     styleMode: post.styleMode,
     paletteId: post.paletteId,
   })
-  setStorageSafe(PATTERN_STORAGE_KEY, { pattern, config })
+  const sourceImagePath = await resolvePostSourceImagePath(post)
+  setStorageSafe(PATTERN_STORAGE_KEY, {
+    pattern,
+    config,
+    sourceImagePath: sourceImagePath || undefined,
+    previewOrigin: 'post',
+    postId,
+    postTitle: post.title,
+    postCategory: post.category,
+    existingSourceImageFileId: post.sourceImageFileId,
+    previewSessionId: `post:${postId}:regenerate:${Date.now()}`,
+  })
+  if (sourceImagePath) {
+    setGenerateDraft(sourceImagePath, config)
+  }
   safeSwitchTab('/pages/generate/index')
 }
 

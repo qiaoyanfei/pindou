@@ -33,6 +33,11 @@ export function getCachedPreviewData(postId: string): CachedPreviewData | undefi
   return previewCache.get(postId)
 }
 
+export function removeCachedPreview(postId: string): void {
+  previewCache.delete(postId)
+  inflight.delete(postId)
+}
+
 export function buildPreviewConfigFromPost(
   post: Pick<PostDetail, 'styleMode' | 'paletteId' | 'config'>,
 ): PatternConfig {

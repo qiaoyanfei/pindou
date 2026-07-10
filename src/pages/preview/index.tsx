@@ -1,5 +1,5 @@
 import { View, Text, Button, ScrollView, CoverView, Image, Slider, Input, Canvas, Switch } from '@tarojs/components'
-import Taro, { useDidShow, useDidHide } from '@tarojs/taro'
+import Taro, { useDidShow, useUnload } from '@tarojs/taro'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
@@ -33,12 +33,12 @@ import {
   type PatternConfig,
   type PatternResult,
   type PatternStoragePayload,
-  type PublishStoragePayload,
 } from '@/types'
 import {
   isRecoverableGeneratePattern,
   resolvePreviewSessionKey,
   serializePatternFingerprint,
+  buildPublishStorageFromPattern,
 } from '@/utils/patternStorage'
 import { resolveDisplayedPattern, type PreviewVariant } from '@/utils/patternVariant'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
@@ -72,6 +72,9 @@ function applyStoredPreview(
     setCreatorNickname: (value: string) => void
     setPreviewOrigin: (value: PatternStoragePayload['previewOrigin']) => void
     setPostId: (value: string) => void
+    setPostTitle: (value: string) => void
+    setPostCategory: (value: string) => void
+    setExistingSourceImageFileId: (value: string) => void
     setSaveOptionsOpen: (value: boolean) => void
     setExportJob: (value: ExportJob | null) => void
     setExportBusy: (value: boolean) => void
@@ -92,13 +95,16 @@ function applyStoredPreview(
   setters.setCreatorNickname(stored.creatorNickname?.trim() || resolveCreatorNickname())
   setters.setPreviewOrigin(stored.previewOrigin)
   setters.setPostId(stored.postId || '')
+  setters.setPostTitle(stored.postTitle?.trim() || '')
+  setters.setPostCategory(stored.postCategory || '')
+  setters.setExistingSourceImageFileId(stored.existingSourceImageFileId || '')
   setters.setSaveOptionsOpen(false)
   setters.setExportJob(null)
   setters.setExportBusy(false)
   setters.setRegenerating(false)
   setters.setRegeneratingMessage('')
 
-  if (sourceImagePath && stored.previewOrigin !== 'post') {
+  if (sourceImagePath) {
     setGenerateDraft(sourceImagePath, nextConfig)
   }
 }
@@ -122,11 +128,16 @@ export default function PreviewPage() {
   const [previewSessionKey, setPreviewSessionKey] = useState('')
   const [previewOrigin, setPreviewOrigin] = useState<PatternStoragePayload['previewOrigin']>()
   const [postId, setPostId] = useState('')
+  const [postTitle, setPostTitle] = useState('')
+  const [postCategory, setPostCategory] = useState('')
+  const [existingSourceImageFileId, setExistingSourceImageFileId] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
+  const basePatternRef = useRef<PatternResult | null>(null)
   const pristinePostPatternRef = useRef<string | null>(null)
   const sharePostIdRef = useRef('')
   const shareTitleRef = useRef(MINI_PROGRAM_NAME)
 
+  basePatternRef.current = basePattern
   sharePostIdRef.current = postId
   shareTitleRef.current = basePattern
     ? `${Math.max(basePattern.width, basePattern.height)}格拼豆图纸`
@@ -155,8 +166,8 @@ export default function PreviewPage() {
     restoreSessionFromStorage()
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
-      Taro.showToast({ title: '请先生成图纸', icon: 'none' })
-      setTimeout(() => Taro.navigateBack(), 800)
+      if (basePatternRef.current) return
+      Taro.navigateBack()
       return
     }
 
@@ -171,6 +182,9 @@ export default function PreviewPage() {
       setCreatorNickname,
       setPreviewOrigin,
       setPostId,
+      setPostTitle,
+      setPostCategory,
+      setExistingSourceImageFileId,
       setSaveOptionsOpen,
       setExportJob,
       setExportBusy,
@@ -183,7 +197,7 @@ export default function PreviewPage() {
       : null
   })
 
-  useDidHide(() => {
+  useUnload(() => {
     if (!pristinePostPatternRef.current) return
     try {
       const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
@@ -216,7 +230,19 @@ export default function PreviewPage() {
     try {
       if (job === 'cover') {
         const coverPath = await canvasToTempFile('cover-canvas')
-        setStorageSafe(PUBLISH_STORAGE_KEY, { config, coverPath } satisfies PublishStoragePayload)
+        setStorageSafe(
+          PUBLISH_STORAGE_KEY,
+          buildPublishStorageFromPattern(
+            {
+              config,
+              postId: postId || undefined,
+              postTitle: postTitle || undefined,
+              postCategory: postCategory || undefined,
+              existingSourceImageFileId: existingSourceImageFileId || undefined,
+            },
+            coverPath,
+          ),
+        )
         Taro.hideLoading()
         Taro.navigateTo({ url: '/pages/publish/index' })
         return
@@ -252,6 +278,9 @@ export default function PreviewPage() {
       sourceImagePath: draftImagePath || undefined,
       previewOrigin,
       postId: postId || undefined,
+      postTitle: postTitle || undefined,
+      postCategory: postCategory || undefined,
+      existingSourceImageFileId: existingSourceImageFileId || undefined,
       creatorNickname,
       previewSessionId: nextSessionId,
     })
@@ -316,6 +345,9 @@ export default function PreviewPage() {
       sourceImagePath: draftImagePath || undefined,
       previewOrigin,
       postId: postId || undefined,
+      postTitle: postTitle || undefined,
+      postCategory: postCategory || undefined,
+      existingSourceImageFileId: existingSourceImageFileId || undefined,
       creatorNickname,
       previewSessionId: previewSessionKey,
     })
@@ -389,15 +421,22 @@ export default function PreviewPage() {
       setConfig(nextConfig)
       setLongEdgeInput(String(nextConfig.longEdge))
       setGenerateDraft(draftImagePath, nextConfig)
-      const nextSessionId = `generate:regenerate:${Date.now()}`
+      const nextSessionId = postId
+        ? `post:${postId}:regenerate:${Date.now()}`
+        : `generate:regenerate:${Date.now()}`
       setPreviewSessionKey(nextSessionId)
-      setPreviewOrigin('generate')
-      setPostId('')
+      if (!postId) {
+        setPreviewOrigin('generate')
+      }
       setStorageSafe(PATTERN_STORAGE_KEY, {
         pattern: nextPattern,
         config: nextConfig,
         sourceImagePath: draftImagePath,
-        previewOrigin: 'generate',
+        previewOrigin: postId ? 'post' : 'generate',
+        postId: postId || undefined,
+        postTitle: postTitle || undefined,
+        postCategory: postCategory || undefined,
+        existingSourceImageFileId: existingSourceImageFileId || undefined,
         previewSessionId: nextSessionId,
       })
       Taro.showToast({ title: '已重新预览', icon: 'success' })

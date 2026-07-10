@@ -13,14 +13,17 @@ export default function PublishSuccessPage() {
   const router = useRouter()
   const visibility = router.params.visibility === 'private' ? 'private' : 'public'
   const reviewStatus = (router.params.reviewStatus || (visibility === 'public' ? 'pending' : 'draft')) as PostReviewStatus
+  const isUpdate = router.params.update === '1'
   const isPublicIntent = visibility === 'public'
   const reward = Number(router.params.reward || getCachedConfig()?.publishReward || 0)
 
   const title = reviewStatus === 'rejected'
     ? '审核未通过'
-    : isPublicIntent
-      ? '已提交审核'
-      : '已保存到待发布'
+    : isUpdate
+      ? (isPublicIntent ? '已更新并提交审核' : '已更新保存')
+      : isPublicIntent
+        ? '已提交审核'
+        : '已保存到待发布'
 
   const desc = reviewStatus === 'rejected'
     ? '作品内容未通过安全检测，请在「待发布」中查看详情并重新生成后再次提交。'

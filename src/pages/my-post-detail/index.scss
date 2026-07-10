@@ -175,10 +175,53 @@
 }
 
 /* ── 发布状态 ── */
+.owner-status__actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.owner-status__actions--single .owner-status__btn {
+  flex: 1;
+}
+
+.owner-status__btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid $color-primary;
+  color: $color-primary;
+  font-size: 26px;
+  font-weight: 600;
+  background: #fff;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.owner-status__btn--danger {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.owner-status__btn--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .owner-status {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: #f9fafb;
+  box-sizing: border-box;
 }
 
 .owner-status__main {
@@ -187,7 +230,6 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  margin-right: 12px;
 }
 
 .owner-status__icon {
@@ -222,18 +264,6 @@
   font-size: 22px;
   color: $color-text-secondary;
   line-height: 1.45;
-}
-
-.owner-status__btn {
-  flex-shrink: 0;
-  padding: 12px 20px;
-  border-radius: 999px;
-  border: 1px solid $color-primary;
-  color: $color-primary;
-  font-size: 24px;
-  font-weight: 600;
-  background: #fff;
-  line-height: 1.2;
 }
 
 /* ── 公开展示 ── */

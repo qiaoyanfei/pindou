@@ -1,4 +1,5 @@
-import type { PatternResult, PatternStoragePayload } from '@/types'
+import type { PostCategory } from '@/types/community'
+import type { PatternResult, PatternStoragePayload, PublishStoragePayload } from '@/types'
 
 export function buildPatternPreviewSessionId(pattern: PatternResult, suffix?: string): string {
   const sample = pattern.grid.slice(0, 12).join('|')
@@ -28,15 +29,40 @@ export function createPostPreviewStoragePayload(
   options: {
     postId: string
     creatorNickname?: string
+    sourceImagePath?: string
+    title?: string
+    category?: PostCategory
+    existingSourceImageFileId?: string
   },
 ): PatternStoragePayload {
   return {
     pattern,
     config,
+    sourceImagePath: options.sourceImagePath?.trim() || undefined,
     previewOrigin: 'post',
     postId: options.postId,
     previewSessionId: `post:${options.postId}:${Date.now()}`,
     creatorNickname: options.creatorNickname?.trim() || undefined,
+    postTitle: options.title?.trim() || undefined,
+    postCategory: options.category,
+    existingSourceImageFileId: options.existingSourceImageFileId || undefined,
+  }
+}
+
+export function buildPublishStorageFromPattern(
+  stored: Pick<
+    PatternStoragePayload,
+    'config' | 'postId' | 'postTitle' | 'postCategory' | 'existingSourceImageFileId'
+  >,
+  coverPath: string,
+): PublishStoragePayload {
+  return {
+    config: stored.config,
+    coverPath,
+    postId: stored.postId,
+    title: stored.postTitle,
+    category: stored.postCategory,
+    existingSourceImageFileId: stored.existingSourceImageFileId,
   }
 }
 
