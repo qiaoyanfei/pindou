@@ -29,7 +29,7 @@ import { getSessionConfig, persistSession, setSessionConfig } from '@/services/s
 import { resolveAuthorNickName } from '@/utils/userProfile'
 import { safeSwitchTab } from '@/utils/navigation'
 import { setStorageSafe } from '@/utils/localCache'
-import { invalidateMyListCache } from '@/utils/myListCache'
+import { invalidateMyListCache, removePostFromMyListCache } from '@/utils/myListCache'
 
 let cachedUser: UserProfile | null = null
 let loginPromise: Promise<LoginResult> | null = null
@@ -451,6 +451,7 @@ export async function updatePostVisibility(
 
 export async function deletePost(postId: string): Promise<void> {
   await callCloudApi('deletePost', { postId })
+  removePostFromMyListCache(postId, ['my-posts', 'drafts'])
   invalidateMyListCache(['my-posts', 'drafts'])
   try {
     await refreshCounts()

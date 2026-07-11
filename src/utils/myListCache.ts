@@ -43,3 +43,19 @@ export function clearMyListCache(key: MyListCacheKey): void {
   listCaches.delete(key)
   invalidatedKeys.delete(key)
 }
+
+export function removePostFromMyListCache(
+  postId: string,
+  keys: MyListCacheKey | MyListCacheKey[],
+): void {
+  const targetKeys = Array.isArray(keys) ? keys : [keys]
+  targetKeys.forEach((key) => {
+    const cached = readMyListCache(key)
+    if (!cached || !cached.list.some((item) => item._id === postId)) return
+    writeMyListCache(key, {
+      ...cached,
+      list: cached.list.filter((item) => item._id !== postId),
+      total: typeof cached.total === 'number' ? Math.max(0, cached.total - 1) : cached.total,
+    })
+  })
+}

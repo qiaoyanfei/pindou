@@ -1,61 +1,23 @@
 @import '@/styles/variables.scss';
 
 .generate-page {
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   background: $color-bg;
-  padding-bottom: calc(env(safe-area-inset-bottom) + #{$tabbar-height} + 148px);
-}
-
-.generate-page__nav {
-  flex-shrink: 0;
-  background: #fff;
-}
-
-.generate-page__nav-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-}
-
-.generate-page__nav-back {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 88px;
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.generate-page__nav-back-icon {
-  width: 40px;
-  height: 40px;
-}
-
-.generate-page__nav-title {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: calc(100% - 200px);
-  font-size: 17PX;
-  font-weight: 400;
-  color: $color-text;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.generate-page__scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
 }
 
 .generate-page__body {
-  padding: 12px 28px 0;
+  padding: 12px 28px calc(env(safe-area-inset-bottom) + #{$tabbar-height} + 148px);
+  box-sizing: border-box;
 }
 
 .generate-page__settings {

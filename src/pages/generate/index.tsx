@@ -1,6 +1,6 @@
-import { View, Text, Button, Canvas, Slider, Input, Image } from '@tarojs/components'
+import { View, Text, Button, Canvas, Slider, Input, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow, useUnload } from '@tarojs/taro'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
@@ -21,8 +21,6 @@ import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { createGeneratePreviewStoragePayload, isRecoverableGeneratePattern } from '@/utils/patternStorage'
 import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
-import { safeSwitchTab } from '@/utils/navigation'
-import backIcon from '@/assets/icons/back-chevron.svg'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import PatternGenerationOverlay from '@/components/PatternGenerationOverlay'
 import {
@@ -57,27 +55,11 @@ function createInitialConfig(): PatternConfig {
   return createDefaultConfigForStyleMode('manga')
 }
 
-function shouldRestoreGenerateDraft(): boolean {
-  const pages = Taro.getCurrentPages()
-  if (pages.length < 2) return false
-  const prevRoute = pages[pages.length - 2]?.route ?? ''
-  return (
-    prevRoute.includes('pages/preview/index')
-    || prevRoute.includes('pages/pattern-edit/index')
-  )
-}
-
-function getNavLayout() {
-  try {
-    const windowInfo = Taro.getWindowInfo()
-    const menu = Taro.getMenuButtonBoundingClientRect()
-    return {
-      paddingTop: menu.top,
-      rowHeight: menu.height,
-      headerRight: windowInfo.windowWidth - menu.left + 8,
-    }
-  } catch {
-    return { paddingTop: 48, rowHeight: 32, headerRight: 96 }
+function readDraftState(): { imagePath: string; config: PatternConfig } {
+  const draft = getGenerateDraft()
+  return {
+    imagePath: draft?.imagePath ?? '',
+    config: draft?.config ?? createInitialConfig(),
   }
 }
 
@@ -99,6 +81,13 @@ function clearRecoverablePattern(): void {
   }
 }
 
+
+function resetScrollTop(setScrollTop: (value: number | ((prev: number) => number)) => void): void {
+  setScrollTop(0.01)
+  Taro.nextTick(() => {
+    setScrollTop(0)
+  })
+}
 
 type GenerationPhase = 'idle' | 'running'
 
@@ -142,9 +131,9 @@ async function resolveGenerateConfig(
 }
 
 export default function GeneratePage() {
-  const [imagePath, setImagePath] = useState('')
-  const [config, setConfig] = useState<PatternConfig>(() => createInitialConfig())
-  const [navLayout, setNavLayout] = useState(getNavLayout)
+  const initialDraft = readDraftState()
+  const [imagePath, setImagePath] = useState(initialDraft.imagePath)
+  const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
   const [loading, setLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
   const [loadingPercent, setLoadingPercent] = useState<number | null>(null)
@@ -153,20 +142,13 @@ export default function GeneratePage() {
   const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
+  const [scrollTop, setScrollTop] = useState(0)
   const recoverPromptShownRef = useRef(false)
   const abortRef = useRef<PatternAbortController | null>(null)
   const generatingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
 
   useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
-
-  useEffect(() => {
-    setNavLayout(getNavLayout())
-  }, [])
-
-  const handleBack = () => {
-    safeSwitchTab('/pages/home/index')
-  }
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -176,6 +158,7 @@ export default function GeneratePage() {
   }
 
   useDidShow(async () => {
+    resetScrollTop(setScrollTop)
     updateTabBarSelected(TAB_INDEX.generate)
     const user = await requireAuthenticated('/pages/generate/index')
     if (!user) return
@@ -186,6 +169,7 @@ export default function GeneratePage() {
       clearRecoverablePattern()
       recoverPromptShownRef.current = false
       applyDraftState(resetGenerateDraft())
+      resetScrollTop(setScrollTop)
       return
     }
 
@@ -203,15 +187,21 @@ export default function GeneratePage() {
       }
       clearRecoverablePattern()
       applyDraftState(resetGenerateDraft())
+      resetScrollTop(setScrollTop)
       return
     }
 
-    if (shouldRestoreGenerateDraft()) {
-      const draft = getGenerateDraft()
-      if (draft?.imagePath) {
-        applyDraftState(draft)
-      }
+    const draft = getGenerateDraft()
+    if (draft?.imagePath) {
+      setImagePath(draft.imagePath)
     }
+    if (draft?.config) {
+      setConfig(draft.config)
+      setManualLongEdge(null)
+      setManualLongEdgeInput('')
+    }
+
+    resetScrollTop(setScrollTop)
   })
 
   useUnload(() => {
@@ -388,26 +378,15 @@ export default function GeneratePage() {
 
   return (
     <View className='generate-page'>
-      <View
-        className='generate-page__nav'
-        style={{ paddingTop: `${navLayout.paddingTop}px` }}
+      <ScrollView
+        scrollY
+        scrollTop={scrollTop}
+        className='generate-page__scroll'
+        enhanced
+        showScrollbar={false}
       >
-        <View
-          className='generate-page__nav-row'
-          style={{
-            height: `${navLayout.rowHeight}px`,
-            paddingRight: `${navLayout.headerRight}px`,
-          }}
-        >
-          <View className='generate-page__nav-back' onClick={handleBack}>
-            <Image className='generate-page__nav-back-icon' src={backIcon} mode='aspectFit' />
-          </View>
-          <Text className='generate-page__nav-title'>生成图纸</Text>
-        </View>
-      </View>
-
-      <View className='generate-page__body'>
-        <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
+        <View className='generate-page__body'>
+          <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
 
         <StyleModeSelector value={config.styleMode} onChange={handleStyleModeChange} />
 
@@ -503,8 +482,9 @@ export default function GeneratePage() {
             <Text className='generate-page__palette-pill'>MARD 221</Text>
           </View>
         </View>
+        </View>
 
-      </View>
+      </ScrollView>
 
       <View className='generate-page__fixed-action'>
         <Button

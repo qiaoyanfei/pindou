@@ -146,9 +146,9 @@ export default function PatternEditPage() {
           <View className='pattern-edit-page__nav-done' onClick={saveAndExit}>
             <Text className='pattern-edit-page__nav-done-text'>完成</Text>
           </View>
-          <Text className='pattern-edit-page__nav-title'>
+          <View className='pattern-edit-page__nav-title'>
             {buildEditNavTitle(pattern)}
-          </Text>
+          </View>
         </View>
       </View>
 

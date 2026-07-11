@@ -1,4 +1,5 @@
-import { View, Text } from '@tarojs/components'
+import { View, Text, PageContainer } from '@tarojs/components'
+import Taro from '@tarojs/taro'
 import { useEffect, useRef, useState } from 'react'
 import {
   formatGenerationOverlayLocalPercent,
@@ -27,12 +28,37 @@ export default function PatternGenerationOverlay({
   onCancel,
 }: PatternGenerationOverlayProps) {
   const [canCancel, setCanCancel] = useState(false)
+  const [backGuardVisible, setBackGuardVisible] = useState(false)
   const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const remountBackGuardRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
 
   useEffect(() => {
     setTabBarInteractionBlocked(visible)
     return () => setTabBarInteractionBlocked(false)
   }, [visible])
+
+  useEffect(() => {
+    setBackGuardVisible(visible)
+    return () => {
+      if (remountBackGuardRef.current) {
+        clearTimeout(remountBackGuardRef.current)
+        remountBackGuardRef.current = null
+      }
+    }
+  }, [visible])
+
+  const handleBeforeLeave = () => {
+    Taro.showToast({ title: '正在生成中，请稍候', icon: 'none' })
+    setBackGuardVisible(false)
+    remountBackGuardRef.current = setTimeout(() => {
+      remountBackGuardRef.current = null
+      if (visibleRef.current) {
+        setBackGuardVisible(true)
+      }
+    }, 50)
+  }
 
   useEffect(() => {
     if (cancelUnlockTimerRef.current) {
@@ -72,7 +98,11 @@ export default function PatternGenerationOverlay({
   const hintText = canCancel ? PATTERN_GENERATION_OVERLAY_PATIENCE_HINT : PATTERN_GENERATION_OVERLAY_HINT
 
   return (
-    <View className='pattern-generation-overlay' catchMove>
+    <>
+      {backGuardVisible ? (
+        <PageContainer show overlay={false} onBeforeLeave={handleBeforeLeave} />
+      ) : null}
+      <View className='pattern-generation-overlay' catchMove>
       <View className='pattern-generation-overlay__panel'>
         <View className='pattern-generation-overlay__badge'>生成中</View>
 
@@ -111,6 +141,7 @@ export default function PatternGenerationOverlay({
           </View>
         ) : null}
       </View>
-    </View>
+      </View>
+    </>
   )
 }

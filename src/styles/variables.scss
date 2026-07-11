@@ -39,3 +39,15 @@ $shadow-card: 0 8px 24px rgba(15, 23, 42, 0.06);
   border-radius: 999px;
   font-weight: 600;
 }
+
+/** 与微信原生 navigationBarTitleText 视觉一致 */
+@mixin page-nav-title {
+  font-size: 17PX;
+  font-weight: 500;
+  color: #000;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

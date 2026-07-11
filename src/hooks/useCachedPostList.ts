@@ -3,7 +3,6 @@ import { useCallback, useRef, useState } from 'react'
 import type { PostSummary } from '@/types/community'
 import {
   clearMyListCache,
-  clearMyListCacheStale,
   hasMyListCache,
   invalidateMyListCache,
   isMyListCacheStale,
@@ -76,7 +75,6 @@ export function useCachedPostList(
       return
     }
 
-    clearMyListCacheStale(cacheKey)
     void load(1, { silent: Boolean(cached) })
   })
 
