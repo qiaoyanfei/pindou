@@ -56,6 +56,12 @@ function createInitialConfig(): PatternConfig {
 }
 
 function readDraftState(): { imagePath: string; config: PatternConfig } {
+  if (!hasRecoverablePattern()) {
+    return {
+      imagePath: '',
+      config: createInitialConfig(),
+    }
+  }
   const draft = getGenerateDraft()
   return {
     imagePath: draft?.imagePath ?? '',
@@ -191,14 +197,18 @@ export default function GeneratePage() {
       return
     }
 
-    const draft = getGenerateDraft()
-    if (draft?.imagePath) {
-      setImagePath(draft.imagePath)
-    }
-    if (draft?.config) {
-      setConfig(draft.config)
-      setManualLongEdge(null)
-      setManualLongEdgeInput('')
+    if (hasRecoverablePattern()) {
+      const draft = getGenerateDraft()
+      if (draft?.imagePath) {
+        setImagePath(draft.imagePath)
+      }
+      if (draft?.config) {
+        setConfig(draft.config)
+        setManualLongEdge(null)
+        setManualLongEdgeInput('')
+      }
+    } else if (!getGenerateDraft()?.imagePath) {
+      applyDraftState(resetGenerateDraft())
     }
 
     resetScrollTop(setScrollTop)

@@ -75,7 +75,6 @@ function applyStoredPreview(
     setDraftImagePath: (value: string) => void
     setLongEdgeInput: (value: string) => void
     setVariant: (value: PreviewVariant) => void
-    setGridSettingsOpen: (value: boolean) => void
     setCreatorNickname: (value: string) => void
     setPreviewOrigin: (value: PatternStoragePayload['previewOrigin']) => void
     setPostId: (value: string) => void
@@ -98,7 +97,6 @@ function applyStoredPreview(
   setters.setDraftImagePath(sourceImagePath)
   setters.setLongEdgeInput(String(nextConfig.longEdge))
   setters.setVariant('original')
-  setters.setGridSettingsOpen(false)
   setters.setCreatorNickname(stored.creatorNickname?.trim() || resolveCreatorNickname())
   setters.setPreviewOrigin(stored.previewOrigin)
   setters.setPostId(stored.postId || '')
@@ -148,6 +146,7 @@ export default function PreviewPage() {
   const abortRef = useRef<PatternAbortController | null>(null)
   const regeneratingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
+  const gridSettingsInitializedRef = useRef(false)
 
   basePatternRef.current = basePattern
   sharePostIdRef.current = postId
@@ -194,7 +193,6 @@ export default function PreviewPage() {
       setDraftImagePath,
       setLongEdgeInput,
       setVariant,
-      setGridSettingsOpen,
       setCreatorNickname,
       setPreviewOrigin,
       setPostId,
@@ -207,6 +205,11 @@ export default function PreviewPage() {
       setRegenerating,
       setRegeneratingMessage,
     })
+
+    if (!gridSettingsInitializedRef.current) {
+      setGridSettingsOpen(false)
+      gridSettingsInitializedRef.current = true
+    }
 
     pristinePostPatternRef.current = stored.previewOrigin === 'post'
       ? serializePatternFingerprint(stored.pattern)

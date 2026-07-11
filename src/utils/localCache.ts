@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 import { PATTERN_STORAGE_KEY, PUBLISH_STORAGE_KEY } from '@/types'
+import { clearGenerateDraft } from '@/services/generateSession'
 import { clearPatternPreviewCache } from '@/utils/patternPreviewCache'
 
 const UPLOAD_JSON_PREFIX = 'pindou_upload_'
@@ -65,6 +66,7 @@ export function cleanupAfterPublishSuccess(): void {
   } catch {
     // ignore
   }
+  clearGenerateDraft()
   cleanupDisposableLocalFiles()
 }
 

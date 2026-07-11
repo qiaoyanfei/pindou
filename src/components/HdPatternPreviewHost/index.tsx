@@ -93,19 +93,19 @@ export default function HdPatternPreviewHost() {
         throw new Error('缺少图纸信息')
       }
 
-      const cachedPreview = getCachedPreviewData(postId)
+      const post = request.post || await fetchPostDetail(postId)
+      const cachedPreview = getCachedPreviewData(postId, post.patternFileId)
       if (cachedPreview) {
         clearLoadingTimer()
         setPayload({
           pattern: cachedPreview.pattern,
           config: request.config || cachedPreview.config,
-          creatorNickname: request.creatorNickname || request.post?.author?.nickName || resolveCreatorNickname(),
+          creatorNickname: request.creatorNickname || post.author?.nickName || resolveCreatorNickname(),
           showMirrorLabel: Boolean(request.showMirrorLabel),
         })
         return
       }
 
-      const post = request.post || await fetchPostDetail(postId)
       const previewData = await resolvePreviewData(post)
       clearLoadingTimer()
       setPayload({

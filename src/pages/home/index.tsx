@@ -211,6 +211,8 @@ const HomeSearchBox = memo(forwardRef<HomeSearchBoxHandle, {
       <Image className='home-page__search-icon' src={searchIcon} mode='aspectFit' />
       <Input
         className='home-page__search-input'
+        placeholderClass='home-page__search-input-placeholder'
+        placeholderStyle='font-size:30rpx;line-height:80rpx;color:#9ca3af'
         value={value}
         placeholder='搜索图纸、作者、标签'
         confirmType='search'

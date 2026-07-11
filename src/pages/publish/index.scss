@@ -117,10 +117,27 @@
 
 .publish-page__system-title-hint {
   display: block;
-  margin-top: 6px;
   font-size: 22px;
   color: $color-text-secondary;
   line-height: 1.5;
+}
+
+.publish-page__title-readonly {
+  min-height: 80px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: $color-bg;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.publish-page__title-readonly-text {
+  font-size: 28px;
+  font-weight: 600;
+  color: $color-text;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .publish-page__title-input {

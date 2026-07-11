@@ -60,6 +60,7 @@ $home-padding-x: 32px;
   background: #fff;
   border: 1px solid #e5e7eb;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .home-page__search-icon {
@@ -70,8 +71,21 @@ $home-padding-x: 32px;
 
 .home-page__search-input {
   flex: 1;
+  min-width: 0;
+  height: 80px;
+  line-height: 80px;
+  padding: 0;
+  margin: 0;
   font-size: 30px;
   color: $color-text;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.home-page__search-input-placeholder {
+  font-size: 30px;
+  line-height: 80px;
+  color: #9ca3af;
 }
 
 .home-page__hero {

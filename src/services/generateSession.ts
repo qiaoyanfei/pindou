@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro'
-import { GENERATE_DRAFT_STORAGE_KEY, type PatternConfig, type StyleMode } from '@/types'
+import { GENERATE_DRAFT_STORAGE_KEY, PATTERN_STORAGE_KEY, type PatternConfig, type StyleMode } from '@/types'
 import { createDefaultConfigForStyleMode, normalizeConfig } from '@/utils/constants'
+import { isRecoverableGeneratePattern } from '@/utils/patternStorage'
 
 export interface GenerateDraft {
   imagePath: string
@@ -20,6 +21,10 @@ function cloneDraft(next: GenerateDraft): GenerateDraft {
 
 function readStoredDraft(): GenerateDraft | null {
   try {
+    if (!shouldPersistGenerateDraftToStorage()) {
+      Taro.removeStorageSync(GENERATE_DRAFT_STORAGE_KEY)
+      return null
+    }
     const stored = Taro.getStorageSync(GENERATE_DRAFT_STORAGE_KEY) as GenerateDraft | undefined
     if (!stored?.imagePath) return null
     return {
@@ -31,12 +36,22 @@ function readStoredDraft(): GenerateDraft | null {
   }
 }
 
+function shouldPersistGenerateDraftToStorage(): boolean {
+  try {
+    const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY)
+    return isRecoverableGeneratePattern(stored)
+  } catch {
+    return false
+  }
+}
+
 function writeStoredDraft(next: GenerateDraft): void {
   try {
     if (!next.imagePath) {
       Taro.removeStorageSync(GENERATE_DRAFT_STORAGE_KEY)
       return
     }
+    if (!shouldPersistGenerateDraftToStorage()) return
     Taro.setStorageSync(GENERATE_DRAFT_STORAGE_KEY, cloneDraft(next))
   } catch {
     // 仅影响重新预览兜底，不阻断主流程

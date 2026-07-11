@@ -11,6 +11,7 @@ import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPa
 import { cleanupAfterPublishSuccess, notifyOperationError } from '@/utils/localCache'
 import { readPublishWorkflow } from '@/utils/publishWorkflow'
 import { invalidateMyListCache } from '@/utils/myListCache'
+import { removeCachedPreview } from '@/utils/patternPreviewCache'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
 import type { PostCategory } from '@/types/community'
 import { useDefaultPageShare } from '@/utils/shareReward'
@@ -95,6 +96,9 @@ export default function PublishPage() {
       })
 
       cleanupAfterPublishSuccess()
+      if (payload.postId) {
+        removeCachedPreview(payload.postId)
+      }
       invalidateMyListCache(['my-posts', 'drafts'])
       Taro.hideLoading()
       Taro.redirectTo({
@@ -122,6 +126,7 @@ export default function PublishPage() {
 
   const { pattern, config } = payload
   const isUpdate = Boolean(payload.postId)
+  const displayTitle = manualTitle.trim()
 
   return (
     <View className='publish-page'>
@@ -148,13 +153,17 @@ export default function PublishPage() {
         <View className='publish-page__field'>
           <Text className='publish-page__label'>标题</Text>
           {isPublic ? (
-            <View className='publish-page__system-title'>
-              <Text className='publish-page__system-title-hint'>
-                {isUpdate && manualTitle
-                  ? `当前标题「${manualTitle}」，公开审核通过后仍可使用；也可关闭公开后修改`
-                  : '标题由系统生成，审核通过后确定'}
-              </Text>
-            </View>
+            displayTitle ? (
+              <View className='publish-page__title-readonly'>
+                <Text className='publish-page__title-readonly-text'>{displayTitle}</Text>
+              </View>
+            ) : (
+              <View className='publish-page__system-title'>
+                <Text className='publish-page__system-title-hint'>
+                  标题由系统生成，审核通过后确定
+                </Text>
+              </View>
+            )
           ) : (
             <Input
               className='publish-page__title-input'

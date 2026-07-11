@@ -6,6 +6,7 @@ import type { PostDetail } from '@/types/community'
 interface CachedPreviewData {
   pattern: PatternResult
   config: PatternConfig
+  patternFileId: string
 }
 
 const previewCache = new Map<string, CachedPreviewData>()
@@ -29,8 +30,25 @@ export function getCachedPattern(postId: string): PatternResult | undefined {
   return previewCache.get(postId)?.pattern
 }
 
-export function getCachedPreviewData(postId: string): CachedPreviewData | undefined {
-  return previewCache.get(postId)
+function isCachedPreviewStale(
+  cached: CachedPreviewData | undefined,
+  patternFileId: string | undefined,
+): cached is CachedPreviewData {
+  if (!cached) return false
+  if (!patternFileId) return true
+  return cached.patternFileId === patternFileId
+}
+
+export function getCachedPreviewData(
+  postId: string,
+  patternFileId?: string,
+): CachedPreviewData | undefined {
+  const cached = previewCache.get(postId)
+  if (!isCachedPreviewStale(cached, patternFileId)) {
+    if (cached) removeCachedPreview(postId)
+    return undefined
+  }
+  return cached
 }
 
 export function removeCachedPreview(postId: string): void {
@@ -55,7 +73,12 @@ export async function resolvePatternForPreview(post: PostDetail): Promise<Patter
 
 export async function resolvePreviewData(post: PostDetail): Promise<CachedPreviewData> {
   const cached = previewCache.get(post._id)
-  if (cached) return cached
+  if (isCachedPreviewStale(cached, post.patternFileId)) {
+    return cached
+  }
+  if (cached) {
+    previewCache.delete(post._id)
+  }
 
   const pending = inflight.get(post._id)
   if (pending) return pending
@@ -65,6 +88,7 @@ export async function resolvePreviewData(post: PostDetail): Promise<CachedPrevie
       const data = {
         pattern,
         config: buildPreviewConfigFromPost(post),
+        patternFileId: post.patternFileId,
       }
       previewCache.set(post._id, data)
       trimPreviewCache()
@@ -81,7 +105,6 @@ export async function resolvePreviewData(post: PostDetail): Promise<CachedPrevie
 }
 
 export async function preloadPatternForPost(postId: string): Promise<void> {
-  if (previewCache.has(postId) || inflight.has(postId)) return
   try {
     const post = await fetchPostDetail(postId)
     await resolvePreviewData(post)

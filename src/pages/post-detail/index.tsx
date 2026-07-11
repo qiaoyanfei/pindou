@@ -82,7 +82,7 @@ export default function PostDetailPage() {
   }, [postId])
 
   const loadPreviewData = useCallback(async (detail: PostDetail) => {
-    const cached = getCachedPreviewData(detail._id)
+    const cached = getCachedPreviewData(detail._id, detail.patternFileId)
     if (cached) {
       setPreviewData(cached)
       return

@@ -165,7 +165,7 @@ export default function MyPostDetail() {
     setPreviewing(true)
     Taro.showLoading({ title: '加载图纸...' })
     try {
-      let previewData = getCachedPreviewData(source.id)
+      let previewData = getCachedPreviewData(source.id, postRef.current?.patternFileId)
       if (!previewData && postRef.current) {
         previewData = await resolvePreviewData(postRef.current)
       }
