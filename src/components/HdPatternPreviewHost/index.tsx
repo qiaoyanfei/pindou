@@ -1,4 +1,3 @@
-import { CoverView } from '@tarojs/components'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Taro from '@tarojs/taro'
 import PatternCanvas from '@/components/PatternCanvas'
@@ -12,7 +11,6 @@ import { canvasToTempFile } from '@/utils/canvas'
 import { previewImageWithoutMenu } from '@/utils/previewImage'
 import type { PatternConfig, PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
-import './index.scss'
 
 export const HD_PATTERN_PREVIEW_EVENT = 'hdPatternPreviewRequest'
 
@@ -184,7 +182,6 @@ export default function HdPatternPreviewHost() {
           onReady={handleCanvasReady}
         />
       ) : null}
-      {loading ? <CoverView className='hd-pattern-preview-host__mask' /> : null}
     </>
   )
 }

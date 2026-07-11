@@ -108,12 +108,18 @@
   box-shadow: $shadow-card;
 }
 
-.admin-author-posts-page__cover {
+.admin-author-posts-page__cover-wrap {
   width: 144px;
   height: 144px;
   border-radius: 14px;
+  overflow: hidden;
   background: #f3f4f6;
   flex-shrink: 0;
+}
+
+.admin-author-posts-page__cover {
+  width: 100%;
+  height: 100%;
 }
 
 .admin-author-posts-page__cover--empty {
@@ -156,4 +162,13 @@
   font-size: 22px;
   line-height: 1.4;
   font-weight: 600;
+}
+
+.admin-author-posts-page__end {
+  display: block;
+  padding: 24px 0 8px;
+  text-align: center;
+  font-size: 24px;
+  color: $color-text-secondary;
+  line-height: 1.5;
 }

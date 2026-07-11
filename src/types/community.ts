@@ -66,6 +66,10 @@ export interface PostSummary {
   favorited?: boolean
   likedAt?: string
   favoritedAt?: string
+  patternFileId?: string
+  config?: PatternConfig
+  stats?: Record<string, number>
+  totalBeads?: number
 }
 
 export interface PostDetail extends PostSummary {

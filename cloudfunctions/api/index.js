@@ -1050,22 +1050,54 @@ async function handleGetReviewAuthorPosts(openid, data) {
   const authorOpenid = String(data?.authorOpenid || '').trim()
   if (!authorOpenid) return fail('缺少作者信息')
 
-  const [publishedRes, pendingRes] = await Promise.all([
-    fetchAll(() =>
-      db.collection('posts')
-        .where({ _openid: authorOpenid, visibility: 'public' })
-        .orderBy('publishedAt', 'desc'),
-    ),
-    fetchAll(() =>
-      db.collection('posts')
-        .where({ _openid: authorOpenid, visibility: 'private', reviewStatus: 'pending' })
-        .orderBy('updatedAt', 'desc'),
-    ),
+  const publishedFilter = { _openid: authorOpenid, visibility: 'public' }
+  const pendingFilter = { _openid: authorOpenid, visibility: 'private', reviewStatus: 'pending' }
+
+  if (!hasExplicitPagination(data) && !Object.prototype.hasOwnProperty.call(data || {}, 'tab')) {
+    const [publishedRes, pendingRes] = await Promise.all([
+      fetchAll(() =>
+        db.collection('posts')
+          .where(publishedFilter)
+          .orderBy('publishedAt', 'desc'),
+      ),
+      fetchAll(() =>
+        db.collection('posts')
+          .where(pendingFilter)
+          .orderBy('updatedAt', 'desc'),
+      ),
+    ])
+
+    return ok({
+      published: publishedRes.map(mapPostSummary),
+      pending: pendingRes.map(mapPostSummary),
+    })
+  }
+
+  const tab = data?.tab === 'pending' ? 'pending' : 'published'
+  const activeFilter = tab === 'pending' ? pendingFilter : publishedFilter
+  const orderField = tab === 'pending' ? 'updatedAt' : 'publishedAt'
+  const { page, pageSize, skip } = getPagination(data)
+
+  const [listRes, activeCountRes, publishedCountRes, pendingCountRes] = await Promise.all([
+    db.collection('posts')
+      .where(activeFilter)
+      .orderBy(orderField, 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get(),
+    db.collection('posts').where(activeFilter).count(),
+    db.collection('posts').where(publishedFilter).count(),
+    db.collection('posts').where(pendingFilter).count(),
   ])
 
   return ok({
-    published: publishedRes.map(mapPostSummary),
-    pending: pendingRes.map(mapPostSummary),
+    tab,
+    list: listRes.data.map(mapPostSummary),
+    page,
+    total: activeCountRes.total,
+    publishedTotal: publishedCountRes.total,
+    pendingTotal: pendingCountRes.total,
+    hasMore: skip + listRes.data.length < activeCountRes.total,
   })
 }
 
@@ -1119,7 +1151,8 @@ async function handleReviewPost(openid, data) {
   }
 
   if (action === 'reject') {
-    const rejectNote = note || '内容不符合平台规范'
+    if (!note) return fail('请填写驳回意见')
+    const rejectNote = note
     const history = prependHistory(
       post.reviewHistory,
       buildHistoryEntry('rejected', '审核未通过', rejectNote),

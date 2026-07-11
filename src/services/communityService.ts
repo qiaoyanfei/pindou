@@ -483,21 +483,60 @@ export async function fetchReviewQueue(): Promise<PostSummary[]> {
   )
 }
 
-export async function fetchReviewAuthorPosts(authorOpenid: string): Promise<{
-  published: PostSummary[]
-  pending: PostSummary[]
+export async function fetchReviewAuthorPosts(
+  authorOpenid: string,
+  options: { tab?: 'published' | 'pending'; page?: number; pageSize?: number } = {},
+): Promise<{
+  list: PostSummary[]
+  tab: 'published' | 'pending'
+  page: number
+  total: number
+  publishedTotal: number
+  pendingTotal: number
+  hasMore: boolean
 }> {
-  const result = await callCloudApi<{ published: PostSummary[]; pending: PostSummary[] }>(
-    'getReviewAuthorPosts',
-    { authorOpenid },
-  )
-  const list = [...result.published, ...result.pending]
-  const urlMap = await getTempFileUrls(getCloudFileIds(list))
-  const mapWithCover = (item: PostSummary) =>
-    normalizePostSummary({ ...item, coverUrl: urlMap[item.coverFileId || ''] || '' })
+  const tab = options.tab || 'published'
+  const page = options.page || 1
+  const result = await callCloudApi<{
+    list?: PostSummary[]
+    tab?: 'published' | 'pending'
+    page?: number
+    total?: number
+    publishedTotal?: number
+    pendingTotal?: number
+    hasMore?: boolean
+    published?: PostSummary[]
+    pending?: PostSummary[]
+  }>('getReviewAuthorPosts', {
+    authorOpenid,
+    tab,
+    page,
+    pageSize: options.pageSize || 20,
+  })
+
+  if (result.published && result.pending) {
+    const legacyList = tab === 'pending' ? result.pending : result.published
+    const list = await mapPostSummariesWithCover(legacyList)
+    return {
+      list,
+      tab,
+      page: 1,
+      total: legacyList.length,
+      publishedTotal: result.published.length,
+      pendingTotal: result.pending.length,
+      hasMore: false,
+    }
+  }
+
+  const list = await mapPostSummariesWithCover(result.list || [])
   return {
-    published: result.published.map(mapWithCover),
-    pending: result.pending.map(mapWithCover),
+    list,
+    tab: result.tab || tab,
+    page: result.page || page,
+    total: result.total ?? list.length,
+    publishedTotal: result.publishedTotal ?? 0,
+    pendingTotal: result.pendingTotal ?? 0,
+    hasMore: result.hasMore ?? false,
   }
 }
 
@@ -539,6 +578,19 @@ export async function prepareRegenerateFromPost(postId: string): Promise<void> {
 export function formatPostMeta(item: Pick<PostSummary, 'width' | 'height' | 'styleMode' | 'paletteId'>): string {
   const modeLabel = STYLE_MODE_LABELS[item.styleMode]
   return `${item.width}×${item.height} | ${modeLabel} | ${item.paletteId.toUpperCase()}`
+}
+
+export function buildPostDetailForPreview(item: PostSummary): PostDetail | null {
+  if (!item.patternFileId) return null
+  return {
+    ...item,
+    description: '',
+    visibility: item.visibility || 'private',
+    patternFileId: item.patternFileId,
+    stats: item.stats || {},
+    totalBeads: item.totalBeads || 0,
+    config: item.config,
+  }
 }
 
 export function formatCount(value: number): string {
