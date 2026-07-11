@@ -52,12 +52,16 @@ export function yieldToMain(delayMs = 0): Promise<void> {
 const MIN_STAGE_MS = 400
 const MIN_LOADING_MS = 500
 
-/** 生成超过该时长后，按钮展示取消提示 */
+/** 生成超过该时长后，底部按钮可点击取消 */
 export const PATTERN_GENERATION_CANCEL_UNLOCK_MS = 20_000
 
-export const PATTERN_GENERATION_CANCEL_BUTTON_LABEL = '处理中，请保持前台，点击取消'
+export const PATTERN_GENERATION_CANCEL_BUTTON_LABEL = '处理中，请保持前台'
 
-export const PATTERN_GENERATION_CANCEL_HINT = '保持前台，点击取消'
+export const PATTERN_GENERATION_OVERLAY_HINT = '正在处理中，请保持小程序在前台'
+
+export const PATTERN_GENERATION_OVERLAY_PATIENCE_HINT = '格子越多耗时越长，请耐心等待并保持在前台'
+
+export const PATTERN_GENERATION_OVERLAY_CANCEL_LABEL = '取消生成'
 
 export interface PatternProgressContext {
   percent?: number
@@ -134,6 +138,40 @@ function formatPercentLabel(value: number): string {
   return Number.isInteger(fine) ? `${fine}` : fine.toFixed(1)
 }
 
+function resolveNativeLoadingStageLabel(stageMessage: string): string {
+  if (stageMessage.includes('采样')) return '采样颜色'
+  if (stageMessage.includes('匹配')) return '匹配色号'
+  if (stageMessage.includes('读取')) return '读取图片'
+  if (stageMessage.includes('分析')) return '分析图片'
+  if (stageMessage.includes('优化')) return '优化边缘'
+  if (stageMessage.includes('生成')) return '生成图纸'
+  const normalized = normalizeProgressMessage(stageMessage)
+  return normalized || '处理中'
+}
+
+export function formatGenerationOverlayStage(stageMessage: string): string {
+  return resolveNativeLoadingStageLabel(stageMessage)
+}
+
+export function formatGenerationOverlayLocalPercent(
+  stageMessage: string,
+  overallPercent: number,
+): string {
+  const localPercent = overallPercentToStageLocal(stageMessage, overallPercent)
+  return `${formatPercentLabel(localPercent)}%`
+}
+
+export function formatGenerationOverlayOverallPercent(overallPercent: number): string {
+  return `${formatPercentLabel(overallPercent)}%`
+}
+
+export function getGenerationOverlayProgress(stageMessage: string, overallPercent: number) {
+  return {
+    stagePercent: overallPercentToStageLocal(stageMessage, overallPercent),
+    overallPercent: clampPercentFine(overallPercent),
+  }
+}
+
 export function formatStageLocalProgress(stageMessage: string, overallPercent: number): string {
   const stageText = stageMessage.trim()
   if (!stageText) return `${formatPercentLabel(overallPercent)}%`
@@ -146,28 +184,18 @@ export function formatCompactButtonProgress(stageMessage: string, overallPercent
   return `${resolveStageCompactName(stageMessage)}${formatPercentLabel(localPercent)}%`
 }
 
-/** wx.showLoading 标题：有进度时阶段名+百分比无空格；无进度时保留省略号 */
-export function formatNativeLoadingTitle(stageMessage: string, overallPercent: number): string {
-  const stageText = normalizeProgressMessage(stageMessage)
-  if (!stageText) return `${formatPercentLabel(overallPercent)}%`
-  const localPercent = overallPercentToStageLocal(stageMessage, overallPercent)
-  return `${stageText}${formatPercentLabel(localPercent)}%`
-}
-
-export function formatNativeLoadingStage(message: string): string {
-  const trimmed = message.trim()
-  if (!trimmed) return '处理中...'
-  if (trimmed.endsWith('...') || trimmed.endsWith('…')) return trimmed
-  return `${trimmed}...`
-}
-
 export function normalizeProgressMessage(message: string): string {
   return message.replace(/\.{3}|…/g, '').trim()
 }
 
+export interface ActionButtonLabel {
+  main: string
+  sub?: string
+}
+
 export function formatGenerateSubmitLabel(
   idleMain: string,
-  loading: boolean,
+  loading = false,
   cancelled = false,
   canCancel = false,
 ): ActionButtonLabel {
@@ -186,15 +214,6 @@ export function formatGenerateSubmitLabel(
 export interface PatternGenerationProgressReporter {
   report: (message: string, context?: PatternProgressContext) => Promise<void>
   finish: (options?: { skipDelay?: boolean }) => Promise<void>
-}
-
-interface LoadingControllerLike {
-  show: (title: string) => void
-}
-
-export interface ActionButtonLabel {
-  main: string
-  sub?: string
 }
 
 /** 按钮上展示的固定进度文案（不含时间预估） */
@@ -230,14 +249,7 @@ export function formatActionButtonLabel(
   const stageText = stageMessage.trim()
 
   if (percent !== null) {
-    const progressMain = canCancel
-      ? `${formatCompactButtonProgress(stageMessage, percent)}，${PATTERN_GENERATION_CANCEL_HINT}`
-      : formatStageLocalProgress(stageMessage, percent)
-    return { main: progressMain }
-  }
-
-  if (canCancel) {
-    return { main: `${stageText || mapStageToButtonMessage(stageMessage)}，${PATTERN_GENERATION_CANCEL_HINT}` }
+    return { main: formatStageLocalProgress(stageMessage, percent) }
   }
 
   return { main: stageText || mapStageToButtonMessage(stageMessage) }
@@ -245,7 +257,6 @@ export function formatActionButtonLabel(
 
 export function createPatternGenerationProgressReporter(
   onStage: (message: string, context?: PatternProgressContext) => void | Promise<void>,
-  loadingController?: LoadingControllerLike,
 ): PatternGenerationProgressReporter {
   let lastMessage = ''
   let lastPercent: number | null = null
@@ -261,10 +272,6 @@ export function createPatternGenerationProgressReporter(
     lastMessage = message
     lastPercent = nextPercent
     lastShownAt = Date.now()
-    const loadingTitle = nextPercent !== null
-      ? formatNativeLoadingTitle(message, nextPercent)
-      : formatNativeLoadingStage(message)
-    loadingController?.show(loadingTitle)
     await onStage(message, nextPercent !== null ? { percent: nextPercent } : undefined)
   }
 

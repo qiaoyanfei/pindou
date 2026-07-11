@@ -26,3 +26,10 @@ export function updateTabBarSelected(index: number): void {
   const tabBar = Taro.getTabBar<{ setSelected: (selected: number) => void }>(page)
   tabBar?.setSelected(index)
 }
+
+export function setTabBarInteractionBlocked(blocked: boolean): void {
+  const page = Taro.getCurrentInstance().page
+  if (!page) return
+  const tabBar = Taro.getTabBar<{ setInteractionBlocked?: (blocked: boolean) => void }>(page)
+  tabBar?.setInteractionBlocked?.(blocked)
+}

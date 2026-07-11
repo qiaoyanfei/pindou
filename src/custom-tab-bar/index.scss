@@ -18,6 +18,11 @@ $tabbar-center-btn-size: 88px;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.custom-tab-bar--blocked {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
 .custom-tab-bar__inner {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

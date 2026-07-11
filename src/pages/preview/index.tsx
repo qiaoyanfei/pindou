@@ -18,14 +18,12 @@ import {
 import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import { setGenerateDraft } from '@/services/generateSession'
-import { createConversionLoadingController } from '@/utils/conversionLoading'
+import PatternGenerationOverlay from '@/components/PatternGenerationOverlay'
 import {
   createPatternAbortController,
   createPatternGenerationProgressReporter,
   computeStageProgressPercent,
-  formatActionButtonLabel,
   isPatternGenerationCancelled,
-  PATTERN_GENERATION_CANCEL_UNLOCK_MS,
   throwIfAborted,
   type PatternAbortController,
 } from '@/utils/patternGenerationProgress'
@@ -65,17 +63,8 @@ const GRID_PRESETS: Record<PatternConfig['styleMode'], number[]> = {
   manga: [29, 52, 78, 104],
 }
 
-function waitForLoadingPaint(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60))
-}
 
-function waitForCancelledDisplay(cancelledAt: number, minMs = 1200): Promise<void> {
-  const remaining = minMs - (Date.now() - cancelledAt)
-  if (remaining <= 0) return Promise.resolve()
-  return new Promise((resolve) => setTimeout(resolve, remaining))
-}
-
-type RegeneratePhase = 'idle' | 'running' | 'cancelled'
+type RegeneratePhase = 'idle' | 'running'
 
 function applyStoredPreview(
   stored: PatternStoragePayload,
@@ -144,7 +133,6 @@ export default function PreviewPage() {
   const [regeneratingMessage, setRegeneratingMessage] = useState('')
   const [regeneratingPercent, setRegeneratingPercent] = useState<number | null>(null)
   const [regeneratePhase, setRegeneratePhase] = useState<RegeneratePhase>('idle')
-  const [canCancelRegeneration, setCanCancelRegeneration] = useState(false)
   const [creatorNickname, setCreatorNickname] = useState('')
   const [previewSessionKey, setPreviewSessionKey] = useState('')
   const [previewOrigin, setPreviewOrigin] = useState<PatternStoragePayload['previewOrigin']>()
@@ -160,10 +148,6 @@ export default function PreviewPage() {
   const abortRef = useRef<PatternAbortController | null>(null)
   const regeneratingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
-  const cancelledAtRef = useRef(0)
-  const loadingControllerRef = useRef<ReturnType<typeof createConversionLoadingController> | null>(null)
-  const regeneratingStageRef = useRef('')
-  const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   basePatternRef.current = basePattern
   sharePostIdRef.current = postId
@@ -424,41 +408,22 @@ export default function PreviewPage() {
     updateLongEdge(pendingLongEdge + delta)
   }
 
-  const clearCancelUnlockTimer = () => {
-    if (cancelUnlockTimerRef.current) {
-      clearTimeout(cancelUnlockTimerRef.current)
-      cancelUnlockTimerRef.current = null
-    }
-  }
-
   const resetRegenerateUi = () => {
-    clearCancelUnlockTimer()
     cancelRequestedRef.current = false
-    cancelledAtRef.current = 0
-    setCanCancelRegeneration(false)
     setRegeneratePhase('idle')
     setRegenerating(false)
     setRegeneratingMessage('')
     setRegeneratingPercent(null)
   }
 
-  const scheduleCancelUnlock = () => {
-    clearCancelUnlockTimer()
-    setCanCancelRegeneration(false)
-    cancelUnlockTimerRef.current = setTimeout(() => {
-      cancelUnlockTimerRef.current = null
-      setCanCancelRegeneration(true)
-    }, PATTERN_GENERATION_CANCEL_UNLOCK_MS)
-  }
-
   const requestCancelRegeneration = () => {
     if (cancelRequestedRef.current) return
     cancelRequestedRef.current = true
-    cancelledAtRef.current = Date.now()
-    setRegeneratePhase('cancelled')
-    setRegenerating(false)
-    loadingControllerRef.current?.stop()
     abortRef.current?.abort()
+    setRegeneratePhase('idle')
+    setRegenerating(false)
+    setRegeneratingMessage('')
+    setRegeneratingPercent(null)
   }
 
   const handleRegenerate = useCallback(async () => {
@@ -470,38 +435,26 @@ export default function PreviewPage() {
     }
 
     cancelRequestedRef.current = false
-    cancelledAtRef.current = 0
     setRegeneratePhase('running')
     setRegenerating(true)
     setRegeneratingMessage('读取图片...')
     setRegeneratingPercent(computeStageProgressPercent('读取图片...', 0))
-    scheduleCancelUnlock()
 
     const nextConfig = normalizeConfig({
       ...config,
       longEdge: pendingLongEdge,
     })
-    const loadingController = createConversionLoadingController({ mask: false })
-    loadingControllerRef.current = loadingController
     const abortController = createPatternAbortController()
     abortRef.current = abortController
-    loadingController.start()
-    loadingController.show('读取图片...')
 
     const progress = createPatternGenerationProgressReporter(
       async (message, context) => {
         if (abortController.signal.aborted || cancelRequestedRef.current) return
-        const stageChanged = message !== regeneratingStageRef.current
-        regeneratingStageRef.current = message
         setRegeneratingMessage(message)
         if (context?.percent != null) {
           setRegeneratingPercent(context.percent)
         }
-        if (stageChanged) {
-          await waitForLoadingPaint()
-        }
       },
-      loadingController,
     )
 
     let wasCancelled = false
@@ -541,17 +494,10 @@ export default function PreviewPage() {
       Taro.showToast({ title: '已重新预览', icon: 'success' })
     } catch (error) {
       wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
-      if (wasCancelled) {
-        cancelRequestedRef.current = true
-        setRegeneratePhase('cancelled')
-        return
-      }
+      if (wasCancelled) return
       handleImageProcessError(error, '重新预览失败')
     } finally {
-      clearCancelUnlockTimer()
       await progress.finish({ skipDelay: wasCancelled || cancelRequestedRef.current })
-      loadingController.stop()
-      loadingControllerRef.current = null
       abortRef.current = null
       regeneratingRef.current = false
       setRegenerating(false)
@@ -559,7 +505,6 @@ export default function PreviewPage() {
       setRegeneratingPercent(null)
 
       if (wasCancelled || cancelRequestedRef.current) {
-        await waitForCancelledDisplay(cancelledAtRef.current || Date.now())
         resetRegenerateUi()
       } else {
         setRegeneratePhase('idle')
@@ -578,28 +523,14 @@ export default function PreviewPage() {
   ])
 
   const handleRegenerateClick = useCallback(() => {
-    if (regeneratePhase === 'cancelled' || cancelRequestedRef.current) return
-    if (regeneratingRef.current) {
-      if (!canCancelRegeneration) return
-      requestCancelRegeneration()
-      return
-    }
+    if (cancelRequestedRef.current || regeneratingRef.current) return
     if (!hasPendingGridChange || exportBusy) return
     regeneratingRef.current = true
     void handleRegenerate()
-  }, [canCancelRegeneration, exportBusy, handleRegenerate, hasPendingGridChange, regeneratePhase])
+  }, [exportBusy, handleRegenerate, hasPendingGridChange, regeneratePhase])
 
   const isRegenerateRunning = regeneratePhase === 'running'
-  const isRegenerateCancelled = regeneratePhase === 'cancelled'
-  const regenerateLabel = formatActionButtonLabel(
-    '重新预览',
-    isRegenerateRunning,
-    regeneratingMessage,
-    isRegenerateCancelled,
-    canCancelRegeneration,
-    regeneratingPercent,
-  )
-  const canRegenerate = (hasPendingGridChange || isRegenerateRunning) && !isRegenerateCancelled
+  const canRegenerate = hasPendingGridChange && !isRegenerateRunning
 
   if (!displayedPattern) {
     return <View className='preview-page preview-page--empty'>加载中...</View>
@@ -751,15 +682,15 @@ export default function PreviewPage() {
                   </View>
                 </View>
                 <Button
-                  className={`preview-page__regenerate${canRegenerate ? '' : ' is-disabled'}${isRegenerateRunning ? ' preview-page__regenerate--loading' : ''}${isRegenerateCancelled ? ' preview-page__regenerate--cancelled' : ''}`}
+                  className={`preview-page__regenerate${canRegenerate ? '' : ' is-disabled'}${isRegenerateRunning ? ' preview-page__regenerate--loading' : ''}`}
                   disabled={exportBusy || !canRegenerate}
                   onClick={handleRegenerateClick}
                 >
                   <View className='preview-page__regenerate-inner'>
-                    {!isRegenerateRunning && !isRegenerateCancelled ? (
+                    {!isRegenerateRunning ? (
                       <Image className='preview-page__regenerate-icon' src={refreshIcon} mode='aspectFit' />
                     ) : null}
-                    <Text className='preview-page__regenerate-main'>{regenerateLabel.main}</Text>
+                    <Text className='preview-page__regenerate-main'>重新预览</Text>
                   </View>
                 </Button>
               </View>
@@ -897,6 +828,13 @@ export default function PreviewPage() {
       {exportBusy && exportJob === 'save' && <CoverView className='preview-page__export-mask' />}
 
       <HdPatternPreviewHost />
+
+      <PatternGenerationOverlay
+        visible={isRegenerateRunning}
+        stageMessage={regeneratingMessage}
+        percent={regeneratingPercent}
+        onCancel={requestCancelRegeneration}
+      />
     </View>
   )
 }

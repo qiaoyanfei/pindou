@@ -31,18 +31,28 @@ const TABS = [
 
 interface CustomTabBarState {
   selected: number
+  interactionBlocked: boolean
 }
 
 export default class CustomTabBar extends Component<object, CustomTabBarState> {
   state: CustomTabBarState = {
     selected: TAB_INDEX.home,
+    interactionBlocked: false,
   }
 
   setSelected(selected: number) {
     this.setState({ selected })
   }
 
+  setInteractionBlocked(blocked: boolean) {
+    this.setState({ interactionBlocked: blocked })
+  }
+
   switchTab = async (index: number) => {
+    if (this.state.interactionBlocked) {
+      Taro.showToast({ title: '正在生成中，请稍候', icon: 'none' })
+      return
+    }
     if (index === this.state.selected) return
 
     const url = TAB_URLS[index]
@@ -61,10 +71,10 @@ export default class CustomTabBar extends Component<object, CustomTabBarState> {
   }
 
   render() {
-    const { selected } = this.state
+    const { selected, interactionBlocked } = this.state
 
     return (
-      <View className='custom-tab-bar'>
+      <View className={`custom-tab-bar${interactionBlocked ? ' custom-tab-bar--blocked' : ''}`}>
         <View className='custom-tab-bar__inner'>
           {TABS.map((tab, index) => {
             const isActive = selected === index

@@ -24,14 +24,12 @@ import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
 import { safeSwitchTab } from '@/utils/navigation'
 import backIcon from '@/assets/icons/back-chevron.svg'
 import { useDefaultPageShare } from '@/utils/shareReward'
-import { createConversionLoadingController } from '@/utils/conversionLoading'
+import PatternGenerationOverlay from '@/components/PatternGenerationOverlay'
 import {
   createPatternAbortController,
   createPatternGenerationProgressReporter,
   computeStageProgressPercent,
-  formatGenerateSubmitLabel,
   isPatternGenerationCancelled,
-  PATTERN_GENERATION_CANCEL_UNLOCK_MS,
   throwIfAborted,
   type PatternAbortController,
 } from '@/utils/patternGenerationProgress'
@@ -101,17 +99,8 @@ function clearRecoverablePattern(): void {
   }
 }
 
-function waitForLoadingPaint(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60))
-}
 
-function waitForCancelledDisplay(cancelledAt: number, minMs = 1200): Promise<void> {
-  const remaining = minMs - (Date.now() - cancelledAt)
-  if (remaining <= 0) return Promise.resolve()
-  return new Promise((resolve) => setTimeout(resolve, remaining))
-}
-
-type GenerationPhase = 'idle' | 'running' | 'cancelled'
+type GenerationPhase = 'idle' | 'running'
 
 async function resolveGenerateConfig(
   imagePath: string,
@@ -160,7 +149,6 @@ export default function GeneratePage() {
   const [loadingMessage, setLoadingMessage] = useState('')
   const [loadingPercent, setLoadingPercent] = useState<number | null>(null)
   const [generationPhase, setGenerationPhase] = useState<GenerationPhase>('idle')
-  const [canCancelGeneration, setCanCancelGeneration] = useState(false)
   const [gridSettingsOpen, setGridSettingsOpen] = useState(true)
   const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
@@ -169,10 +157,6 @@ export default function GeneratePage() {
   const abortRef = useRef<PatternAbortController | null>(null)
   const generatingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
-  const cancelledAtRef = useRef(0)
-  const loadingControllerRef = useRef<ReturnType<typeof createConversionLoadingController> | null>(null)
-  const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadingStageRef = useRef('')
 
   useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
 
@@ -267,31 +251,22 @@ export default function GeneratePage() {
     updateManualLongEdge(Number(normalized))
   }
 
-  const clearCancelUnlockTimer = () => {
-    if (cancelUnlockTimerRef.current) {
-      clearTimeout(cancelUnlockTimerRef.current)
-      cancelUnlockTimerRef.current = null
-    }
-  }
-
   const resetGenerationUi = () => {
-    clearCancelUnlockTimer()
     cancelRequestedRef.current = false
-    cancelledAtRef.current = 0
-    setCanCancelGeneration(false)
     setGenerationPhase('idle')
     setLoading(false)
     setLoadingMessage('')
     setLoadingPercent(null)
   }
 
-  const scheduleCancelUnlock = () => {
-    clearCancelUnlockTimer()
-    setCanCancelGeneration(false)
-    cancelUnlockTimerRef.current = setTimeout(() => {
-      cancelUnlockTimerRef.current = null
-      setCanCancelGeneration(true)
-    }, PATTERN_GENERATION_CANCEL_UNLOCK_MS)
+  const requestCancelGeneration = () => {
+    if (cancelRequestedRef.current) return
+    cancelRequestedRef.current = true
+    abortRef.current?.abort()
+    setGenerationPhase('idle')
+    setLoading(false)
+    setLoadingMessage('')
+    setLoadingPercent(null)
   }
 
   const handleImageSelect = (path: string) => {
@@ -309,16 +284,6 @@ export default function GeneratePage() {
     setConfig(nextConfig)
   }
 
-  const requestCancelGeneration = () => {
-    if (cancelRequestedRef.current) return
-    cancelRequestedRef.current = true
-    cancelledAtRef.current = Date.now()
-    setGenerationPhase('cancelled')
-    setLoading(false)
-    loadingControllerRef.current?.stop()
-    abortRef.current?.abort()
-  }
-
   const handleGenerate = useCallback(async () => {
     if (!imagePath) {
       generatingRef.current = false
@@ -329,34 +294,22 @@ export default function GeneratePage() {
     }
 
     cancelRequestedRef.current = false
-    cancelledAtRef.current = 0
     setGenerationPhase('running')
     setLoading(true)
     setLoadingMessage('读取图片...')
     setLoadingPercent(computeStageProgressPercent('读取图片...', 0))
-    scheduleCancelUnlock()
 
-    const loadingController = createConversionLoadingController({ mask: false })
-    loadingControllerRef.current = loadingController
     const abortController = createPatternAbortController()
     abortRef.current = abortController
-    loadingController.start()
-    loadingController.show('读取图片...')
 
     const progress = createPatternGenerationProgressReporter(
       async (message, context) => {
         if (abortController.signal.aborted || cancelRequestedRef.current) return
-        const stageChanged = message !== loadingStageRef.current
-        loadingStageRef.current = message
         setLoadingMessage(message)
         if (context?.percent != null) {
           setLoadingPercent(context.percent)
         }
-        if (stageChanged) {
-          await waitForLoadingPaint()
-        }
       },
-      loadingController,
     )
 
     let wasCancelled = false
@@ -387,17 +340,10 @@ export default function GeneratePage() {
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
-      if (wasCancelled) {
-        cancelRequestedRef.current = true
-        setGenerationPhase('cancelled')
-        return
-      }
+      if (wasCancelled) return
       handleImageProcessError(error, '生成失败')
     } finally {
-      clearCancelUnlockTimer()
       await progress.finish({ skipDelay: wasCancelled || cancelRequestedRef.current })
-      loadingController.stop()
-      loadingControllerRef.current = null
       abortRef.current = null
       generatingRef.current = false
       setLoading(false)
@@ -405,7 +351,6 @@ export default function GeneratePage() {
       setLoadingPercent(null)
 
       if (wasCancelled || cancelRequestedRef.current) {
-        await waitForCancelledDisplay(cancelledAtRef.current || Date.now())
         resetGenerationUi()
       } else {
         setGenerationPhase('idle')
@@ -418,12 +363,7 @@ export default function GeneratePage() {
       Taro.showToast({ title: '请先上传图片', icon: 'none' })
       return
     }
-    if (generationPhase === 'cancelled' || cancelRequestedRef.current) return
-    if (generatingRef.current) {
-      if (!canCancelGeneration) return
-      requestCancelGeneration()
-      return
-    }
+    if (cancelRequestedRef.current || generatingRef.current) return
     generatingRef.current = true
     void handleGenerate()
   }
@@ -439,20 +379,11 @@ export default function GeneratePage() {
     (item) => item >= longEdgeLimits.min && item <= longEdgeLimits.max,
   )
   const isRunning = generationPhase === 'running'
-  const isCancelled = generationPhase === 'cancelled'
-  const submitLabel = formatGenerateSubmitLabel(
-    '下一步，预览图纸',
-    isRunning,
-    isCancelled,
-    canCancelGeneration,
-  )
-  const canSubmit = Boolean(imagePath) && !isCancelled && (!isRunning || canCancelGeneration)
+  const canSubmit = Boolean(imagePath) && !isRunning
   const submitClassName = [
     'generate-page__submit',
-    isRunning && canCancelGeneration ? ' generate-page__submit--loading' : '',
-    isRunning && !canCancelGeneration ? ' generate-page__submit--disabled' : '',
-    isCancelled ? ' generate-page__submit--cancelled' : '',
-    !canSubmit && !isRunning ? ' generate-page__submit--disabled' : '',
+    isRunning ? ' generate-page__submit--disabled' : '',
+    !canSubmit ? ' generate-page__submit--disabled' : '',
   ].join('')
 
   return (
@@ -583,13 +514,13 @@ export default function GeneratePage() {
           onClick={handleSubmit}
         >
           <View className='generate-page__submit-content'>
-            {canSubmit && !isRunning && !isCancelled ? (
+            {canSubmit ? (
               <View className='generate-page__submit-sparkles'>
                 <Text className='generate-page__submit-sparkle-main'>✦</Text>
                 <Text className='generate-page__submit-sparkle-sub'>✦</Text>
               </View>
             ) : null}
-            <Text className='generate-page__submit-main'>{submitLabel.main}</Text>
+            <Text className='generate-page__submit-main'>下一步，预览图纸</Text>
           </View>
         </Button>
       </View>
@@ -599,6 +530,13 @@ export default function GeneratePage() {
         id='process-canvas'
         canvasId='process-canvas'
         className='generate-page__hidden-canvas'
+      />
+
+      <PatternGenerationOverlay
+        visible={isRunning}
+        stageMessage={loadingMessage}
+        percent={loadingPercent}
+        onCancel={requestCancelGeneration}
       />
     </View>
   )
