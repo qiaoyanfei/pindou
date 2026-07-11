@@ -2,8 +2,8 @@ import Taro from '@tarojs/taro'
 import { clampLongEdge } from '@/utils/constants'
 import type { CropRect } from '@/services/backgroundMatting'
 import {
-  buildExteriorBackgroundMask,
-  buildPortraitSubjectMask,
+  buildExteriorBackgroundMaskAsync,
+  buildPortraitSubjectMaskAsync,
   isExteriorBackgroundPixel,
   isPortraitSubjectPixel,
 } from '@/services/backgroundMatting'
@@ -15,6 +15,14 @@ import {
   PATTERN_MIXED_LIGHT_RATIO,
 } from '@/utils/constants'
 import type { StyleMode } from '@/types'
+import { throwIfAborted, yieldToMain, type PatternAbortSignal } from '@/utils/patternGenerationProgress'
+
+const SAMPLE_PREP_END_RATIO = 0.22
+const SAMPLE_UI_YIELD_MS = 16
+
+function resolveSampleCellBatch(totalCells: number): number {
+  return Math.max(32, Math.min(256, Math.ceil(totalCells / 200)))
+}
 
 export interface GridSize {
   width: number
@@ -178,17 +186,30 @@ export async function extractBlockDominantColors(
     darkLumaThreshold?: number
     darkRatioThreshold?: number
     styleMode?: StyleMode
+    signal?: PatternAbortSignal
+    onSampleProgress?: (ratio: number) => void | Promise<void>
   },
 ): Promise<BlockSampleResult> {
   const darkLuma = options?.darkLumaThreshold ?? 48
   const darkRatio = options?.darkRatioThreshold ?? 0.22
   const styleMode = options?.styleMode ?? 'portrait'
+  const signal = options?.signal
+
+  const notifyProgress = async (ratio: number) => {
+    void options?.onSampleProgress?.(ratio)
+    await yieldToMain(SAMPLE_UI_YIELD_MS)
+  }
 
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('无法获取 Canvas 上下文')
 
   const sampleWidth = gridWidth * samplesPerCell
   const sampleHeight = gridHeight * samplesPerCell
+  const totalCells = gridWidth * gridHeight
+  const cellBatch = resolveSampleCellBatch(totalCells)
+
+  await notifyProgress(0)
+  throwIfAborted(signal)
 
   canvas.width = sampleWidth
   canvas.height = sampleHeight
@@ -201,6 +222,8 @@ export async function extractBlockDominantColors(
     image.onerror = () => reject(new Error('图片加载失败'))
     image.src = imagePath
   })
+  throwIfAborted(signal)
+  await notifyProgress(0.05)
 
   ctx.clearRect(0, 0, sampleWidth, sampleHeight)
   ctx.drawImage(
@@ -214,18 +237,36 @@ export async function extractBlockDominantColors(
     sampleWidth,
     sampleHeight,
   )
+  await notifyProgress(0.1)
 
   const imageData = ctx.getImageData(0, 0, sampleWidth, sampleHeight)
+  throwIfAborted(signal)
+  await notifyProgress(0.15)
   const { data } = imageData
   const useSubjectMask = styleMode === 'portrait'
+  const maskProgressStart = 0.15
+  const maskProgressEnd = SAMPLE_PREP_END_RATIO
+  const reportMaskProgress = (subRatio: number) => {
+    const ratio = maskProgressStart + (maskProgressEnd - maskProgressStart) * subRatio
+    void options?.onSampleProgress?.(ratio)
+  }
   const exteriorMask = useSubjectMask
     ? null
-    : buildExteriorBackgroundMask(data, sampleWidth, sampleHeight)
+    : await buildExteriorBackgroundMaskAsync(data, sampleWidth, sampleHeight, {
+      signal,
+      onSubProgress: reportMaskProgress,
+    })
   const subjectMask = useSubjectMask
-    ? buildPortraitSubjectMask(data, sampleWidth, sampleHeight)
+    ? await buildPortraitSubjectMaskAsync(data, sampleWidth, sampleHeight, {
+      signal,
+      onSubProgress: reportMaskProgress,
+    })
     : null
+  await notifyProgress(SAMPLE_PREP_END_RATIO)
   const colors: Rgb[] = new Array(gridWidth * gridHeight)
   const exteriorBackground: boolean[] = new Array(gridWidth * gridHeight)
+  const sampleProgressSpan = 1 - SAMPLE_PREP_END_RATIO
+  let processedCells = 0
 
   for (let gy = 0; gy < gridHeight; gy += 1) {
     for (let gx = 0; gx < gridWidth; gx += 1) {
@@ -266,8 +307,17 @@ export async function extractBlockDominantColors(
           styleMode,
         )
       }
+
+      processedCells += 1
+      if (processedCells % cellBatch === 0 || processedCells === totalCells) {
+        throwIfAborted(signal)
+        const cellRatio = totalCells > 0 ? processedCells / totalCells : 1
+        await notifyProgress(SAMPLE_PREP_END_RATIO + sampleProgressSpan * cellRatio)
+      }
     }
   }
+
+  await notifyProgress(1)
 
   return { colors, exteriorBackground }
 }

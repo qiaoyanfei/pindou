@@ -64,22 +64,27 @@ export default function PatternCanvas({
   onReady,
 }: PatternCanvasProps) {
   const readyRef = useRef(false)
+  const drawGenerationRef = useRef(0)
 
   useEffect(() => {
+    drawGenerationRef.current += 1
+    const generation = drawGenerationRef.current
     readyRef.current = false
     const timer = setTimeout(() => {
-      drawPattern()
+      drawPattern(generation)
     }, 120)
 
     return () => clearTimeout(timer)
   }, [pattern, config, mode, canvasId, cellPxOverride, hideColorCode, creatorNickname, showSheetHeader, showWatermark, maxExportResolution, showMirrorLabel])
 
-  const drawPattern = (retry = 0) => {
+  const drawPattern = (generation: number, retry = 0) => {
     const query = Taro.createSelectorQuery()
     query
       .select(`#${canvasId}`)
       .fields({ node: true, size: true })
       .exec((res) => {
+        if (generation !== drawGenerationRef.current) return
+
         const canvas = res?.[0]?.node as {
           getContext: (type: '2d') => CanvasRenderingContext2D | null
           width: number
@@ -88,7 +93,7 @@ export default function PatternCanvas({
 
         if (!canvas) {
           if (retry < 8) {
-            setTimeout(() => drawPattern(retry + 1), 150)
+            setTimeout(() => drawPattern(generation, retry + 1), 150)
           }
           return
         }
@@ -113,6 +118,8 @@ export default function PatternCanvas({
         } else {
           renderPatternToCanvas(canvas, pattern, renderOptions)
         }
+
+        if (generation !== drawGenerationRef.current) return
 
         if (!readyRef.current) {
           readyRef.current = true

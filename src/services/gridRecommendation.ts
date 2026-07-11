@@ -4,7 +4,13 @@ import {
   STYLE_MODE_AUTO_LONG_EDGE_LIMITS,
   STYLE_MODE_DEFAULT_LONG_EDGE,
 } from '@/utils/constants'
+import { throwIfAborted, computeStageProgressPercent, type PatternProgressContext } from '@/utils/patternGenerationProgress'
 import type { StyleMode } from '@/types'
+
+type GridRecommendProgress = (
+  message: string,
+  context?: PatternProgressContext,
+) => void | Promise<void>
 
 const ANALYSIS_MAX_EDGE = 192
 
@@ -106,9 +112,16 @@ export async function recommendLongEdgeFromImage(
   imagePath: string,
   styleMode: StyleMode,
   canvasId: string,
+  signal?: import('@/utils/patternGenerationProgress').PatternAbortSignal,
+  onProgress?: GridRecommendProgress,
 ): Promise<number> {
+  throwIfAborted(signal)
+  await onProgress?.('读取图片...', { percent: computeStageProgressPercent('读取图片...', 0) })
   const canvas = await loadCanvasNode(canvasId)
+  throwIfAborted(signal)
+  await onProgress?.('分析图片...', { percent: computeStageProgressPercent('分析图片...', 0) })
   const { crop } = await analyzeContentCrop(canvas, imagePath)
+  throwIfAborted(signal)
   const scale = Math.min(1, ANALYSIS_MAX_EDGE / Math.max(crop.width, crop.height))
   const analysisWidth = Math.max(1, Math.round(crop.width * scale))
   const analysisHeight = Math.max(1, Math.round(crop.height * scale))
@@ -126,6 +139,7 @@ export async function recommendLongEdgeFromImage(
     image.onerror = () => reject(new Error('图片加载失败'))
     image.src = imagePath
   })
+  throwIfAborted(signal)
 
   ctx.clearRect(0, 0, analysisWidth, analysisHeight)
   ctx.drawImage(
@@ -141,5 +155,6 @@ export async function recommendLongEdgeFromImage(
   )
 
   const { data } = ctx.getImageData(0, 0, analysisWidth, analysisHeight)
+  throwIfAborted(signal)
   return mapScoreToLongEdge(computeDetailScore(data, analysisWidth, analysisHeight, styleMode), styleMode)
 }

@@ -1,5 +1,5 @@
 import { View, Text, Button, ScrollView, CoverView, Image, Slider, Input, Canvas, Switch } from '@tarojs/components'
-import Taro, { useDidShow, useUnload } from '@tarojs/taro'
+import Taro, { useDidHide, useDidShow, useUnload } from '@tarojs/taro'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
 import PatternCanvas from '@/components/PatternCanvas'
@@ -19,6 +19,16 @@ import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
 import { setGenerateDraft } from '@/services/generateSession'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
+import {
+  createPatternAbortController,
+  createPatternGenerationProgressReporter,
+  computeStageProgressPercent,
+  formatActionButtonLabel,
+  isPatternGenerationCancelled,
+  PATTERN_GENERATION_CANCEL_UNLOCK_MS,
+  throwIfAborted,
+  type PatternAbortController,
+} from '@/utils/patternGenerationProgress'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
 import bulbIcon from '@/assets/icons/preview-bulb.svg'
@@ -58,6 +68,14 @@ const GRID_PRESETS: Record<PatternConfig['styleMode'], number[]> = {
 function waitForLoadingPaint(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 60))
 }
+
+function waitForCancelledDisplay(cancelledAt: number, minMs = 1200): Promise<void> {
+  const remaining = minMs - (Date.now() - cancelledAt)
+  if (remaining <= 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, remaining))
+}
+
+type RegeneratePhase = 'idle' | 'running' | 'cancelled'
 
 function applyStoredPreview(
   stored: PatternStoragePayload,
@@ -124,6 +142,9 @@ export default function PreviewPage() {
   const [longEdgeInput, setLongEdgeInput] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [regeneratingMessage, setRegeneratingMessage] = useState('')
+  const [regeneratingPercent, setRegeneratingPercent] = useState<number | null>(null)
+  const [regeneratePhase, setRegeneratePhase] = useState<RegeneratePhase>('idle')
+  const [canCancelRegeneration, setCanCancelRegeneration] = useState(false)
   const [creatorNickname, setCreatorNickname] = useState('')
   const [previewSessionKey, setPreviewSessionKey] = useState('')
   const [previewOrigin, setPreviewOrigin] = useState<PatternStoragePayload['previewOrigin']>()
@@ -136,6 +157,13 @@ export default function PreviewPage() {
   const pristinePostPatternRef = useRef<string | null>(null)
   const sharePostIdRef = useRef('')
   const shareTitleRef = useRef(MINI_PROGRAM_NAME)
+  const abortRef = useRef<PatternAbortController | null>(null)
+  const regeneratingRef = useRef(false)
+  const cancelRequestedRef = useRef(false)
+  const cancelledAtRef = useRef(0)
+  const loadingControllerRef = useRef<ReturnType<typeof createConversionLoadingController> | null>(null)
+  const regeneratingStageRef = useRef('')
+  const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   basePatternRef.current = basePattern
   sharePostIdRef.current = postId
@@ -163,6 +191,10 @@ export default function PreviewPage() {
   const canAdjustGrid = Boolean(draftImagePath.trim())
 
   useDidShow(() => {
+    if (!abortRef.current) {
+      setRegenerating(false)
+      setRegeneratingMessage('')
+    }
     restoreSessionFromStorage()
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
@@ -198,6 +230,8 @@ export default function PreviewPage() {
   })
 
   useUnload(() => {
+    abortRef.current?.abort()
+
     if (!pristinePostPatternRef.current) return
     try {
       const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
@@ -390,33 +424,98 @@ export default function PreviewPage() {
     updateLongEdge(pendingLongEdge + delta)
   }
 
-  const handleRegenerate = async () => {
-    if (!draftImagePath || regenerating || exportBusy || !hasPendingGridChange) {
+  const clearCancelUnlockTimer = () => {
+    if (cancelUnlockTimerRef.current) {
+      clearTimeout(cancelUnlockTimerRef.current)
+      cancelUnlockTimerRef.current = null
+    }
+  }
+
+  const resetRegenerateUi = () => {
+    clearCancelUnlockTimer()
+    cancelRequestedRef.current = false
+    cancelledAtRef.current = 0
+    setCanCancelRegeneration(false)
+    setRegeneratePhase('idle')
+    setRegenerating(false)
+    setRegeneratingMessage('')
+    setRegeneratingPercent(null)
+  }
+
+  const scheduleCancelUnlock = () => {
+    clearCancelUnlockTimer()
+    setCanCancelRegeneration(false)
+    cancelUnlockTimerRef.current = setTimeout(() => {
+      cancelUnlockTimerRef.current = null
+      setCanCancelRegeneration(true)
+    }, PATTERN_GENERATION_CANCEL_UNLOCK_MS)
+  }
+
+  const requestCancelRegeneration = () => {
+    if (cancelRequestedRef.current) return
+    cancelRequestedRef.current = true
+    cancelledAtRef.current = Date.now()
+    setRegeneratePhase('cancelled')
+    setRegenerating(false)
+    loadingControllerRef.current?.stop()
+    abortRef.current?.abort()
+  }
+
+  const handleRegenerate = useCallback(async () => {
+    if (!draftImagePath || exportBusy || !hasPendingGridChange) {
+      regeneratingRef.current = false
+      setRegeneratePhase('idle')
       if (!draftImagePath) Taro.showToast({ title: '未找到原图，请重新生成', icon: 'none' })
       return
     }
+
+    cancelRequestedRef.current = false
+    cancelledAtRef.current = 0
+    setRegeneratePhase('running')
+    setRegenerating(true)
+    setRegeneratingMessage('读取图片...')
+    setRegeneratingPercent(computeStageProgressPercent('读取图片...', 0))
+    scheduleCancelUnlock()
 
     const nextConfig = normalizeConfig({
       ...config,
       longEdge: pendingLongEdge,
     })
-    setRegenerating(true)
-    setRegeneratingMessage('正在匹配色号...')
-
-    const loadingController = createConversionLoadingController()
+    const loadingController = createConversionLoadingController({ mask: false })
+    loadingControllerRef.current = loadingController
+    const abortController = createPatternAbortController()
+    abortRef.current = abortController
     loadingController.start()
+    loadingController.show('读取图片...')
+
+    const progress = createPatternGenerationProgressReporter(
+      async (message, context) => {
+        if (abortController.signal.aborted || cancelRequestedRef.current) return
+        const stageChanged = message !== regeneratingStageRef.current
+        regeneratingStageRef.current = message
+        setRegeneratingMessage(message)
+        if (context?.percent != null) {
+          setRegeneratingPercent(context.percent)
+        }
+        if (stageChanged) {
+          await waitForLoadingPaint()
+        }
+      },
+      loadingController,
+    )
+
+    let wasCancelled = false
 
     try {
       const nextPattern = await generatePatternFromImage(
         draftImagePath,
         nextConfig,
         PROCESS_CANVAS_ID,
-        async (message) => {
-          setRegeneratingMessage(message)
-          loadingController.show(message)
-          await waitForLoadingPaint()
-        },
+        progress.report,
+        { signal: abortController.signal },
       )
+      throwIfAborted(abortController.signal)
+
       setBasePattern(nextPattern)
       setConfig(nextConfig)
       setLongEdgeInput(String(nextConfig.longEdge))
@@ -441,13 +540,66 @@ export default function PreviewPage() {
       })
       Taro.showToast({ title: '已重新预览', icon: 'success' })
     } catch (error) {
+      wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
+      if (wasCancelled) {
+        cancelRequestedRef.current = true
+        setRegeneratePhase('cancelled')
+        return
+      }
       handleImageProcessError(error, '重新预览失败')
     } finally {
+      clearCancelUnlockTimer()
+      await progress.finish({ skipDelay: wasCancelled || cancelRequestedRef.current })
       loadingController.stop()
+      loadingControllerRef.current = null
+      abortRef.current = null
+      regeneratingRef.current = false
       setRegenerating(false)
       setRegeneratingMessage('')
+      setRegeneratingPercent(null)
+
+      if (wasCancelled || cancelRequestedRef.current) {
+        await waitForCancelledDisplay(cancelledAtRef.current || Date.now())
+        resetRegenerateUi()
+      } else {
+        setRegeneratePhase('idle')
+      }
     }
-  }
+  }, [
+    config,
+    draftImagePath,
+    existingSourceImageFileId,
+    exportBusy,
+    hasPendingGridChange,
+    pendingLongEdge,
+    postCategory,
+    postId,
+    postTitle,
+  ])
+
+  const handleRegenerateClick = useCallback(() => {
+    if (regeneratePhase === 'cancelled' || cancelRequestedRef.current) return
+    if (regeneratingRef.current) {
+      if (!canCancelRegeneration) return
+      requestCancelRegeneration()
+      return
+    }
+    if (!hasPendingGridChange || exportBusy) return
+    regeneratingRef.current = true
+    void handleRegenerate()
+  }, [canCancelRegeneration, exportBusy, handleRegenerate, hasPendingGridChange, regeneratePhase])
+
+  const isRegenerateRunning = regeneratePhase === 'running'
+  const isRegenerateCancelled = regeneratePhase === 'cancelled'
+  const regenerateLabel = formatActionButtonLabel(
+    '重新预览',
+    isRegenerateRunning,
+    regeneratingMessage,
+    isRegenerateCancelled,
+    canCancelRegeneration,
+    regeneratingPercent,
+  )
+  const canRegenerate = (hasPendingGridChange || isRegenerateRunning) && !isRegenerateCancelled
 
   if (!displayedPattern) {
     return <View className='preview-page preview-page--empty'>加载中...</View>
@@ -478,7 +630,7 @@ export default function PreviewPage() {
 
           <View className='preview-page__preview-slot'>
             <ZoomablePatternViewer
-              key={previewSessionKey || 'preview-default'}
+              key={`${previewSessionKey || 'preview-default'}-${variant}`}
               pattern={displayedPattern}
               config={config}
               onFullscreen={handleFullscreen}
@@ -599,15 +751,15 @@ export default function PreviewPage() {
                   </View>
                 </View>
                 <Button
-                  className={`preview-page__regenerate${hasPendingGridChange ? '' : ' is-disabled'}${regenerating ? ' preview-page__regenerate--loading' : ''}`}
-                  disabled={regenerating || exportBusy || !hasPendingGridChange}
-                  onClick={handleRegenerate}
+                  className={`preview-page__regenerate${canRegenerate ? '' : ' is-disabled'}${isRegenerateRunning ? ' preview-page__regenerate--loading' : ''}${isRegenerateCancelled ? ' preview-page__regenerate--cancelled' : ''}`}
+                  disabled={exportBusy || !canRegenerate}
+                  onClick={handleRegenerateClick}
                 >
                   <View className='preview-page__regenerate-inner'>
-                    {!regenerating ? (
+                    {!isRegenerateRunning && !isRegenerateCancelled ? (
                       <Image className='preview-page__regenerate-icon' src={refreshIcon} mode='aspectFit' />
                     ) : null}
-                    <Text>{regenerating ? regeneratingMessage || '正在处理...' : '重新预览'}</Text>
+                    <Text className='preview-page__regenerate-main'>{regenerateLabel.main}</Text>
                   </View>
                 </Button>
               </View>

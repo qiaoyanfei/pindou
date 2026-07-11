@@ -13,6 +13,10 @@ interface StoredPayload extends PatternStoragePayload {}
 
 const PATTERN_PERSIST_DELAY_MS = 400
 
+function buildEditNavTitle(pattern: PatternResult): string {
+  return `${pattern.width}×${pattern.height} · 编辑图纸`
+}
+
 export default function PatternEditPage() {
   useDefaultPageShare({ title: '编辑图纸', path: '/pages/home/index' })
 
@@ -143,7 +147,7 @@ export default function PatternEditPage() {
             <Text className='pattern-edit-page__nav-done-text'>完成</Text>
           </View>
           <Text className='pattern-edit-page__nav-title'>
-            {pattern.width}×{pattern.height} · 编辑图纸
+            {buildEditNavTitle(pattern)}
           </Text>
         </View>
       </View>

@@ -7,6 +7,53 @@
   padding-bottom: calc(env(safe-area-inset-bottom) + #{$tabbar-height} + 148px);
 }
 
+.generate-page__nav {
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.generate-page__nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.generate-page__nav-back {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.generate-page__nav-back-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.generate-page__nav-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 200px);
+  font-size: 17PX;
+  font-weight: 400;
+  color: $color-text;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .generate-page__body {
   padding: 12px 28px 0;
 }
@@ -274,6 +321,12 @@
   font-weight: 700;
   line-height: 96px;
   box-shadow: 0 8px 24px rgba(124, 58, 237, 0.28);
+  box-sizing: border-box;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .generate-page__submit::after {
@@ -282,6 +335,28 @@
 
 .generate-page__submit--loading {
   opacity: 0.92;
+}
+
+.generate-page__submit--loading .generate-page__submit-main {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.generate-page__submit--cancelled,
+.generate-page__submit--cancelled.generate-page__submit--disabled {
+  background: #d1d5db !important;
+  color: #fff !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.generate-page__submit--stacked {
+  height: 96px;
+  line-height: 1;
+  padding: 0 24px;
+  overflow: hidden;
 }
 
 .generate-page__submit--disabled {
@@ -307,9 +382,46 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
+  width: 100%;
   height: 96px;
   color: #fff;
   line-height: 1;
+  overflow: hidden;
+}
+
+.generate-page__submit-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.generate-page__submit-main {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.generate-page__submit--stacked .generate-page__submit-main {
+  font-size: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.generate-page__submit-sub {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.1;
+  opacity: 0.92;
+}
+
+.generate-page__submit--stacked .generate-page__submit-sub {
+  font-size: 20px;
 }
 
 .generate-page__submit-sparkles {

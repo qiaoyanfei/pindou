@@ -9,6 +9,7 @@ import {
   BACKGROUND_RGB_TOLERANCE,
   SYMMETRY_AXIS_ALIGN_MIN_SCORE,
 } from '@/utils/constants'
+import { throwIfAborted, yieldToMain, type PatternAbortSignal } from '@/utils/patternGenerationProgress'
 
 export interface CropRect {
   x: number
@@ -25,6 +26,22 @@ export interface ContentAnalysis {
 function getPixelRgb(data: Uint8ClampedArray, width: number, x: number, y: number): Rgb {
   const pi = (y * width + x) * 4
   return [data[pi], data[pi + 1], data[pi + 2]]
+}
+
+const MASK_FLOOD_YIELD_EVERY = 4096
+
+export interface MaskBuildProgressOptions {
+  signal?: PatternAbortSignal
+  onSubProgress?: (ratio: number) => void | Promise<void>
+}
+
+async function yieldMaskProgress(
+  options: MaskBuildProgressOptions | undefined,
+  ratio: number,
+): Promise<void> {
+  throwIfAborted(options?.signal)
+  void options?.onSubProgress?.(ratio)
+  await yieldToMain(16)
 }
 
 /** 白色 / 浅白色（高亮、低饱和度） */
@@ -147,6 +164,68 @@ export function buildExteriorBackgroundMask(
   return mask
 }
 
+/** 与 buildExteriorBackgroundMask 算法一致，分段 yield 以便上报进度 */
+export async function buildExteriorBackgroundMaskAsync(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: MaskBuildProgressOptions,
+): Promise<Uint8Array> {
+  const mask = new Uint8Array(width * height)
+  const visited = new Uint8Array(width * height)
+  const queue: number[] = []
+  const totalPixels = width * height
+  let processed = 0
+
+  const trySeed = (x: number, y: number) => {
+    const index = y * width + x
+    if (visited[index]) return
+    if (!isLightBackgroundRgb(getPixelRgb(data, width, x, y))) return
+    visited[index] = 1
+    mask[index] = 1
+    queue.push(index)
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    trySeed(x, 0)
+    trySeed(x, height - 1)
+  }
+  for (let y = 0; y < height; y += 1) {
+    trySeed(0, y)
+    trySeed(width - 1, y)
+  }
+
+  while (queue.length > 0) {
+    const index = queue.pop()!
+    const x = index % width
+    const y = Math.floor(index / width)
+
+    const neighbors = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ]
+    for (const [nx, ny] of neighbors) {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      const ni = ny * width + nx
+      if (visited[ni]) continue
+      if (!isLightBackgroundRgb(getPixelRgb(data, width, nx, ny))) continue
+      visited[ni] = 1
+      mask[ni] = 1
+      queue.push(ni)
+    }
+
+    processed += 1
+    if (processed % MASK_FLOOD_YIELD_EVERY === 0) {
+      await yieldMaskProgress(options, Math.min(1, processed / totalPixels))
+    }
+  }
+
+  await yieldMaskProgress(options, 1)
+  return mask
+}
+
 const NEIGHBOR8: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
   [-1, 0],
@@ -201,6 +280,40 @@ function dilateBinaryMask(
   return current
 }
 
+async function dilateBinaryMaskAsync(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  iterations: number,
+  options?: MaskBuildProgressOptions,
+): Promise<Uint8Array> {
+  let current = mask
+  for (let pass = 0; pass < iterations; pass += 1) {
+    const next = new Uint8Array(current)
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const index = y * width + x
+        if (current[index] === 1) continue
+        for (const [dx, dy] of NEIGHBOR8) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+          if (current[ny * width + nx] === 1) {
+            next[index] = 1
+            break
+          }
+        }
+      }
+    }
+    current = next
+    await yieldMaskProgress(
+      options,
+      iterations > 0 ? (pass + 1) / iterations : 1,
+    )
+  }
+  return current
+}
+
 /** 将不与画布边缘连通的背景孔洞并入主体（胸口等内白区） */
 function fillBinaryMaskHoles(interiorMask: Uint8Array, width: number, height: number): Uint8Array {
   const outside = new Uint8Array(width * height)
@@ -248,6 +361,65 @@ function fillBinaryMaskHoles(interiorMask: Uint8Array, width: number, height: nu
   return filled
 }
 
+async function fillBinaryMaskHolesAsync(
+  interiorMask: Uint8Array,
+  width: number,
+  height: number,
+  options?: MaskBuildProgressOptions,
+): Promise<Uint8Array> {
+  const outside = new Uint8Array(width * height)
+  const queue: number[] = []
+  const totalPixels = width * height
+  let processed = 0
+
+  const seedOutside = (x: number, y: number) => {
+    const index = y * width + x
+    if (outside[index] || interiorMask[index] === 1) return
+    outside[index] = 1
+    queue.push(index)
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    seedOutside(x, 0)
+    seedOutside(x, height - 1)
+  }
+  for (let y = 0; y < height; y += 1) {
+    seedOutside(0, y)
+    seedOutside(width - 1, y)
+  }
+
+  let head = 0
+  while (head < queue.length) {
+    const index = queue[head]
+    head += 1
+    const x = index % width
+    const y = Math.floor(index / width)
+
+    for (const [dx, dy] of NEIGHBOR8) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      const ni = ny * width + nx
+      if (outside[ni] || interiorMask[ni] === 1) continue
+      outside[ni] = 1
+      queue.push(ni)
+    }
+
+    processed += 1
+    if (processed % MASK_FLOOD_YIELD_EVERY === 0) {
+      await yieldMaskProgress(options, Math.min(1, processed / totalPixels))
+    }
+  }
+
+  const filled = new Uint8Array(interiorMask)
+  for (let i = 0; i < filled.length; i += 1) {
+    if (interiorMask[i] === 1 || outside[i] === 1) continue
+    filled[i] = 1
+  }
+  await yieldMaskProgress(options, 1)
+  return filled
+}
+
 /**
  * 人物模式主体 mask：非外部背景种子 → 轻膨胀闭合领口 → 孔洞填充。
  * 1 = 应拼豆区域（含胸口等封闭内白区）。
@@ -270,6 +442,37 @@ export function buildPortraitSubjectMask(
     computePortraitDilateIterations(width, height),
   )
   return fillBinaryMaskHoles(dilated, width, height)
+}
+
+/** 与 buildPortraitSubjectMask 算法一致，分段 yield 以便上报进度 */
+export async function buildPortraitSubjectMaskAsync(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: MaskBuildProgressOptions,
+): Promise<Uint8Array> {
+  const report = async (ratio: number) => {
+    await yieldMaskProgress(options, ratio)
+  }
+
+  const exterior = await buildExteriorBackgroundMaskAsync(data, width, height, {
+    signal: options?.signal,
+    onSubProgress: (ratio) => report(ratio * 0.55),
+  })
+  const seed = new Uint8Array(width * height)
+  for (let i = 0; i < seed.length; i += 1) {
+    seed[i] = exterior[i] === 1 ? 0 : 1
+  }
+
+  const iterations = computePortraitDilateIterations(width, height)
+  const dilated = await dilateBinaryMaskAsync(seed, width, height, iterations, {
+    signal: options?.signal,
+    onSubProgress: (ratio) => report(0.55 + ratio * 0.25),
+  })
+  return fillBinaryMaskHolesAsync(dilated, width, height, {
+    signal: options?.signal,
+    onSubProgress: (ratio) => report(0.8 + ratio * 0.2),
+  })
 }
 
 export function isPortraitSubjectPixel(

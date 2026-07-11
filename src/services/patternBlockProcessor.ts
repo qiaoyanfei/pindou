@@ -20,7 +20,8 @@ import {
 } from '@/utils/constants'
 import type { PatternResult } from '@/types'
 import type { StyleMode } from '@/types'
-import type { PatternProgressCallback } from '@/services/patternPipeline'
+import type { PatternGenerationOptions, PatternProgressCallback } from '@/services/patternPipeline'
+import { throwIfAborted, computeStageProgressPercent } from '@/utils/patternGenerationProgress'
 
 export async function processBlockPattern(
   canvas: CanvasNode,
@@ -30,11 +31,15 @@ export async function processBlockPattern(
   targetHeight: number,
   styleMode: StyleMode = 'portrait',
   onProgress?: PatternProgressCallback,
+  options?: PatternGenerationOptions,
 ): Promise<PatternResult> {
+  const signal = options?.signal
   const intermediateWidth = targetWidth * PATTERN_INTERMEDIATE_SCALE
   const intermediateHeight = targetHeight * PATTERN_INTERMEDIATE_SCALE
 
-  await onProgress?.('正在采样颜色...')
+  const sampleStage = '采样颜色...'
+  await onProgress?.(sampleStage, { percent: computeStageProgressPercent(sampleStage, 0) })
+  throwIfAborted(signal)
   const sample = await extractBlockDominantColors(
     canvas,
     imagePath,
@@ -46,20 +51,36 @@ export async function processBlockPattern(
       darkLumaThreshold: PATTERN_DARK_LUMA,
       darkRatioThreshold: PATTERN_DARK_RATIO,
       styleMode,
+      signal,
+      onSampleProgress: (ratio) => {
+        void onProgress?.(sampleStage, {
+          percent: computeStageProgressPercent(sampleStage, ratio),
+        })
+      },
     },
   )
 
-  await onProgress?.('正在匹配色号...')
-  let pattern = matchRgbGridWithExteriorBackground(
+  const matchStage = '匹配色号...'
+  await onProgress?.(matchStage, { percent: computeStageProgressPercent(matchStage, 0) })
+  throwIfAborted(signal)
+  let pattern = await matchRgbGridWithExteriorBackground(
     sample.colors,
     intermediateWidth,
     intermediateHeight,
     sample.exteriorBackground,
+    signal,
+    (done, total) => {
+      void onProgress?.(matchStage, {
+        percent: computeStageProgressPercent(matchStage, done / total),
+      })
+    },
   )
   pattern = downsamplePatternMajority(pattern, targetWidth, targetHeight, styleMode)
 
   if (styleMode === 'portrait') {
-    await onProgress?.('正在优化边缘...')
+    const optimizeStage = '优化边缘...'
+    await onProgress?.(optimizeStage, { percent: computeStageProgressPercent(optimizeStage, 0) })
+    throwIfAborted(signal)
     const exteriorAtTarget = downsampleExteriorBackground(
       sample.exteriorBackground,
       intermediateWidth,
@@ -70,8 +91,11 @@ export async function processBlockPattern(
     pattern = applyExteriorBackgroundMask(pattern, exteriorAtTarget)
   }
 
-  await onProgress?.('正在生成图纸...')
+  const generateStage = '生成图纸...'
+  await onProgress?.(generateStage, { percent: computeStageProgressPercent(generateStage, 0) })
+  throwIfAborted(signal)
   pattern = consolidateDarkOutlines(pattern, styleMode)
   pattern = removeIsolatedSpeckles(pattern, PATTERN_SPECKLE_MAX_COUNT, styleMode)
+  await onProgress?.(generateStage, { percent: 100 })
   return pattern
 }

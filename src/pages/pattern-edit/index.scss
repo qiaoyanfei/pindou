@@ -21,15 +21,13 @@
 
 .pattern-edit-page__nav {
   flex-shrink: 0;
-  background: $color-bg;
+  background: #fff;
 }
 
 .pattern-edit-page__nav-row {
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 72px;
-  padding-left: 24px;
   box-sizing: border-box;
 }
 
@@ -47,7 +45,7 @@
 }
 
 .pattern-edit-page__nav-done-text {
-  font-size: 34px;
+  font-size: 17PX;
   font-weight: 700;
   color: $editor-primary;
   line-height: 1;
@@ -58,9 +56,9 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  max-width: calc(100% - 160px);
-  font-size: 34px;
-  font-weight: 700;
+  max-width: calc(100% - 200px);
+  font-size: 17PX;
+  font-weight: 400;
   color: $color-text;
   line-height: 1;
   text-align: center;

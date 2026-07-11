@@ -53,6 +53,7 @@ function ZoomablePatternViewer({
     [pattern, config, previewCellPx],
   )
   const cacheKeyRef = useRef(cacheKey)
+  const exportGenerationRef = useRef(0)
   const previewLayout = useMemo(() => {
     const maxWidth = (areaWidth - VIEWPORT_PADDING_X * 2) * THUMBNAIL_WIDTH_RATIO
     const maxHeight = maxViewportHeight - VIEWPORT_PADDING_Y * 2
@@ -71,22 +72,31 @@ function ZoomablePatternViewer({
   }, [areaWidth, maxViewportHeight, pattern.height, pattern.width, previewCellPx])
 
   const handleCanvasReady = async () => {
-    if (cacheKeyRef.current !== cacheKey) return
+    const generation = exportGenerationRef.current
+    const expectedKey = cacheKey
+    if (cacheKeyRef.current !== expectedKey) return
 
     try {
       const tempFilePath = await canvasToTempFile('preview-canvas')
-      if (cacheKeyRef.current !== cacheKey) return
-      previewThumbnailCache.set(cacheKey, tempFilePath)
+      if (
+        exportGenerationRef.current !== generation
+        || cacheKeyRef.current !== expectedKey
+      ) return
+      previewThumbnailCache.set(expectedKey, tempFilePath)
       setImageSrc(tempFilePath)
       setNeedsPreviewCanvas(false)
     } catch {
+      if (exportGenerationRef.current !== generation) return
       Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
     } finally {
-      setLoading(false)
+      if (exportGenerationRef.current === generation) {
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
+    exportGenerationRef.current += 1
     cacheKeyRef.current = cacheKey
     const cached = previewThumbnailCache.get(cacheKey)
     if (cached) {

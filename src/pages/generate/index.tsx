@@ -1,6 +1,6 @@
-import { View, Text, Button, Canvas, Slider, Input } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useRef, useState } from 'react'
+import { View, Text, Button, Canvas, Slider, Input, Image } from '@tarojs/components'
+import Taro, { useDidShow, useUnload } from '@tarojs/taro'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ImageUploader from '@/components/ImageUploader'
 import StyleModeSelector from '@/components/StyleModeSelector'
 import { generatePatternFromImage } from '@/services/patternPipeline'
@@ -21,8 +21,20 @@ import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { setStorageSafe } from '@/utils/localCache'
 import { createGeneratePreviewStoragePayload, isRecoverableGeneratePattern } from '@/utils/patternStorage'
 import { TAB_INDEX, updateTabBarSelected } from '@/utils/tabBar'
+import { safeSwitchTab } from '@/utils/navigation'
+import backIcon from '@/assets/icons/back-chevron.svg'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import { createConversionLoadingController } from '@/utils/conversionLoading'
+import {
+  createPatternAbortController,
+  createPatternGenerationProgressReporter,
+  computeStageProgressPercent,
+  formatGenerateSubmitLabel,
+  isPatternGenerationCancelled,
+  PATTERN_GENERATION_CANCEL_UNLOCK_MS,
+  throwIfAborted,
+  type PatternAbortController,
+} from '@/utils/patternGenerationProgress'
 import {
   clampLongEdge,
   createDefaultConfigForStyleMode,
@@ -47,11 +59,27 @@ function createInitialConfig(): PatternConfig {
   return createDefaultConfigForStyleMode('manga')
 }
 
-function readDraftState(): { imagePath: string; config: PatternConfig } {
-  const draft = getGenerateDraft()
-  return {
-    imagePath: draft?.imagePath ?? '',
-    config: draft?.config ?? createInitialConfig(),
+function shouldRestoreGenerateDraft(): boolean {
+  const pages = Taro.getCurrentPages()
+  if (pages.length < 2) return false
+  const prevRoute = pages[pages.length - 2]?.route ?? ''
+  return (
+    prevRoute.includes('pages/preview/index')
+    || prevRoute.includes('pages/pattern-edit/index')
+  )
+}
+
+function getNavLayout() {
+  try {
+    const windowInfo = Taro.getWindowInfo()
+    const menu = Taro.getMenuButtonBoundingClientRect()
+    return {
+      paddingTop: menu.top,
+      rowHeight: menu.height,
+      headerRight: windowInfo.windowWidth - menu.left + 8,
+    }
+  } catch {
+    return { paddingTop: 48, rowHeight: 32, headerRight: 96 }
   }
 }
 
@@ -77,11 +105,22 @@ function waitForLoadingPaint(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 60))
 }
 
+function waitForCancelledDisplay(cancelledAt: number, minMs = 1200): Promise<void> {
+  const remaining = minMs - (Date.now() - cancelledAt)
+  if (remaining <= 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, remaining))
+}
+
+type GenerationPhase = 'idle' | 'running' | 'cancelled'
+
 async function resolveGenerateConfig(
   imagePath: string,
   config: PatternConfig,
   manualLongEdge: number | null,
+  onProgress?: import('@/services/patternPipeline').PatternProgressCallback,
+  signal?: import('@/utils/patternGenerationProgress').PatternAbortSignal,
 ): Promise<PatternConfig> {
+  throwIfAborted(signal)
   if (manualLongEdge !== null) {
     return {
       ...config,
@@ -94,12 +133,18 @@ async function resolveGenerateConfig(
       imagePath,
       config.styleMode,
       'process-canvas',
+      signal,
+      onProgress,
     )
+    throwIfAborted(signal)
     return {
       ...config,
       longEdge: recommendedLongEdge,
     }
-  } catch {
+  } catch (error) {
+    if (isPatternGenerationCancelled(error)) {
+      throw error
+    }
     return {
       ...config,
       longEdge: getFallbackAutoLongEdge(config.styleMode),
@@ -108,18 +153,36 @@ async function resolveGenerateConfig(
 }
 
 export default function GeneratePage() {
-  const initialDraft = readDraftState()
-  const [imagePath, setImagePath] = useState(initialDraft.imagePath)
-  const [config, setConfig] = useState<PatternConfig>(initialDraft.config)
+  const [imagePath, setImagePath] = useState('')
+  const [config, setConfig] = useState<PatternConfig>(() => createInitialConfig())
+  const [navLayout, setNavLayout] = useState(getNavLayout)
   const [loading, setLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
+  const [loadingPercent, setLoadingPercent] = useState<number | null>(null)
+  const [generationPhase, setGenerationPhase] = useState<GenerationPhase>('idle')
+  const [canCancelGeneration, setCanCancelGeneration] = useState(false)
   const [gridSettingsOpen, setGridSettingsOpen] = useState(true)
   const [manualLongEdge, setManualLongEdge] = useState<number | null>(null)
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
   const recoverPromptShownRef = useRef(false)
+  const abortRef = useRef<PatternAbortController | null>(null)
+  const generatingRef = useRef(false)
+  const cancelRequestedRef = useRef(false)
+  const cancelledAtRef = useRef(0)
+  const loadingControllerRef = useRef<ReturnType<typeof createConversionLoadingController> | null>(null)
+  const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingStageRef = useRef('')
 
   useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
+
+  useEffect(() => {
+    setNavLayout(getNavLayout())
+  }, [])
+
+  const handleBack = () => {
+    safeSwitchTab('/pages/home/index')
+  }
 
   const applyDraftState = (next: { imagePath: string; config: PatternConfig }) => {
     setImagePath(next.imagePath)
@@ -159,15 +222,16 @@ export default function GeneratePage() {
       return
     }
 
-    const draft = getGenerateDraft()
-    if (draft?.imagePath) {
-      setImagePath(draft.imagePath)
+    if (shouldRestoreGenerateDraft()) {
+      const draft = getGenerateDraft()
+      if (draft?.imagePath) {
+        applyDraftState(draft)
+      }
     }
-    if (draft?.config) {
-      setConfig(draft.config)
-      setManualLongEdge(null)
-      setManualLongEdgeInput('')
-    }
+  })
+
+  useUnload(() => {
+    abortRef.current?.abort()
   })
 
   const updateManualLongEdge = (value: number) => {
@@ -203,7 +267,35 @@ export default function GeneratePage() {
     updateManualLongEdge(Number(normalized))
   }
 
+  const clearCancelUnlockTimer = () => {
+    if (cancelUnlockTimerRef.current) {
+      clearTimeout(cancelUnlockTimerRef.current)
+      cancelUnlockTimerRef.current = null
+    }
+  }
+
+  const resetGenerationUi = () => {
+    clearCancelUnlockTimer()
+    cancelRequestedRef.current = false
+    cancelledAtRef.current = 0
+    setCanCancelGeneration(false)
+    setGenerationPhase('idle')
+    setLoading(false)
+    setLoadingMessage('')
+    setLoadingPercent(null)
+  }
+
+  const scheduleCancelUnlock = () => {
+    clearCancelUnlockTimer()
+    setCanCancelGeneration(false)
+    cancelUnlockTimerRef.current = setTimeout(() => {
+      cancelUnlockTimerRef.current = null
+      setCanCancelGeneration(true)
+    }, PATTERN_GENERATION_CANCEL_UNLOCK_MS)
+  }
+
   const handleImageSelect = (path: string) => {
+    resetGenerationUi()
     const sourcePath = persistGenerateSourceImage(path)
     const next = setGenerateImageWithDefaultConfig(sourcePath, config.styleMode)
     applyDraftState(next)
@@ -217,40 +309,124 @@ export default function GeneratePage() {
     setConfig(nextConfig)
   }
 
-  const handleGenerate = useCallback(async () => {
-    if (loading) return
+  const requestCancelGeneration = () => {
+    if (cancelRequestedRef.current) return
+    cancelRequestedRef.current = true
+    cancelledAtRef.current = Date.now()
+    setGenerationPhase('cancelled')
+    setLoading(false)
+    loadingControllerRef.current?.stop()
+    abortRef.current?.abort()
+  }
 
+  const handleGenerate = useCallback(async () => {
     if (!imagePath) {
+      generatingRef.current = false
+      setGenerationPhase('idle')
+      setLoading(false)
       Taro.showToast({ title: '请先上传图片', icon: 'none' })
       return
     }
 
-    const loadingController = createConversionLoadingController()
+    cancelRequestedRef.current = false
+    cancelledAtRef.current = 0
+    setGenerationPhase('running')
+    setLoading(true)
+    setLoadingMessage('读取图片...')
+    setLoadingPercent(computeStageProgressPercent('读取图片...', 0))
+    scheduleCancelUnlock()
+
+    const loadingController = createConversionLoadingController({ mask: false })
+    loadingControllerRef.current = loadingController
+    const abortController = createPatternAbortController()
+    abortRef.current = abortController
+    loadingController.start()
+    loadingController.show('读取图片...')
+
+    const progress = createPatternGenerationProgressReporter(
+      async (message, context) => {
+        if (abortController.signal.aborted || cancelRequestedRef.current) return
+        const stageChanged = message !== loadingStageRef.current
+        loadingStageRef.current = message
+        setLoadingMessage(message)
+        if (context?.percent != null) {
+          setLoadingPercent(context.percent)
+        }
+        if (stageChanged) {
+          await waitForLoadingPaint()
+        }
+      },
+      loadingController,
+    )
+
+    let wasCancelled = false
 
     try {
-      const finalConfig = await resolveGenerateConfig(imagePath, config, manualLongEdge)
+      const finalConfig = await resolveGenerateConfig(
+        imagePath,
+        config,
+        manualLongEdge,
+        progress.report,
+        abortController.signal,
+      )
+      throwIfAborted(abortController.signal)
+
       syncGenerateDraftFromPage(imagePath, finalConfig)
       setConfig(finalConfig)
 
-      setLoading(true)
-      setLoadingMessage('正在匹配色号...')
-      loadingController.start()
+      const pattern = await generatePatternFromImage(
+        imagePath,
+        finalConfig,
+        'process-canvas',
+        progress.report,
+        { signal: abortController.signal },
+      )
+      throwIfAborted(abortController.signal)
 
-      const pattern = await generatePatternFromImage(imagePath, finalConfig, 'process-canvas', async (message) => {
-        setLoadingMessage(message)
-        loadingController.show(message)
-        await waitForLoadingPaint()
-      })
       setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, finalConfig, imagePath))
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
+      wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
+      if (wasCancelled) {
+        cancelRequestedRef.current = true
+        setGenerationPhase('cancelled')
+        return
+      }
       handleImageProcessError(error, '生成失败')
     } finally {
+      clearCancelUnlockTimer()
+      await progress.finish({ skipDelay: wasCancelled || cancelRequestedRef.current })
       loadingController.stop()
+      loadingControllerRef.current = null
+      abortRef.current = null
+      generatingRef.current = false
       setLoading(false)
       setLoadingMessage('')
+      setLoadingPercent(null)
+
+      if (wasCancelled || cancelRequestedRef.current) {
+        await waitForCancelledDisplay(cancelledAtRef.current || Date.now())
+        resetGenerationUi()
+      } else {
+        setGenerationPhase('idle')
+      }
     }
-  }, [config, imagePath, loading, manualLongEdge])
+  }, [config, imagePath, manualLongEdge])
+
+  const handleSubmit = () => {
+    if (!imagePath) {
+      Taro.showToast({ title: '请先上传图片', icon: 'none' })
+      return
+    }
+    if (generationPhase === 'cancelled' || cancelRequestedRef.current) return
+    if (generatingRef.current) {
+      if (!canCancelGeneration) return
+      requestCancelGeneration()
+      return
+    }
+    generatingRef.current = true
+    void handleGenerate()
+  }
 
   if (!authed) {
     return null
@@ -262,13 +438,43 @@ export default function GeneratePage() {
   const gridPresets = GRID_PRESETS[config.styleMode].filter(
     (item) => item >= longEdgeLimits.min && item <= longEdgeLimits.max,
   )
-  const submitLabel = loading
-    ? loadingMessage || '正在处理...'
-    : '下一步，预览图纸'
-  const canSubmit = Boolean(imagePath) && !loading
+  const isRunning = generationPhase === 'running'
+  const isCancelled = generationPhase === 'cancelled'
+  const submitLabel = formatGenerateSubmitLabel(
+    '下一步，预览图纸',
+    isRunning,
+    isCancelled,
+    canCancelGeneration,
+  )
+  const canSubmit = Boolean(imagePath) && !isCancelled && (!isRunning || canCancelGeneration)
+  const submitClassName = [
+    'generate-page__submit',
+    isRunning && canCancelGeneration ? ' generate-page__submit--loading' : '',
+    isRunning && !canCancelGeneration ? ' generate-page__submit--disabled' : '',
+    isCancelled ? ' generate-page__submit--cancelled' : '',
+    !canSubmit && !isRunning ? ' generate-page__submit--disabled' : '',
+  ].join('')
 
   return (
     <View className='generate-page'>
+      <View
+        className='generate-page__nav'
+        style={{ paddingTop: `${navLayout.paddingTop}px` }}
+      >
+        <View
+          className='generate-page__nav-row'
+          style={{
+            height: `${navLayout.rowHeight}px`,
+            paddingRight: `${navLayout.headerRight}px`,
+          }}
+        >
+          <View className='generate-page__nav-back' onClick={handleBack}>
+            <Image className='generate-page__nav-back-icon' src={backIcon} mode='aspectFit' />
+          </View>
+          <Text className='generate-page__nav-title'>生成图纸</Text>
+        </View>
+      </View>
+
       <View className='generate-page__body'>
         <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
 
@@ -371,19 +577,19 @@ export default function GeneratePage() {
 
       <View className='generate-page__fixed-action'>
         <Button
-          className={`generate-page__submit${loading ? ' generate-page__submit--loading' : ''}${!canSubmit ? ' generate-page__submit--disabled' : ''}`}
+          className={submitClassName}
           type='primary'
           disabled={!canSubmit}
-          onClick={handleGenerate}
+          onClick={handleSubmit}
         >
           <View className='generate-page__submit-content'>
-            {canSubmit && !loading ? (
+            {canSubmit && !isRunning && !isCancelled ? (
               <View className='generate-page__submit-sparkles'>
                 <Text className='generate-page__submit-sparkle-main'>✦</Text>
                 <Text className='generate-page__submit-sparkle-sub'>✦</Text>
               </View>
             ) : null}
-            <Text>{submitLabel}</Text>
+            <Text className='generate-page__submit-main'>{submitLabel.main}</Text>
           </View>
         </Button>
       </View>

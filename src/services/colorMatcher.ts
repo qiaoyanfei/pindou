@@ -4,8 +4,10 @@ import type { BeadColor, PatternResult } from '@/types'
 import type { Rgb } from '@/services/imageProcessor'
 import { PATTERN_EMPTY_CELL } from '@/utils/constants'
 import { deltaE2000, labDistance, rgbToLab } from '@/utils/colorSpace'
+import { throwIfAborted, yieldToMain, type PatternAbortSignal } from '@/utils/patternGenerationProgress'
 
 const TOP_CANDIDATES = 5
+const MATCH_CELL_BATCH = 2000
 
 function findNearestColor(
   rgb: [number, number, number],
@@ -61,16 +63,23 @@ export function matchRgbGridToPattern(
 }
 
 /** 映射 MARD 色，仅边缘连通背景格标记为空（不参与拼豆） */
-export function matchRgbGridWithExteriorBackground(
+export async function matchRgbGridWithExteriorBackground(
   colors: Rgb[],
   width: number,
   height: number,
   exteriorBackground: boolean[],
-): PatternResult {
+  signal?: PatternAbortSignal,
+  onCellProgress?: (done: number, total: number) => void,
+): Promise<PatternResult> {
   const palette = getPalette()
   const grid: string[] = new Array(width * height)
 
   for (let i = 0; i < colors.length; i += 1) {
+    if (i > 0 && i % MATCH_CELL_BATCH === 0) {
+      throwIfAborted(signal)
+      onCellProgress?.(i, colors.length)
+      await yieldToMain()
+    }
     if (exteriorBackground[i]) {
       grid[i] = PATTERN_EMPTY_CELL
       continue
@@ -78,6 +87,8 @@ export function matchRgbGridWithExteriorBackground(
     grid[i] = findNearestColor(colors[i], palette).id
   }
 
+  onCellProgress?.(colors.length, colors.length)
+  throwIfAborted(signal)
   return finalizePattern(width, height, grid)
 }
 
