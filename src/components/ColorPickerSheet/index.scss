@@ -1,5 +1,8 @@
 @import '@/styles/editor-tokens.scss';
 
+$color-picker-mode-panel-height: 512px;
+$color-picker-summary-height: 104px;
+
 .color-picker-sheet {
   position: fixed;
   inset: 0;
@@ -19,14 +22,14 @@
   right: 0;
   bottom: 0;
   z-index: 2;
-  max-height: 78vh;
+  max-height: calc(100vh - env(safe-area-inset-top) - 24px);
   border-radius: 28px 28px 0 0;
   background: #fff;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .color-picker-sheet__header {
@@ -200,11 +203,16 @@
 }
 
 .color-picker-sheet__mode-panel {
-  height: 512px;
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
+  max-height: $color-picker-mode-panel-height;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.color-picker-sheet__mode-panel--locked {
+  flex: 0 0 auto;
 }
 
 .color-picker-sheet__mode-panel-content {
@@ -227,6 +235,8 @@
   border-radius: 16px;
   background: $editor-bg;
   flex-shrink: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .color-picker-sheet__search-icon {
@@ -237,7 +247,21 @@
 
 .color-picker-sheet__search-input {
   flex: 1;
+  min-width: 0;
+  height: 72px;
+  line-height: 72px;
+  padding: 0;
+  margin: 0;
   font-size: 28px;
+  color: $editor-text;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.color-picker-sheet__search-input-placeholder {
+  font-size: 28px;
+  line-height: 72px;
+  color: #9ca3af;
 }
 
 .color-picker-sheet__tabs {
@@ -263,24 +287,17 @@
 }
 
 .color-picker-sheet__list {
-  height: 240px;
   margin-top: 16px;
   padding: 0 32px;
   box-sizing: border-box;
   flex-shrink: 0;
 }
 
-.color-picker-sheet__list--expanded {
-  flex: 1;
-  height: auto;
-  min-height: 240px;
-}
-
 .color-picker-sheet__grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px 8px;
-  padding-bottom: 16px;
+  padding-bottom: 96px;
 }
 
 .color-picker-sheet__item {
@@ -334,12 +351,19 @@
   background: $editor-bg;
   flex-shrink: 0;
   text-align: center;
-  height: 104px;
+  height: $color-picker-summary-height;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.color-picker-sheet__footer {
+  display: flex;
+  gap: 16px;
+  padding: 12px 32px calc(24px + env(safe-area-inset-bottom));
+  flex-shrink: 0;
 }
 
 .color-picker-sheet__summary-text {
@@ -393,36 +417,32 @@
 }
 
 .color-picker-sheet__erase-main {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
   padding: 0 32px;
   box-sizing: border-box;
-  display: flex;
-  align-items: stretch;
 }
 
 .color-picker-sheet__erase-card {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 28px 24px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 20px 20px 32px;
   border-radius: 20px;
   background: $editor-bg;
   box-sizing: border-box;
 }
 
 .color-picker-sheet__erase-title {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 700;
   color: $editor-text;
   line-height: 1.3;
 }
 
 .color-picker-sheet__erase-desc {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
   color: $editor-text-secondary;
   line-height: 1.4;
@@ -433,9 +453,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   width: 100%;
-  margin-top: 16px;
+  margin-top: 8px;
+  padding-bottom: 4px;
 }
 
 .color-picker-sheet__erase-preview-side {
@@ -443,15 +464,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
 .color-picker-sheet__erase-preview-badge {
   width: 100%;
   max-width: 220px;
-  min-height: 120px;
-  padding: 18px 16px;
+  min-height: 108px;
+  padding: 12px 12px 10px;
   border-radius: 16px;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -459,7 +479,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   box-sizing: border-box;
 }
 
@@ -507,16 +527,20 @@
 }
 
 .color-picker-sheet__erase-preview-count {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   color: $editor-text;
-  line-height: 1;
+  line-height: 32px;
+  height: 32px;
 }
 
 .color-picker-sheet__erase-preview-label {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 500;
   color: $editor-text-secondary;
+  line-height: 28px;
+  height: 28px;
+  white-space: nowrap;
 }
 
 .color-picker-sheet__erase-preview-arrow-wrap {
@@ -536,13 +560,6 @@
   font-weight: 600;
   color: $editor-primary;
   line-height: 1;
-}
-
-.color-picker-sheet__footer {
-  display: flex;
-  gap: 16px;
-  padding: 20px 32px 24px;
-  flex-shrink: 0;
 }
 
 .color-picker-sheet__footer-btn {

@@ -1,5 +1,6 @@
 import { View, Text, ScrollView, Input, Image } from '@tarojs/components'
-import { useEffect, useMemo, useState } from 'react'
+import Taro from '@tarojs/taro'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isEmptyCell } from '@/services/patternStats'
 import { getColorById, getPalette } from '@/services/palette'
 import { countCellsWithColor, getPatternColorIds } from '@/utils/patternEdit'
@@ -34,6 +35,15 @@ function colorIdToHex(colorId: string): string {
 }
 
 const STATUS_COLOR_ID_LIMIT = 4
+const MODE_PANEL_ID = 'color-picker-mode-panel'
+const MODE_PANEL_CONTENT_ID = 'color-picker-mode-panel-content'
+const MODE_PANEL_MAX_HEIGHT = 512
+const SUMMARY_HEIGHT = 104
+/** mode-panel-content 内固定区：padding-top + search + tabs + list margin */
+const COLOR_MODE_CHROME = 20 + 72 + 16 + 48 + 16
+const COLOR_LIST_FALLBACK_HEIGHT = 240
+const COLOR_LIST_MIN_HEIGHT = 180
+const ERASE_MAIN_FALLBACK_HEIGHT = 240
 
 function formatColorIdList(colorIds: string[], limit = STATUS_COLOR_ID_LIMIT): string {
   if (colorIds.length === 0) return '—'
@@ -61,6 +71,9 @@ export default function ColorPickerSheet({
   const [activeTab, setActiveTab] = useState<ColorPickerTab>('pattern')
   const [editMode, setEditMode] = useState<EditMode>('color')
   const [pendingColorId, setPendingColorId] = useState('')
+  const [colorListScrollHeight, setColorListScrollHeight] = useState(COLOR_LIST_FALLBACK_HEIGHT)
+  const [eraseMainHeight, setEraseMainHeight] = useState(ERASE_MAIN_FALLBACK_HEIGHT)
+  const [lockedModePanelHeight, setLockedModePanelHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (!visible) return
@@ -68,7 +81,12 @@ export default function ColorPickerSheet({
     setActiveTab('pattern')
     setEditMode('color')
     setPendingColorId('')
+    setLockedModePanelHeight(null)
+    setColorListScrollHeight(COLOR_LIST_FALLBACK_HEIGHT)
+    setEraseMainHeight(ERASE_MAIN_FALLBACK_HEIGHT)
   }, [visible])
+
+  const showSummary = editMode === 'erase' || Boolean(pendingColorId)
 
   const patternColorIds = useMemo(() => getPatternColorIds(pattern), [pattern])
 
@@ -107,6 +125,43 @@ export default function ColorPickerSheet({
     ? colorIdToHex(pendingColorId)
     : '#f3f4f6'
 
+  const lockModePanelHeight = useCallback(() => {
+    if (!visible) return
+    Taro.createSelectorQuery()
+      .select(`#${MODE_PANEL_ID}`)
+      .boundingClientRect()
+      .exec((res) => {
+        const height = res?.[0]?.height
+        if (typeof height !== 'number' || height <= 0) return
+        setLockedModePanelHeight((prev) => {
+          const next = Math.min(MODE_PANEL_MAX_HEIGHT, Math.round(height))
+          return prev == null ? next : Math.max(prev, next)
+        })
+      })
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) return
+    lockModePanelHeight()
+    const timer = setTimeout(lockModePanelHeight, 80)
+    return () => clearTimeout(timer)
+  }, [visible, lockModePanelHeight])
+
+  useEffect(() => {
+    if (!visible || lockedModePanelHeight == null) return
+    const summarySlot = showSummary ? SUMMARY_HEIGHT : 0
+    const contentHeight = lockedModePanelHeight - summarySlot
+
+    if (editMode === 'color') {
+      const nextHeight = Math.floor(contentHeight - COLOR_MODE_CHROME)
+      setColorListScrollHeight(Math.max(COLOR_LIST_MIN_HEIGHT, nextHeight))
+      return
+    }
+
+    const nextEraseHeight = Math.floor(contentHeight - 20)
+    setEraseMainHeight(Math.max(COLOR_LIST_MIN_HEIGHT, nextEraseHeight))
+  }, [visible, lockedModePanelHeight, showSummary, editMode])
+
   if (!visible) return null
 
   const handleConfirm = () => {
@@ -123,7 +178,6 @@ export default function ColorPickerSheet({
 
   const confirmDisabled = selectedCount === 0
     || (editMode === 'color' && !pendingColorId)
-  const showSummary = editMode === 'erase' || Boolean(pendingColorId)
 
   return (
     <View className='color-picker-sheet'>
@@ -209,8 +263,12 @@ export default function ColorPickerSheet({
           </View>
         </View>
 
-        <View className='color-picker-sheet__mode-panel'>
-          <View className='color-picker-sheet__mode-panel-content'>
+        <View
+          id={MODE_PANEL_ID}
+          className={`color-picker-sheet__mode-panel${lockedModePanelHeight != null ? ' color-picker-sheet__mode-panel--locked' : ''}`}
+          style={lockedModePanelHeight != null ? { height: `${lockedModePanelHeight}px` } : undefined}
+        >
+          <View className='color-picker-sheet__mode-panel-content' id={MODE_PANEL_CONTENT_ID}>
             {editMode === 'color' ? (
               <>
                 <View className='color-picker-sheet__search'>
@@ -218,6 +276,8 @@ export default function ColorPickerSheet({
                   <Input
                     className='color-picker-sheet__search-input'
                     placeholder={searchPlaceholder}
+                    placeholderClass='color-picker-sheet__search-input-placeholder'
+                    placeholderStyle='font-size:28rpx;line-height:72rpx;color:#9ca3af'
                     value={query}
                     onInput={(event) => setQuery(event.detail.value)}
                   />
@@ -238,7 +298,13 @@ export default function ColorPickerSheet({
                   </View>
                 </View>
 
-                <ScrollView scrollY className={`color-picker-sheet__list${showSummary ? '' : ' color-picker-sheet__list--expanded'}`} showScrollbar={false}>
+                <ScrollView
+                  scrollY
+                  enhanced
+                  showScrollbar={false}
+                  className='color-picker-sheet__list'
+                  style={{ height: `${colorListScrollHeight}px` }}
+                >
                   <View className='color-picker-sheet__grid'>
                     {visibleColorIds.map((id) => {
                       const color = getColorById(id)
@@ -266,7 +332,13 @@ export default function ColorPickerSheet({
                 </ScrollView>
               </>
             ) : (
-              <View className='color-picker-sheet__erase-main'>
+              <ScrollView
+                scrollY
+                enhanced
+                showScrollbar={false}
+                className='color-picker-sheet__erase-main'
+                style={{ height: `${eraseMainHeight}px` }}
+              >
                 <View className='color-picker-sheet__erase-card'>
                   <Text className='color-picker-sheet__erase-title'>擦除色号</Text>
                   <Text className='color-picker-sheet__erase-desc'>选中格子将变为空白，可稍后重新填色</Text>
@@ -290,8 +362,8 @@ export default function ColorPickerSheet({
                           </View>
                         )}
                         <Text className='color-picker-sheet__erase-preview-count'>{selectedCount} 格</Text>
+                        <Text className='color-picker-sheet__erase-preview-label'>当前选中</Text>
                       </View>
-                      <Text className='color-picker-sheet__erase-preview-label'>当前选中</Text>
                     </View>
                     <View className='color-picker-sheet__erase-preview-arrow-wrap'>
                       <Text className='color-picker-sheet__erase-preview-arrow'>→</Text>
@@ -300,12 +372,12 @@ export default function ColorPickerSheet({
                       <View className='color-picker-sheet__erase-preview-badge color-picker-sheet__erase-preview-badge--empty'>
                         <View className='color-picker-sheet__erase-preview-empty' />
                         <Text className='color-picker-sheet__erase-preview-count'>空白</Text>
+                        <Text className='color-picker-sheet__erase-preview-label'>擦除后</Text>
                       </View>
-                      <Text className='color-picker-sheet__erase-preview-label'>擦除后</Text>
                     </View>
                   </View>
                 </View>
-              </View>
+              </ScrollView>
             )}
           </View>
 
@@ -328,7 +400,7 @@ export default function ColorPickerSheet({
                   </View>
                 </>
               ) : (
-                <Text className='color-picker-sheet__summary-text'>
+                <Text className='color-picker-sheet__summary-text color-picker-sheet__summary-text--hint'>
                   确认后将清除 {selectedCount} 格的色号
                 </Text>
               )}
