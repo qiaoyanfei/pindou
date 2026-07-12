@@ -751,7 +751,7 @@ export default function PreviewPage() {
                   onClick={() => setExportFormat('svg')}
                 >
                   <Text className='preview-page__format-option-title'>SVG</Text>
-                  <Text className='preview-page__format-option-desc'>矢量文件，分享后在电脑打开</Text>
+                  <Text className='preview-page__format-option-desc'>超高清矢量图纸，可通过SVG查看工具打开</Text>
                 </View>
               </View>
             </View>
