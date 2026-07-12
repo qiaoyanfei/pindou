@@ -634,7 +634,7 @@ export default function HomePage() {
       safeNavigateTo(buildLoginUrl('/pages/generate/index'))
       return
     }
-    redirectToGeneratePage(true)
+    redirectToGeneratePage(false)
   }, [])
 
   return (

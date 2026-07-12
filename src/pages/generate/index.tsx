@@ -46,6 +46,10 @@ import {
 } from '@/types'
 import './index.scss'
 
+let launchRecoverPromptChecked = false
+
+type RecoverPromptAction = 'continue' | 'restart' | 'none'
+
 const GRID_PRESETS: Record<StyleMode, number[]> = {
   portrait: [60, 90, 120, 160],
   manga: [29, 52, 78, 104],
@@ -86,7 +90,6 @@ function clearRecoverablePattern(): void {
     // ignore
   }
 }
-
 
 function resetScrollTop(setScrollTop: (value: number | ((prev: number) => number)) => void): void {
   setScrollTop(0.01)
@@ -149,10 +152,11 @@ export default function GeneratePage() {
   const [manualLongEdgeInput, setManualLongEdgeInput] = useState('')
   const [authed, setAuthed] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
-  const recoverPromptShownRef = useRef(false)
+  const [recoverPromptVisible, setRecoverPromptVisible] = useState(false)
   const abortRef = useRef<PatternAbortController | null>(null)
   const generatingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
+  const recoverPromptResolverRef = useRef<((action: RecoverPromptAction) => void) | null>(null)
 
   useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
 
@@ -161,6 +165,23 @@ export default function GeneratePage() {
     setConfig(next.config)
     setManualLongEdge(null)
     setManualLongEdgeInput('')
+  }
+
+  const promptRecoverablePattern = useCallback((): Promise<RecoverPromptAction> => {
+    if (!hasRecoverablePattern()) return Promise.resolve('none')
+    if (recoverPromptResolverRef.current) return Promise.resolve('none')
+
+    setRecoverPromptVisible(true)
+    return new Promise((resolve) => {
+      recoverPromptResolverRef.current = resolve
+    })
+  }, [])
+
+  const resolveRecoverPrompt = (action: RecoverPromptAction) => {
+    const resolver = recoverPromptResolverRef.current
+    recoverPromptResolverRef.current = null
+    setRecoverPromptVisible(false)
+    resolver?.(action)
   }
 
   useDidShow(async () => {
@@ -173,42 +194,24 @@ export default function GeneratePage() {
     if (Taro.getStorageSync(GENERATE_PAGE_RESET_KEY)) {
       Taro.removeStorageSync(GENERATE_PAGE_RESET_KEY)
       clearRecoverablePattern()
-      recoverPromptShownRef.current = false
       applyDraftState(resetGenerateDraft())
       resetScrollTop(setScrollTop)
       return
     }
 
-    if (!recoverPromptShownRef.current && hasRecoverablePattern()) {
-      recoverPromptShownRef.current = true
-      const result = await Taro.showModal({
-        title: '继续未完成图纸？',
-        content: '检测到上次未发布成功的图纸，可以继续预览和编辑。',
-        confirmText: '继续',
-        cancelText: '重新生成',
-      })
-      if (result.confirm) {
+    if (!launchRecoverPromptChecked) {
+      launchRecoverPromptChecked = true
+      const action = await promptRecoverablePattern()
+      if (action === 'continue') {
         Taro.navigateTo({ url: '/pages/preview/index' })
         return
       }
-      clearRecoverablePattern()
-      applyDraftState(resetGenerateDraft())
-      resetScrollTop(setScrollTop)
-      return
-    }
-
-    if (hasRecoverablePattern()) {
-      const draft = getGenerateDraft()
-      if (draft?.imagePath) {
-        setImagePath(draft.imagePath)
+      if (action === 'restart') {
+        clearRecoverablePattern()
+        applyDraftState(resetGenerateDraft())
+        resetScrollTop(setScrollTop)
+        return
       }
-      if (draft?.config) {
-        setConfig(draft.config)
-        setManualLongEdge(null)
-        setManualLongEdgeInput('')
-      }
-    } else if (!getGenerateDraft()?.imagePath) {
-      applyDraftState(resetGenerateDraft())
     }
 
     resetScrollTop(setScrollTop)
@@ -217,6 +220,20 @@ export default function GeneratePage() {
   useUnload(() => {
     abortRef.current?.abort()
   })
+
+  const handleBeforeImageChoose = async () => {
+    const action = await promptRecoverablePattern()
+    if (action === 'continue') {
+      Taro.navigateTo({ url: '/pages/preview/index' })
+      return false
+    }
+    if (action === 'restart') {
+      clearRecoverablePattern()
+      applyDraftState(resetGenerateDraft())
+      resetScrollTop(setScrollTop)
+    }
+    return true
+  }
 
   const updateManualLongEdge = (value: number) => {
     const nextLongEdge = clampLongEdge(value, config.styleMode)
@@ -396,7 +413,7 @@ export default function GeneratePage() {
         showScrollbar={false}
       >
         <View className='generate-page__body'>
-          <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} />
+          <ImageUploader imagePath={imagePath} onSelect={handleImageSelect} onBeforeChoose={handleBeforeImageChoose} />
 
         <StyleModeSelector value={config.styleMode} onChange={handleStyleModeChange} />
 
@@ -514,6 +531,39 @@ export default function GeneratePage() {
           </View>
         </Button>
       </View>
+
+      {recoverPromptVisible ? (
+        <View className='generate-page__recover-mask'>
+          <View className='generate-page__recover-card'>
+            <View className='generate-page__recover-icon-wrap'>
+              <View className='generate-page__recover-paper'>
+                <View className='generate-page__recover-paper-fold' />
+                <View className='generate-page__recover-paper-line generate-page__recover-paper-line--wide' />
+                <View className='generate-page__recover-paper-line' />
+                <View className='generate-page__recover-paper-line generate-page__recover-paper-line--short' />
+              </View>
+            </View>
+            <Text className='generate-page__recover-title'>继续未完成图纸？</Text>
+            <Text className='generate-page__recover-desc'>
+              检测到上次未发布的图纸，可以继续预览和编辑。
+            </Text>
+            <View className='generate-page__recover-actions'>
+              <View
+                className='generate-page__recover-btn generate-page__recover-btn--secondary'
+                onClick={() => resolveRecoverPrompt('restart')}
+              >
+                <Text>重新生成</Text>
+              </View>
+              <View
+                className='generate-page__recover-btn generate-page__recover-btn--primary'
+                onClick={() => resolveRecoverPrompt('continue')}
+              >
+                <Text>继续</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      ) : null}
 
       <Canvas
         type='2d'

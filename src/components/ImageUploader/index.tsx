@@ -6,10 +6,16 @@ import './index.scss'
 interface ImageUploaderProps {
   imagePath: string
   onSelect: (path: string) => void
+  onBeforeChoose?: () => boolean | Promise<boolean>
 }
 
-export default function ImageUploader({ imagePath, onSelect }: ImageUploaderProps) {
+export default function ImageUploader({ imagePath, onSelect, onBeforeChoose }: ImageUploaderProps) {
   const handleChoose = async () => {
+    if (onBeforeChoose) {
+      const shouldContinue = await onBeforeChoose()
+      if (!shouldContinue) return
+    }
+
     try {
       const res = await chooseMediaWithPermission({
         count: 1,
