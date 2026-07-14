@@ -49,6 +49,33 @@ function finishNavigate(): void {
   }, NAV_COOLDOWN_MS)
 }
 
+function navigateToFallback(fallbackUrl?: string, isActiveNavigation = false): void {
+  if (!fallbackUrl) {
+    if (isActiveNavigation) finishNavigate()
+    return
+  }
+
+  const targetPath = normalizePath(fallbackUrl.split('?')[0])
+  const targetUrl = normalizePath(fallbackUrl)
+  if (isOnPage(targetUrl) || isOnPage(targetPath)) {
+    if (isActiveNavigation) finishNavigate()
+    return
+  }
+
+  if (!isActiveNavigation && !canNavigate()) return
+
+  if (TAB_PAGE_SET.has(targetPath)) {
+    Taro.switchTab({ url: targetPath })
+      .catch(() => Taro.reLaunch({ url: targetPath }))
+      .finally(finishNavigate)
+    return
+  }
+
+  Taro.redirectTo({ url: fallbackUrl })
+    .catch(() => Taro.reLaunch({ url: fallbackUrl }))
+    .finally(finishNavigate)
+}
+
 export function safeSwitchTab(url: string): void {
   const target = normalizePath(url.split('?')[0])
   if (!TAB_PAGE_SET.has(target)) {
@@ -116,25 +143,14 @@ export function safeNavigateTo(url: string): void {
 
 export function safeNavigateBack(fallbackUrl?: string): void {
   const pages = Taro.getCurrentPages()
-  if (pages.length > 1) {
-    if (!canNavigate()) return
-    Taro.navigateBack()
-      .catch(() => {
-        if (!fallbackUrl) return
-        if (TAB_PAGE_SET.has(normalizePath(fallbackUrl.split('?')[0]))) {
-          safeSwitchTab(fallbackUrl)
-        } else {
-          safeRedirect(fallbackUrl)
-        }
-      })
-      .finally(finishNavigate)
+  const currentPath = getCurrentPagePath()
+  if (pages.length <= 1 || TAB_PAGE_SET.has(currentPath)) {
+    navigateToFallback(fallbackUrl)
     return
   }
-  if (fallbackUrl) {
-    if (TAB_PAGE_SET.has(normalizePath(fallbackUrl.split('?')[0]))) {
-      safeSwitchTab(fallbackUrl)
-    } else {
-      safeRedirect(fallbackUrl)
-    }
-  }
+
+  if (!canNavigate()) return
+  Taro.navigateBack()
+    .then(finishNavigate)
+    .catch(() => navigateToFallback(fallbackUrl, true))
 }

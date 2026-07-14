@@ -5,6 +5,7 @@ import { submitFeedback } from '@/services/communityService'
 import { uploadCloudFile } from '@/services/cloudClient'
 import { FEEDBACK_TYPES, type FeedbackType } from '@/types/community'
 import { useDefaultPageShare } from '@/utils/shareReward'
+import { safeNavigateBack } from '@/utils/navigation'
 import './index.scss'
 
 const MAX_IMAGES = 3
@@ -78,7 +79,7 @@ export default function FeedbackFormPage() {
       Taro.hideLoading()
       Taro.showToast({ title: '提交成功', icon: 'success' })
       setTimeout(() => {
-        Taro.navigateBack()
+        safeNavigateBack('/pages/feedback/index')
       }, 1500)
     } catch (error) {
       Taro.hideLoading()

@@ -25,7 +25,7 @@ import {
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import { getCachedPreviewData, removeCachedPreview, resolvePatternForPreview, resolvePreviewData } from '@/utils/patternPreviewCache'
 import { showModal } from '@/utils/dialog'
-import { safeNavigateTo } from '@/utils/navigation'
+import { safeNavigateBack, safeNavigateTo } from '@/utils/navigation'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import { PATTERN_STORAGE_KEY } from '@/types'
 import { createPostPreviewStoragePayload } from '@/utils/patternStorage'
@@ -294,7 +294,9 @@ export default function MyPostDetail() {
       removeCachedPreview(source.id)
       Taro.hideLoading()
       Taro.showToast({ title: '已删除', icon: 'success' })
-      setTimeout(() => Taro.navigateBack(), 500)
+      setTimeout(() => {
+        safeNavigateBack(isPublished ? '/pages/my-posts/index' : '/pages/drafts/index')
+      }, 500)
     } catch (error) {
       Taro.hideLoading()
       Taro.showToast({

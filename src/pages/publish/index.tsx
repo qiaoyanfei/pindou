@@ -15,6 +15,7 @@ import { removeCachedPreview } from '@/utils/patternPreviewCache'
 import { STYLE_MODE_LABELS } from '@/utils/constants'
 import type { PostCategory } from '@/types/community'
 import { useDefaultPageShare } from '@/utils/shareReward'
+import { safeNavigateBack } from '@/utils/navigation'
 import './index.scss'
 
 function guessImageExtension(path: string): string {
@@ -39,7 +40,7 @@ export default function PublishPage() {
     const workflow = readPublishWorkflow()
     if (!workflow?.pattern) {
       Taro.showToast({ title: '请先准备图纸', icon: 'none' })
-      setTimeout(() => Taro.navigateBack(), 800)
+      setTimeout(() => safeNavigateBack('/pages/preview/index'), 800)
       return
     }
     setPayload(workflow)

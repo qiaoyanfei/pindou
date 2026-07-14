@@ -51,6 +51,7 @@ import {
 import { resolveDisplayedPattern, type PreviewVariant } from '@/utils/patternVariant'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import { useShareContent } from '@/utils/shareReward'
+import { safeNavigateBack } from '@/utils/navigation'
 import './index.scss'
 
 interface StoredPayload extends PatternStoragePayload {}
@@ -182,7 +183,7 @@ export default function PreviewPage() {
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       if (basePatternRef.current) return
-      Taro.navigateBack()
+      safeNavigateBack('/pages/generate/index')
       return
     }
 

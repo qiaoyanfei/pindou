@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternStoragePayload } from '@/types'
 import { bumpPatternPreviewSession } from '@/utils/patternStorage'
 import { useDefaultPageShare } from '@/utils/shareReward'
+import { safeNavigateBack } from '@/utils/navigation'
 import './index.scss'
 
 interface StoredPayload extends PatternStoragePayload {}
@@ -88,7 +89,7 @@ export default function PatternEditPage() {
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       Taro.showToast({ title: '请先生成图纸', icon: 'none' })
-      setTimeout(() => Taro.navigateBack(), 800)
+      setTimeout(() => safeNavigateBack('/pages/generate/index'), 800)
       return
     }
 
@@ -123,7 +124,7 @@ export default function PatternEditPage() {
         return
       }
     }
-    Taro.navigateBack()
+    safeNavigateBack('/pages/preview/index')
   }
 
   if (!pattern) {
