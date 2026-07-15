@@ -1,10 +1,10 @@
-import { View, Text, ScrollView, Image } from '@tarojs/components'
+import { View, Text, ScrollView, Image, Button } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import mineBeanIcon from '@/assets/icons/mine-bean.svg'
 import beansPouchIcon from '@/assets/beans-pouch-art.jpg'
 import chevronRightIcon from '@/assets/icons/chevron-right-grey.svg'
-import { fetchBeanLogs, getCachedUser } from '@/services/communityService'
+import { fetchBeanLogs, getCachedConfig, getCachedUser } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { refreshSessionIfLoggedIn } from '@/services/session'
 import { goLogin } from '@/utils/authRoute'
@@ -12,7 +12,8 @@ import { safeSwitchTab } from '@/utils/navigation'
 import { formatDateTime } from '@/utils/formatDate'
 import { getBeanLogIconStyle } from '@/utils/beanLogIcon'
 import type { BeanTransaction } from '@/types/community'
-import { useDefaultPageShare } from '@/utils/shareReward'
+import { claimShareReward, useShareContent } from '@/utils/shareReward'
+import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import './index.scss'
 
 type BeanFilter = 'all' | 'income' | 'expense'
@@ -24,17 +25,23 @@ const TABS: { key: BeanFilter; label: string }[] = [
 ]
 
 export default function BeansPage() {
-  useDefaultPageShare({ title: '我的小豆', path: '/pages/beans/index' })
+  useShareContent(() => ({
+    title: `一起来${MINI_PROGRAM_NAME}，生成专属拼豆图纸`,
+    path: `/pages/home/index?inviterId=${getCachedUser()?.openid || ''}`,
+  }))
 
   const [balance, setBalance] = useState(0)
   const [filter, setFilter] = useState<BeanFilter>('all')
   const [logs, setLogs] = useState<BeanTransaction[]>([])
   const [loading, setLoading] = useState(true)
+  const hasLoadedLogsRef = useRef(false)
+  const shareReward = getCachedConfig()?.shareReward ?? 5
 
   const loadLogs = useCallback(async (nextFilter: BeanFilter) => {
     setLoading(true)
     try {
       setLogs(await fetchBeanLogs(nextFilter))
+      hasLoadedLogsRef.current = true
     } catch (error) {
       Taro.showToast({
         title: error instanceof Error ? error.message : '加载失败',
@@ -52,7 +59,9 @@ export default function BeansPage() {
       return
     }
     setBalance(user?.beanBalance ?? 0)
-    loadLogs(filter)
+    if (!hasLoadedLogsRef.current) {
+      loadLogs(filter)
+    }
   })
 
   const handleTabChange = (nextFilter: BeanFilter) => {
@@ -60,8 +69,12 @@ export default function BeansPage() {
     loadLogs(nextFilter)
   }
 
-  const goEarn = () => {
-    Taro.navigateTo({ url: '/pages/drafts/index' })
+  const handleShareEarn = () => {
+    void claimShareReward((result) => {
+      setBalance(result.beanBalance)
+      hasLoadedLogsRef.current = false
+      loadLogs(filter)
+    })
   }
 
   const goSpend = () => {
@@ -86,16 +99,20 @@ export default function BeansPage() {
             </View>
 
             <View className='beans-page__actions'>
-              <View className='beans-page__action' onClick={goEarn}>
+              <Button
+                className='beans-page__action'
+                openType='share'
+                onClick={handleShareEarn}
+              >
                 <View className='beans-page__action-icon beans-page__action-icon--earn'>
                   <Text>+</Text>
                 </View>
                 <View className='beans-page__action-text'>
                   <Text className='beans-page__action-title'>攒小豆</Text>
-                  <Text className='beans-page__action-desc'>发布图纸得奖励</Text>
+                  <Text className='beans-page__action-desc'>分享奖励 {shareReward} 小豆</Text>
                 </View>
                 <Image className='beans-page__action-arrow' src={chevronRightIcon} mode='aspectFit' />
-              </View>
+              </Button>
               <View className='beans-page__action-divider' />
               <View className='beans-page__action' onClick={goSpend}>
                 <View className='beans-page__action-icon beans-page__action-icon--spend'>

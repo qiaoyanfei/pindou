@@ -1,4 +1,4 @@
-import { View, Text, PageContainer } from '@tarojs/components'
+import { View, Text, PageContainer, AdCustom } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -14,6 +14,8 @@ import {
 import { setTabBarInteractionBlocked } from '@/utils/tabBar'
 import './index.scss'
 
+const GENERATION_AD_UNIT_ID = 'adunit-eea1e16ec3cd6b6d'
+
 export interface PatternGenerationOverlayProps {
   visible: boolean
   stageMessage: string
@@ -28,6 +30,7 @@ export default function PatternGenerationOverlay({
   onCancel,
 }: PatternGenerationOverlayProps) {
   const [canCancel, setCanCancel] = useState(false)
+  const [adVisible, setAdVisible] = useState(process.env.TARO_ENV === 'weapp')
   const [backGuardVisible, setBackGuardVisible] = useState(false)
   const cancelUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const remountBackGuardRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -68,6 +71,7 @@ export default function PatternGenerationOverlay({
 
     if (!visible) {
       setCanCancel(false)
+      setAdVisible(process.env.TARO_ENV === 'weapp')
       return
     }
 
@@ -96,6 +100,19 @@ export default function PatternGenerationOverlay({
   const stagePercentText = formatGenerationOverlayLocalPercent(stageMessage, overallPercent)
   const overallPercentText = formatGenerationOverlayOverallPercent(overallPercent)
   const hintText = canCancel ? PATTERN_GENERATION_OVERLAY_PATIENCE_HINT : PATTERN_GENERATION_OVERLAY_HINT
+  const adEventHandlers = {
+    onLoad: () => {
+      console.log('原生模板广告加载成功')
+    },
+    onError: (error) => {
+      console.error('原生模板广告加载失败', error)
+      setAdVisible(false)
+    },
+    onClose: () => {
+      console.log('原生模板广告关闭')
+      setAdVisible(false)
+    },
+  } as Record<string, unknown>
 
   return (
     <>
@@ -134,6 +151,15 @@ export default function PatternGenerationOverlay({
         </View>
 
         <Text className='pattern-generation-overlay__hint'>{hintText}</Text>
+
+        {adVisible ? (
+          <View className='pattern-generation-overlay__ad'>
+            <AdCustom
+              unitId={GENERATION_AD_UNIT_ID}
+              {...adEventHandlers}
+            />
+          </View>
+        ) : null}
 
         {canCancel && onCancel ? (
           <View className='pattern-generation-overlay__cancel' onClick={onCancel}>

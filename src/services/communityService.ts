@@ -142,11 +142,13 @@ export async function fetchFeed(tab: FeedTab, page = 1): Promise<{ list: PostSum
 export async function searchPosts(
   keyword: string,
   page = 1,
+  category?: PostCategory | '',
 ): Promise<{ list: PostSummary[]; hasMore: boolean }> {
   const result = await callCloudApi<{ list: PostSummary[]; hasMore?: boolean }>('searchPosts', {
     keyword,
     page,
     pageSize: 20,
+    category,
   })
   const fileIds = result.list
     .map((item) => item.coverFileId)
@@ -185,10 +187,37 @@ export async function toggleFavorite(postId: string): Promise<{ favorited: boole
   return callCloudApi('toggleFavorite', { postId })
 }
 
-export async function downloadPost(postId: string): Promise<{ post: PostDetail; charged: boolean; beanCost?: number }> {
-  const result = await callCloudApi<{ post: PostDetail; charged: boolean; beanCost?: number }>('downloadPost', { postId })
+export async function downloadPost(
+  postId: string,
+  options?: {
+    rewardedVideoCompleted?: boolean
+    chargeOnAdNotCompleted?: boolean
+  },
+): Promise<{
+  post: PostDetail
+  charged: boolean
+  beanCost?: number
+  beanBalance?: number
+  rewardedVideoFree?: boolean
+}> {
+  const result = await callCloudApi<{
+    post: PostDetail
+    charged: boolean
+    beanCost?: number
+    beanBalance?: number
+    rewardedVideoFree?: boolean
+  }>('downloadPost', {
+    postId,
+    rewardedVideoCompleted: Boolean(options?.rewardedVideoCompleted),
+    chargeOnAdNotCompleted: Boolean(options?.chargeOnAdNotCompleted),
+  })
   if (cachedUser && result.charged && result.beanCost) {
-    cachedUser = { ...cachedUser, beanBalance: Math.max(0, cachedUser.beanBalance - result.beanCost) }
+    const nextBalance = Number.isFinite(result.beanBalance)
+      ? Number(result.beanBalance)
+      : cachedUser.beanBalance - result.beanCost
+    cachedUser = { ...cachedUser, beanBalance: Math.max(0, nextBalance) }
+    const config = getSessionConfig()
+    if (config) persistSession(cachedUser, config)
   }
   return result
 }

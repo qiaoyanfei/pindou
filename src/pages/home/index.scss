@@ -10,7 +10,7 @@ $home-padding-x: 32px;
 }
 
 .home-page__header {
-  padding: 0 $home-padding-x 20px;
+  padding: 0 $home-padding-x 8px;
   background: #fff;
 }
 
@@ -61,6 +61,49 @@ $home-padding-x: 32px;
   border: 1px solid #e5e7eb;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.home-page__sticky-controls {
+  position: sticky;
+  z-index: 10;
+  padding: 16px $home-padding-x 0;
+  background: rgba(247, 247, 248, 0.96);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+
+.home-page__category-scroll {
+  width: 100%;
+  margin-top: 16px;
+  white-space: nowrap;
+}
+
+.home-page__category-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 100%;
+  padding-bottom: 4px;
+  box-sizing: border-box;
+}
+
+.home-page__category-chip {
+  flex-shrink: 0;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 24px;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.home-page__category-chip.is-active {
+  border-color: rgba(124, 58, 237, 0.3);
+  background: #f4efff;
+  color: $color-primary;
+  font-weight: 700;
 }
 
 .home-page__search-icon {
@@ -147,7 +190,7 @@ $home-padding-x: 32px;
 
 .home-page__mode-bar {
   position: relative;
-  height: 72px;
+  height: 68px;
 }
 
 .home-page__tabs {
@@ -156,8 +199,8 @@ $home-padding-x: 32px;
   display: flex;
   align-items: flex-start;
   gap: 40px;
-  padding: 24px $home-padding-x 0;
-  height: 72px;
+  padding: 22px 0 0;
+  height: 68px;
   box-sizing: border-box;
 }
 
@@ -201,8 +244,8 @@ $home-padding-x: 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px $home-padding-x 12px;
-  height: 72px;
+  padding: 22px 0 12px;
+  height: 68px;
   box-sizing: border-box;
   font-size: 26px;
   line-height: 1.2;

@@ -64,6 +64,7 @@ export interface PostSummary {
   updatedAt?: string
   liked?: boolean
   favorited?: boolean
+  downloaded?: boolean
   likedAt?: string
   favoritedAt?: string
   patternFileId?: string

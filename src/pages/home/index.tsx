@@ -1,4 +1,4 @@
-import { View, Text, Input, Image } from '@tarojs/components'
+import { View, Text, Input, Image, ScrollView } from '@tarojs/components'
 import Taro, { usePullDownRefresh, useReachBottom, useLoad, useDidShow } from '@tarojs/taro'
 import {
   forwardRef,
@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type RefObject,
 } from 'react'
 import {
   fetchFeed,
@@ -18,6 +17,7 @@ import {
   searchPosts,
   buildPostDetailUrl,
   buildPostDetailForPreview,
+  CATEGORY_OPTIONS,
 } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
@@ -28,7 +28,7 @@ import heroBanner from '@/assets/home-hero-mascot.jpg'
 import searchIcon from '@/assets/icons/search.svg'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import { useShareContent } from '@/utils/shareReward'
-import type { FeedTab, PostSummary } from '@/types/community'
+import type { FeedTab, PostCategory, PostSummary } from '@/types/community'
 import {
   applyPatchesToPosts,
   patchPostInList,
@@ -48,8 +48,14 @@ const TABS: { key: FeedTab; label: string }[] = [
   { key: 'latest', label: '最新' },
 ]
 
+const CATEGORY_FILTERS: { key: PostCategory | ''; label: string }[] = [
+  { key: '', label: '全部' },
+  ...CATEGORY_OPTIONS.map((item) => ({ key: item, label: item })),
+]
+
 interface SearchState {
   keyword: string
+  category: PostCategory | ''
   results: PostSummary[]
   page: number
   hasMore: boolean
@@ -58,6 +64,7 @@ interface SearchState {
 
 const EMPTY_SEARCH_STATE: SearchState = {
   keyword: '',
+  category: '',
   results: [],
   page: 1,
   hasMore: false,
@@ -99,6 +106,11 @@ function getCoverAspectPadding(item: PostSummary): string {
     return `${(item.height / item.width) * 100}%`
   }
   return '100%'
+}
+
+function filterPostsByCategory(list: PostSummary[], category: PostCategory | ''): PostSummary[] {
+  if (!category) return list
+  return list.filter((item) => item.category === category)
 }
 
 const FeedCard = memo(function FeedCard({ item, onClick }: { item: PostSummary; onClick: () => void }) {
@@ -227,13 +239,9 @@ const HomeSearchBox = memo(forwardRef<HomeSearchBoxHandle, {
 
 const HomeStaticHeader = memo(function HomeStaticHeader({
   layout,
-  searchBoxRef,
-  onSearch,
   onGenerate,
 }: {
   layout: HeaderLayout
-  searchBoxRef: RefObject<HomeSearchBoxHandle>
-  onSearch: (value: string) => void
   onGenerate: () => void
 }) {
   return (
@@ -246,7 +254,6 @@ const HomeStaticHeader = memo(function HomeStaticHeader({
         }}
       >
         <HomeBrand layout={layout} />
-        <HomeSearchBox ref={searchBoxRef} onSearch={onSearch} />
       </View>
 
       <HomeHero onClick={onGenerate} />
@@ -257,16 +264,23 @@ const HomeStaticHeader = memo(function HomeStaticHeader({
 const HomeModeBar = memo(function HomeModeBar({
   isSearching,
   searchKeyword,
+  searchCategory,
   tab,
   onTabChange,
   onClearSearch,
 }: {
   isSearching: boolean
   searchKeyword: string
+  searchCategory: PostCategory | ''
   tab: FeedTab
   onTabChange: (nextTab: FeedTab) => void
   onClearSearch: () => void
 }) {
+  const searchLabel = [
+    searchKeyword ? `搜索「${searchKeyword}」` : '',
+    searchCategory ? `分类「${searchCategory}」` : '',
+  ].filter(Boolean).join(' · ')
+
   return (
     <View className='home-page__mode-bar'>
       <View className={`home-page__tabs${isSearching ? ' is-hidden' : ''}`}>
@@ -282,7 +296,7 @@ const HomeModeBar = memo(function HomeModeBar({
       </View>
 
       <View className={`home-page__search-hint${isSearching ? '' : ' is-hidden'}`}>
-        <Text>搜索「{searchKeyword}」</Text>
+        <Text>{searchLabel}</Text>
         <Text
           className='home-page__search-clear'
           onClick={onClearSearch}
@@ -294,15 +308,19 @@ const HomeModeBar = memo(function HomeModeBar({
   )
 })
 
-const HomeFixedHeader = memo(function HomeFixedHeader({
+const HomeStickyControls = memo(function HomeStickyControls({
   layout,
   onSearch,
+  selectedCategory,
+  onCategoryChange,
   onTabChange,
   onClearSearch,
   onGenerate,
 }: {
   layout: HeaderLayout
-  onSearch: (value: string) => void
+  onSearch: (value: string, category: PostCategory | '') => void
+  selectedCategory: PostCategory | ''
+  onCategoryChange: (category: PostCategory | '') => void
   onTabChange: (nextTab: FeedTab) => void
   onClearSearch: () => void
   onGenerate: () => void
@@ -310,27 +328,38 @@ const HomeFixedHeader = memo(function HomeFixedHeader({
   const searchBoxRef = useRef<HomeSearchBoxHandle>(null)
   const [displayTab, setDisplayTab] = useState<FeedTab>('recommend')
   const [displaySearchKeyword, setDisplaySearchKeyword] = useState('')
-  const isSearching = displaySearchKeyword.length > 0
+  const isSearching = displaySearchKeyword.length > 0 || Boolean(selectedCategory)
+  const stickyTop = layout.paddingTop + layout.rowHeight + 8
 
   const handleSearch = useCallback((value: string) => {
     const trimmed = value.trim()
-    if (!trimmed) {
+    if (!trimmed && !selectedCategory) {
       searchBoxRef.current?.clear()
       setDisplaySearchKeyword('')
       onClearSearch()
       return
     }
     setDisplaySearchKeyword(trimmed)
-    onSearch(trimmed)
-  }, [onClearSearch, onSearch])
+    onSearch(trimmed, selectedCategory)
+  }, [onClearSearch, onSearch, selectedCategory])
+
+  const handleCategoryChange = useCallback((category: PostCategory | '') => {
+    onCategoryChange(category)
+    if (displaySearchKeyword || category) {
+      onSearch(displaySearchKeyword, category)
+      return
+    }
+    onClearSearch()
+  }, [displaySearchKeyword, onCategoryChange, onClearSearch, onSearch])
 
   const handleTabChange = useCallback((nextTab: FeedTab) => {
     if (nextTab === displayTab && !isSearching) return
     searchBoxRef.current?.clear()
     setDisplaySearchKeyword('')
+    onCategoryChange('')
     setDisplayTab(nextTab)
     onTabChange(nextTab)
-  }, [displayTab, isSearching, onTabChange])
+  }, [displayTab, isSearching, onCategoryChange, onTabChange])
 
   const handleClearSearch = useCallback(() => {
     searchBoxRef.current?.clear()
@@ -342,18 +371,40 @@ const HomeFixedHeader = memo(function HomeFixedHeader({
     <>
       <HomeStaticHeader
         layout={layout}
-        searchBoxRef={searchBoxRef}
-        onSearch={handleSearch}
         onGenerate={onGenerate}
       />
 
-      <HomeModeBar
-        isSearching={isSearching}
-        searchKeyword={displaySearchKeyword}
-        tab={displayTab}
-        onTabChange={handleTabChange}
-        onClearSearch={handleClearSearch}
-      />
+      <View className='home-page__sticky-controls' style={{ top: `${stickyTop}px` }}>
+        <HomeSearchBox ref={searchBoxRef} onSearch={handleSearch} />
+
+        <ScrollView
+          className='home-page__category-scroll'
+          scrollX
+          enhanced
+          showScrollbar={false}
+        >
+          <View className='home-page__category-list'>
+            {CATEGORY_FILTERS.map((item) => (
+              <View
+                key={item.key || 'all'}
+                className={`home-page__category-chip${selectedCategory === item.key ? ' is-active' : ''}`}
+                onClick={() => handleCategoryChange(item.key)}
+              >
+                <Text>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        <HomeModeBar
+          isSearching={isSearching}
+          searchKeyword={displaySearchKeyword}
+          searchCategory={selectedCategory}
+          tab={displayTab}
+          onTabChange={handleTabChange}
+          onClearSearch={handleClearSearch}
+        />
+      </View>
     </>
   )
 })
@@ -390,10 +441,12 @@ export default function HomePage() {
   const [feeds, setFeeds] = useState(readHomeFeedCache)
   const feedsRef = useRef(feeds)
   const [searchState, setSearchState] = useState<SearchState>(EMPTY_SEARCH_STATE)
+  const [selectedCategory, setSelectedCategory] = useState<PostCategory | ''>('')
   const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null)
   const runtimeRef = useRef({
     tab: 'recommend' as FeedTab,
     searchKeyword: '',
+    searchCategory: '' as PostCategory | '',
     isSearching: false,
     hasMore: false,
     loadingTab: null as FeedTab | null,
@@ -402,17 +455,18 @@ export default function HomePage() {
   })
 
   const searchKeyword = searchState.keyword
+  const searchCategory = searchState.category
   const searchResults = searchState.results
   const searchPage = searchState.page
   const searchHasMore = searchState.hasMore
   const searching = searchState.loading
-  const isSearching = searchKeyword.length > 0
+  const isSearching = searchKeyword.length > 0 || Boolean(searchCategory)
   const currentFeed = feeds[tab]
   const posts = isSearching ? searchResults : currentFeed.posts
   const hasMore = isSearching ? searchHasMore : currentFeed.hasMore
   const page = isSearching ? searchPage : currentFeed.page
   feedsRef.current = feeds
-  runtimeRef.current = { tab, searchKeyword, isSearching, hasMore, loadingTab, page, searchPage }
+  runtimeRef.current = { tab, searchKeyword, searchCategory, isSearching, hasMore, loadingTab, page, searchPage }
   const showInitialLoading = !isSearching
     && posts.length === 0
     && loadingTab === tab
@@ -465,11 +519,13 @@ export default function HomePage() {
 
   const loadSearch = useCallback(async (
     value: string,
+    category: PostCategory | '' = '',
     options?: { page?: number; silent?: boolean; append?: boolean },
   ) => {
     const trimmed = value.trim()
-    if (!trimmed) {
+    if (!trimmed && !category) {
       setSearchState(EMPTY_SEARCH_STATE)
+      setSelectedCategory('')
       const currentTab = runtimeRef.current.tab
       if (feedsRef.current[currentTab].posts.length === 0) {
         await loadFeed(currentTab, 1, true)
@@ -480,24 +536,34 @@ export default function HomePage() {
     const silent = options?.silent ?? false
     const nextPage = options?.page ?? 1
     const append = options?.append ?? false
+    const canUseLocalCategoryResults = !append && nextPage === 1 && !trimmed && Boolean(category)
+    const localCategoryResults = canUseLocalCategoryResults
+      ? filterPostsByCategory(feedsRef.current[runtimeRef.current.tab].posts, category)
+      : []
     if (!silent) {
       setSearchState((prev) => ({
         keyword: trimmed,
-        results: append ? prev.results : [],
+        category,
+        results: append ? prev.results : applyPatchesToPosts(localCategoryResults),
         page: nextPage,
         hasMore: append ? prev.hasMore : false,
         loading: true,
       }))
     }
     try {
-      const result = await searchPosts(trimmed, nextPage)
+      const result = await searchPosts(trimmed, nextPage, category)
+      const filteredList = filterPostsByCategory(result.list, category)
+      const nextList = canUseLocalCategoryResults && filteredList.length === 0 && localCategoryResults.length > 0
+        ? localCategoryResults
+        : filteredList
       setSearchState((prev) => ({
         keyword: trimmed,
+        category,
         results: applyPatchesToPosts(append
-          ? [...prev.results, ...result.list]
-          : result.list),
+          ? [...prev.results, ...nextList]
+          : nextList),
         page: nextPage,
-        hasMore: result.hasMore,
+        hasMore: result.hasMore && nextList.length > 0,
         loading: false,
       }))
     } catch (error) {
@@ -583,9 +649,14 @@ export default function HomePage() {
   })
 
   usePullDownRefresh(() => {
-    const { isSearching: searchingNow, searchKeyword: keywordNow, tab: currentTab } = runtimeRef.current
-    if (searchingNow && keywordNow) {
-      void loadSearch(keywordNow, { page: 1, silent: true })
+    const {
+      isSearching: searchingNow,
+      searchKeyword: keywordNow,
+      searchCategory: categoryNow,
+      tab: currentTab,
+    } = runtimeRef.current
+    if (searchingNow) {
+      void loadSearch(keywordNow, categoryNow, { page: 1, silent: true })
       return
     }
     void loadFeed(currentTab, 1, true)
@@ -601,10 +672,14 @@ export default function HomePage() {
     } = runtimeRef.current
     if (searchingNow) {
       if (!canLoadMore || searching) return
-      void loadSearch(runtimeRef.current.searchKeyword, {
-        page: runtimeRef.current.searchPage + 1,
-        append: true,
-      })
+      void loadSearch(
+        runtimeRef.current.searchKeyword,
+        runtimeRef.current.searchCategory,
+        {
+          page: runtimeRef.current.searchPage + 1,
+          append: true,
+        },
+      )
       return
     }
     if (!canLoadMore || loadingNow === currentTab) return
@@ -615,6 +690,7 @@ export default function HomePage() {
     const { tab: currentTab, isSearching: searchingNow } = runtimeRef.current
     if (nextTab === currentTab && !searchingNow) return
     setSearchState(EMPTY_SEARCH_STATE)
+    setSelectedCategory('')
     setTab(nextTab)
     if (feedsRef.current[nextTab].posts.length === 0) {
       void loadFeed(nextTab, 1, true)
@@ -623,6 +699,7 @@ export default function HomePage() {
 
   const clearSearch = useCallback(() => {
     setSearchState(EMPTY_SEARCH_STATE)
+    setSelectedCategory('')
   }, [])
 
   const openPost = useCallback((item: PostSummary) => {
@@ -642,9 +719,11 @@ export default function HomePage() {
 
   return (
     <View className='home-page'>
-      <HomeFixedHeader
+      <HomeStickyControls
         layout={headerLayout}
         onSearch={loadSearch}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
         onTabChange={handleTabChange}
         onClearSearch={clearSearch}
         onGenerate={goGenerate}

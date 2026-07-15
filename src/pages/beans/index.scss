@@ -93,9 +93,19 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  margin: 0;
   padding: 24px 16px 24px 20px;
   box-sizing: border-box;
   min-width: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.beans-page__action::after {
+  border: none;
 }
 
 .beans-page__action-divider {

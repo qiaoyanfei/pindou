@@ -487,16 +487,19 @@ async function syncAuthorProfileToPosts(openid, user) {
 async function attachInteractionFlags(openid, posts) {
   if (!posts.length) return posts
   const ids = posts.map((p) => p._id)
-  const [likes, favorites] = await Promise.all([
+  const [likes, favorites, downloads] = await Promise.all([
     db.collection('likes').where({ _openid: openid, postId: _.in(ids) }).get(),
     db.collection('favorites').where({ _openid: openid, postId: _.in(ids) }).get(),
+    db.collection('downloads').where({ _openid: openid, postId: _.in(ids) }).get(),
   ])
   const likedSet = new Set(likes.data.map((item) => item.postId))
   const favoritedSet = new Set(favorites.data.map((item) => item.favoritePostId || item.postId))
+  const downloadedSet = new Set(downloads.data.map((item) => item.postId))
   return posts.map((post) => ({
     ...post,
     liked: likedSet.has(post._id),
     favorited: favoritedSet.has(post._id),
+    downloaded: downloadedSet.has(post._id),
   }))
 }
 
@@ -644,15 +647,22 @@ function escapeRegExp(value) {
 
 async function handleSearchPosts(openid, data) {
   const keyword = String(data?.keyword || '').trim()
-  if (!keyword) return ok({ list: [], page: 1, hasMore: false })
+  const category = String(data?.category || '').trim()
+  if (!keyword && !category) return ok({ list: [], page: 1, hasMore: false })
 
   const page = Math.max(1, Number(data?.page || 1))
   const pageSize = Math.min(30, Math.max(1, Number(data?.pageSize || 20)))
   const skip = (page - 1) * pageSize
-  const pattern = db.RegExp({ regexp: escapeRegExp(keyword.toLowerCase()), options: 'i' })
+  const filter = { visibility: 'public' }
+  if (keyword) {
+    filter.searchText = db.RegExp({ regexp: escapeRegExp(keyword.toLowerCase()), options: 'i' })
+  }
+  if (category) {
+    filter.category = category
+  }
 
   const res = await db.collection('posts')
-    .where({ visibility: 'public', searchText: pattern })
+    .where(filter)
     .orderBy('publishedAt', 'desc')
     .skip(skip)
     .limit(pageSize)
@@ -670,15 +680,17 @@ async function handleGetPost(openid, data) {
   if (!post) return fail('图纸不存在')
   const canViewPrivatePost = post._openid === openid || await isAdmin(openid)
   if (post.visibility !== 'public' && !canViewPrivatePost) return fail('无权查看')
-  const [likes, favorites] = await Promise.all([
+  const [likes, favorites, downloads] = await Promise.all([
     db.collection('likes').where({ _openid: openid, postId }).limit(1).get(),
     db.collection('favorites').where({ _openid: openid, postId }).limit(1).get(),
+    db.collection('downloads').where({ _openid: openid, postId }).limit(1).get(),
   ])
   return ok({
     post: {
       ...mapPostSummary(post),
       liked: likes.data.length > 0,
       favorited: favorites.data.length > 0,
+      downloaded: downloads.data.length > 0,
     },
   })
 }
@@ -726,6 +738,8 @@ async function handleToggleFavorite(openid, data) {
 async function handleDownloadPost(openid, data) {
   const postId = data?.postId
   if (!postId) return fail('缺少 postId')
+  const rewardedVideoCompleted = data?.rewardedVideoCompleted === true
+  const chargeOnAdNotCompleted = data?.chargeOnAdNotCompleted === true
   const config = await getConfig()
   const user = await getUser(openid)
   if (!user) return fail('用户不存在')
@@ -736,20 +750,46 @@ async function handleDownloadPost(openid, data) {
   if (!post) return fail('图纸不存在')
 
   if (post._openid === openid) {
-    return ok({ post, charged: false })
+    return ok({ post: { ...post, downloaded: true }, charged: false })
   }
 
-  if (existingDownload.data.length === 0) {
+  if (existingDownload.data.length > 0) {
+    return ok({ post: { ...post, downloaded: true }, charged: false })
+  }
+
+  if (!rewardedVideoCompleted && chargeOnAdNotCompleted) {
     if (user.beanBalance < config.downloadCost) return fail('小豆不足，请先发布图纸赚取小豆')
     await addBeanTransaction(openid, 'expense', config.downloadCost, '下载图纸消耗', `《${post.title}》`)
+    const beanBalance = Math.max(0, (Number(user.beanBalance) || 0) - config.downloadCost)
     await db.collection('downloads').add({
       data: { _openid: openid, postId, beanCost: config.downloadCost, createdAt: db.serverDate() },
     })
     await db.collection('posts').doc(postId).update({ data: { downloadCount: _.inc(1) } })
-    return ok({ post, charged: true, beanCost: config.downloadCost })
+    return ok({ post: { ...post, downloaded: true }, charged: true, beanCost: config.downloadCost, beanBalance })
   }
 
-  return ok({ post, charged: false })
+  if (rewardedVideoCompleted) {
+    await db.collection('downloads').add({
+      data: {
+        _openid: openid,
+        postId,
+        beanCost: 0,
+        rewardedVideoFree: true,
+        createdAt: db.serverDate(),
+      },
+    })
+    await db.collection('posts').doc(postId).update({ data: { downloadCount: _.inc(1) } })
+    return ok({ post: { ...post, downloaded: true }, charged: false, rewardedVideoFree: true })
+  }
+
+  if (user.beanBalance < config.downloadCost) return fail('小豆不足，请先发布图纸赚取小豆')
+  await addBeanTransaction(openid, 'expense', config.downloadCost, '下载图纸消耗', `《${post.title}》`)
+  const beanBalance = Math.max(0, (Number(user.beanBalance) || 0) - config.downloadCost)
+  await db.collection('downloads').add({
+    data: { _openid: openid, postId, beanCost: config.downloadCost, createdAt: db.serverDate() },
+  })
+  await db.collection('posts').doc(postId).update({ data: { downloadCount: _.inc(1) } })
+  return ok({ post: { ...post, downloaded: true }, charged: true, beanCost: config.downloadCost, beanBalance })
 }
 
 async function handleSaveDraft(openid, data) {

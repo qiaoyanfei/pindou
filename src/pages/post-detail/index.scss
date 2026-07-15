@@ -284,13 +284,19 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 26px;
   color: $color-text-secondary;
 }
 
 .post-detail-page__engagement-icon {
-  font-size: 28px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.post-detail-page__engagement-value {
+  font-size: 26px;
+  color: $color-text-secondary;
+  line-height: 1.2;
 }
 
 .post-detail-page__desc {
@@ -347,8 +353,31 @@
 }
 
 .post-detail-page__action-icon {
-  font-size: 36px;
+  width: 40px;
+  height: 40px;
   margin-bottom: 4px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: $color-text-secondary;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 40px;
+  text-align: center;
+}
+
+.post-detail-page__action-icon-image {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+}
+
+.post-detail-page__share-btn .post-detail-page__action-icon {
+  font-size: 30px;
+}
+
+.post-detail-page__action.is-active .post-detail-page__action-icon {
+  background: #f3e8ff;
+  color: $color-primary;
 }
 
 .post-detail-page__action.is-active {

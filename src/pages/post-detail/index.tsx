@@ -33,6 +33,11 @@ import { COLOR_DETAIL_STORAGE_KEY, type PatternConfig, type PatternResult } from
 import type { PostDetail } from '@/types/community'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import { cachePostDetail, getCachedPostDetail } from '@/utils/postDetailCache'
+import mineFavoriteIcon from '@/assets/icons/mine-favorite.svg'
+import mineLikeIcon from '@/assets/icons/mine-like.svg'
+import statDownloadIcon from '@/assets/icons/stat-download-grey.svg'
+import statLikeIcon from '@/assets/icons/stat-like-grey.svg'
+import statStarIcon from '@/assets/icons/stat-star-grey.svg'
 import './index.scss'
 
 const POST_DETAIL_EXPORT_CANVAS_ID = 'post-detail-export-canvas'
@@ -43,7 +48,17 @@ interface ExportPayload {
   creatorNickname: string
   charged: boolean
   beanCost?: number
+  incrementDownloadCount: boolean
   showMirrorLabel: boolean
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  return (error as { errMsg?: string })?.errMsg || ''
+}
+
+function isBeanShortageError(error: unknown): boolean {
+  return getErrorMessage(error).includes('小豆不足')
 }
 
 interface PreviewData {
@@ -253,7 +268,7 @@ export default function PostDetailPage() {
         title: payload.charged && payload.beanCost ? `已保存，消耗 ${payload.beanCost} 小豆` : '已保存到相册',
         icon: 'success',
       })
-      if (payload.charged) {
+      if (payload.incrementDownloadCount) {
         setPost((prev) =>
           prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev,
         )
@@ -268,6 +283,55 @@ export default function PostDetailPage() {
     }
   }
 
+  const startDownloadExport = async (): Promise<void> => {
+    const currentPost = postRef.current
+    if (!currentPost) return
+
+    setDownloading(true)
+    Taro.showLoading({ title: '下载中...' })
+    try {
+      const result = await downloadPost(currentPost._id)
+      const basePattern = await loadPatternFromPost(result.post)
+      const config: PatternConfig = buildPreviewConfigFromPost(result.post)
+      const currentVariant = variantRef.current
+      const incrementDownloadCount = Boolean(result.charged || result.rewardedVideoFree)
+      const pattern = resolveDisplayedPattern(basePattern, currentVariant)
+      const payload: ExportPayload = {
+        pattern,
+        config,
+        creatorNickname: result.post.author?.nickName || '',
+        charged: Boolean(result.charged),
+        beanCost: result.beanCost,
+        incrementDownloadCount,
+        showMirrorLabel: currentVariant === 'mirror',
+      }
+      setPost((prev) => prev ? { ...prev, downloaded: true } : prev)
+      exportPayloadRef.current = payload
+      setExportPayload(payload)
+    } catch (error) {
+      Taro.hideLoading()
+      setDownloading(false)
+      if (isBeanShortageError(error)) {
+        Taro.showModal({
+          title: '小豆不足',
+          content: '当前小豆不足，去我的小豆页面攒豆子后再下载。',
+          confirmText: '去攒豆子',
+          cancelText: '取消',
+          success: (res) => {
+            if (res.confirm) {
+              safeNavigateTo('/pages/beans/index')
+            }
+          },
+        })
+        return
+      }
+      Taro.showToast({
+        title: getErrorMessage(error) || '下载失败',
+        icon: 'none',
+      })
+    }
+  }
+
   const handleDownload = async () => {
     if (!post || downloading || exportPayload) return
     restoreSessionFromStorage()
@@ -276,41 +340,19 @@ export default function PostDetailPage() {
       return
     }
 
+    const willChargeBeans = downloadCost > 0 && post.author?.openid !== getCachedUser()?.openid && !post.downloaded
     const confirm = await new Promise<boolean>((resolve) => {
       Taro.showModal({
         title: '下载图纸',
-        content: downloadCost > 0 ? `下载将消耗 ${downloadCost} 小豆，确认下载？` : '确认下载该图纸？',
+        content: willChargeBeans ? `下载将消耗 ${downloadCost} 小豆，确认下载？` : '确认下载该图纸？',
+        confirmText: '确认下载',
+        cancelText: '取消',
         success: (res) => resolve(!!res.confirm),
       })
     })
     if (!confirm) return
 
-    setDownloading(true)
-    Taro.showLoading({ title: '下载中...' })
-    try {
-      const result = await downloadPost(post._id)
-      const basePattern = await loadPatternFromPost(result.post)
-      const config: PatternConfig = buildPreviewConfigFromPost(result.post)
-      const currentVariant = variantRef.current
-      const pattern = resolveDisplayedPattern(basePattern, currentVariant)
-      const payload: ExportPayload = {
-        pattern,
-        config,
-        creatorNickname: result.post.author?.nickName || '',
-        charged: Boolean(result.charged),
-        beanCost: result.beanCost,
-        showMirrorLabel: currentVariant === 'mirror',
-      }
-      exportPayloadRef.current = payload
-      setExportPayload(payload)
-    } catch (error) {
-      Taro.hideLoading()
-      Taro.showToast({
-        title: error instanceof Error ? error.message : '下载失败',
-        icon: 'none',
-      })
-      setDownloading(false)
-    }
+    await startDownloadExport()
   }
 
   if (loading) {
@@ -439,16 +481,16 @@ export default function PostDetailPage() {
 
             <View className='post-detail-page__engagement'>
               <View className='post-detail-page__engagement-item'>
-                <Text className='post-detail-page__engagement-icon'>❤</Text>
-                <Text>{formatCount(post.likeCount)}</Text>
+                <Image className='post-detail-page__engagement-icon' src={statLikeIcon} mode='aspectFit' />
+                <Text className='post-detail-page__engagement-value'>{formatCount(post.likeCount)}</Text>
               </View>
               <View className='post-detail-page__engagement-item'>
-                <Text className='post-detail-page__engagement-icon'>★</Text>
-                <Text>{formatCount(post.favoriteCount)}</Text>
+                <Image className='post-detail-page__engagement-icon' src={statStarIcon} mode='aspectFit' />
+                <Text className='post-detail-page__engagement-value'>{formatCount(post.favoriteCount)}</Text>
               </View>
               <View className='post-detail-page__engagement-item'>
-                <Text className='post-detail-page__engagement-icon'>↓</Text>
-                <Text>{formatCount(post.downloadCount)}</Text>
+                <Image className='post-detail-page__engagement-icon' src={statDownloadIcon} mode='aspectFit' />
+                <Text className='post-detail-page__engagement-value'>{formatCount(post.downloadCount)}</Text>
               </View>
             </View>
           </View>
@@ -467,14 +509,14 @@ export default function PostDetailPage() {
           className={`post-detail-page__action${post.liked ? ' is-active' : ''}${!isLoggedIn ? ' is-disabled' : ''}`}
           onClick={handleToggleLike}
         >
-          <Text className='post-detail-page__action-icon'>{post.liked ? '❤️' : '🤍'}</Text>
+          <Image className='post-detail-page__action-icon-image' src={post.liked ? mineLikeIcon : statLikeIcon} mode='aspectFit' />
           <Text>点赞</Text>
         </View>
         <View
           className={`post-detail-page__action${post.favorited ? ' is-active' : ''}${!isLoggedIn ? ' is-disabled' : ''}`}
           onClick={handleToggleFavorite}
         >
-          <Text className='post-detail-page__action-icon'>{post.favorited ? '★' : '☆'}</Text>
+          <Image className='post-detail-page__action-icon-image' src={post.favorited ? mineFavoriteIcon : statStarIcon} mode='aspectFit' />
           <Text>收藏</Text>
         </View>
         <Button
@@ -491,7 +533,7 @@ export default function PostDetailPage() {
           disabled={downloading}
           onClick={handleDownload}
         >
-          下载{downloadCost > 0 ? ` · ${downloadCost}豆` : ''}
+          下载
         </Button>
       </View>
 
