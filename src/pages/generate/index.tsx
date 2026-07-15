@@ -54,6 +54,7 @@ const GRID_PRESETS: Record<StyleMode, number[]> = {
   portrait: [60, 90, 120, 160],
   manga: [29, 52, 78, 104],
 }
+const DRAFT_WRITE_DEBOUNCE_MS = 250
 
 function createInitialConfig(): PatternConfig {
   return createDefaultConfigForStyleMode('manga')
@@ -157,6 +158,8 @@ export default function GeneratePage() {
   const generatingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
   const recoverPromptResolverRef = useRef<((action: RecoverPromptAction) => void) | null>(null)
+  const draftWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDraftRef = useRef<{ imagePath: string; config: PatternConfig } | null>(null)
 
   useDefaultPageShare({ title: '生成拼豆图纸', path: '/pages/generate/index' })
 
@@ -166,6 +169,28 @@ export default function GeneratePage() {
     setManualLongEdge(null)
     setManualLongEdgeInput('')
   }
+
+  const flushPendingDraft = useCallback(() => {
+    if (draftWriteTimerRef.current) {
+      clearTimeout(draftWriteTimerRef.current)
+      draftWriteTimerRef.current = null
+    }
+    const pending = pendingDraftRef.current
+    if (!pending) return
+    pendingDraftRef.current = null
+    setGenerateDraft(pending.imagePath, pending.config)
+  }, [])
+
+  const scheduleDraftWrite = useCallback((nextImagePath: string, nextConfig: PatternConfig) => {
+    pendingDraftRef.current = {
+      imagePath: nextImagePath,
+      config: nextConfig,
+    }
+    if (draftWriteTimerRef.current) {
+      clearTimeout(draftWriteTimerRef.current)
+    }
+    draftWriteTimerRef.current = setTimeout(flushPendingDraft, DRAFT_WRITE_DEBOUNCE_MS)
+  }, [flushPendingDraft])
 
   const promptRecoverablePattern = useCallback((): Promise<RecoverPromptAction> => {
     if (!hasRecoverablePattern()) return Promise.resolve('none')
@@ -218,6 +243,7 @@ export default function GeneratePage() {
   })
 
   useUnload(() => {
+    flushPendingDraft()
     abortRef.current?.abort()
   })
 
@@ -243,7 +269,7 @@ export default function GeneratePage() {
     }
     setManualLongEdge(nextLongEdge)
     setManualLongEdgeInput(String(nextLongEdge))
-    setGenerateDraft(imagePath, nextConfig)
+    scheduleDraftWrite(imagePath, nextConfig)
     setConfig(nextConfig)
   }
 
@@ -295,6 +321,7 @@ export default function GeneratePage() {
 
   const handleStyleModeChange = (styleMode: StyleMode) => {
     const nextConfig = createDefaultConfigForStyleMode(styleMode)
+    flushPendingDraft()
     setManualLongEdge(null)
     setManualLongEdgeInput('')
     setGenerateDraft(imagePath, nextConfig)
@@ -381,6 +408,7 @@ export default function GeneratePage() {
       return
     }
     if (cancelRequestedRef.current || generatingRef.current) return
+    flushPendingDraft()
     generatingRef.current = true
     void handleGenerate()
   }

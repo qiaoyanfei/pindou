@@ -32,6 +32,7 @@ import { resolveDisplayedPattern, type PreviewVariant } from '@/utils/patternVar
 import { COLOR_DETAIL_STORAGE_KEY, type PatternConfig, type PatternResult } from '@/types'
 import type { PostDetail } from '@/types/community'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
+import { cachePostDetail, getCachedPostDetail } from '@/utils/postDetailCache'
 import './index.scss'
 
 const POST_DETAIL_EXPORT_CANVAS_ID = 'post-detail-export-canvas'
@@ -59,8 +60,9 @@ function formatPaletteLabel(paletteId: string): string {
 export default function PostDetailPage() {
   const router = useRouter()
   const postId = router.params.id || ''
-  const [post, setPost] = useState<PostDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const initialCachedPost = getCachedPostDetail(postId)
+  const [post, setPost] = useState<PostDetail | null>(initialCachedPost)
+  const [loading, setLoading] = useState(!initialCachedPost)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [variant, setVariant] = useState<PreviewVariant>('original')
@@ -77,8 +79,16 @@ export default function PostDetailPage() {
   variantRef.current = variant
 
   useEffect(() => {
+    const cached = getCachedPostDetail(postId)
     setVariant('original')
     setPreviewData(null)
+    if (cached) {
+      setPost(cached)
+      setLoading(false)
+    } else {
+      setPost(null)
+      setLoading(true)
+    }
   }, [postId])
 
   const loadPreviewData = useCallback(async (detail: PostDetail) => {
@@ -108,6 +118,7 @@ export default function PostDetailPage() {
     if (!silent) setLoading(true)
     try {
       const detail = await fetchPostDetail(postId)
+      cachePostDetail(detail)
       setPost(detail)
       void loadPreviewData(detail)
     } catch (error) {
@@ -341,10 +352,6 @@ export default function PostDetailPage() {
                 config={previewData.config}
                 onFullscreen={handlePreviewCover}
               />
-            ) : previewLoading ? (
-              <View className='post-detail-page__preview-loading'>
-                <Text>图纸加载中...</Text>
-              </View>
             ) : post.coverUrl ? (
               <View className='post-detail-page__preview-fallback' onClick={handlePreviewCover}>
                 <Image
@@ -353,6 +360,13 @@ export default function PostDetailPage() {
                   mode='aspectFit'
                   showMenuByLongpress={false}
                 />
+                {previewLoading ? (
+                  <Text className='post-detail-page__preview-loading-text'>图纸加载中...</Text>
+                ) : null}
+              </View>
+            ) : previewLoading ? (
+              <View className='post-detail-page__preview-loading'>
+                <Text>图纸加载中...</Text>
               </View>
             ) : (
               <View className='post-detail-page__preview-loading post-detail-page__preview-loading--empty' />

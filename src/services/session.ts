@@ -9,6 +9,8 @@ import { isOnLoginPage } from '@/utils/navigation'
 
 const USER_STORAGE_KEY = 'pindou_user_profile'
 const CONFIG_STORAGE_KEY = 'pindou_app_config'
+const SESSION_REFRESHED_AT_KEY = 'pindou_session_refreshed_at'
+const SESSION_REFRESH_TTL_MS = 15 * 60 * 1000
 
 let cachedConfig: AppRemoteConfig | null = null
 let refreshPromise: Promise<UserProfile | null> | null = null
@@ -38,6 +40,7 @@ export function persistSession(user: UserProfile, config: AppRemoteConfig): void
   cachedConfig = config
   Taro.setStorageSync(USER_STORAGE_KEY, canonical)
   Taro.setStorageSync(CONFIG_STORAGE_KEY, config)
+  Taro.setStorageSync(SESSION_REFRESHED_AT_KEY, Date.now())
 }
 
 export function clearSession(): void {
@@ -45,7 +48,16 @@ export function clearSession(): void {
   cachedConfig = null
   Taro.removeStorageSync(USER_STORAGE_KEY)
   Taro.removeStorageSync(CONFIG_STORAGE_KEY)
+  Taro.removeStorageSync(SESSION_REFRESHED_AT_KEY)
   Taro.removeStorageSync('sessionLoggedIn')
+}
+
+function shouldRefreshSession(force = false): boolean {
+  if (force) return true
+  if (!getCachedUser()) return true
+  const lastRefreshedAt = Number(Taro.getStorageSync(SESSION_REFRESHED_AT_KEY) || 0)
+  if (!lastRefreshedAt) return true
+  return Date.now() - lastRefreshedAt > SESSION_REFRESH_TTL_MS
 }
 
 export function restoreSessionFromStorage(): boolean {
@@ -70,8 +82,13 @@ export function restoreSessionFromStorage(): boolean {
   return false
 }
 
-export async function refreshSessionIfLoggedIn(): Promise<UserProfile | null> {
+export async function refreshSessionIfLoggedIn(options?: { force?: boolean }): Promise<UserProfile | null> {
   if (Taro.getStorageSync('sessionLoggedIn') !== '1') {
+    return getCachedUser()
+  }
+
+  restoreSessionFromStorage()
+  if (!shouldRefreshSession(options?.force)) {
     return getCachedUser()
   }
 
@@ -82,7 +99,6 @@ export async function refreshSessionIfLoggedIn(): Promise<UserProfile | null> {
       return restoreSessionFromStorage() ? getCachedUser() : null
     }
 
-    restoreSessionFromStorage()
     try {
       const result = await login({ refreshOnly: true })
       persistSession(result.user, result.config)

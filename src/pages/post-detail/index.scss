@@ -65,6 +65,7 @@
 }
 
 .post-detail-page__preview-fallback {
+  position: relative;
   width: 100%;
   min-height: 240px;
   background: #eef0f3;
@@ -73,6 +74,19 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.post-detail-page__preview-loading-text {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.62);
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.4;
 }
 
 .post-detail-page__preview-loading {

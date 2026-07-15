@@ -13,7 +13,6 @@ import { initCloud, uploadCloudFile } from '@/services/cloudClient'
 import {
   getCachedConfig,
   getCachedUser,
-  refreshCounts,
 } from '@/services/communityService'
 import {
   formatAuthError,
@@ -69,6 +68,7 @@ export default function MinePage() {
     syncUser()
     try {
       await refreshSessionIfLoggedIn()
+      syncUser()
     } catch {
       // best-effort refresh
     }
@@ -76,14 +76,6 @@ export default function MinePage() {
     if (!isUserAuthenticated(getCachedUser())) {
       goLogin('/pages/mine/index')
       return
-    }
-
-    try {
-      initCloud()
-      await refreshCounts()
-      syncUser()
-    } catch {
-      // silent refresh is best-effort
     }
   })
 

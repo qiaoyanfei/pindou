@@ -7,20 +7,26 @@ import { cleanupOnAppLaunch } from '@/utils/localCache'
 import { restoreSessionFromStorage, refreshSessionIfLoggedIn } from '@/services/session'
 import './app.scss'
 
+function deferLaunchTask(task: () => void | Promise<void>, delay = 0): void {
+  setTimeout(() => {
+    void Promise.resolve(task()).catch(() => {
+      // 非首屏启动任务失败时交给页面内流程兜底
+    })
+  }, delay)
+}
+
 function App({ children }: PropsWithChildren) {
   useLaunch((options) => {
-    cleanupOnAppLaunch()
-    getPalette()
     const inviterId = options?.query?.inviterId as string | undefined
     if (inviterId) {
       Taro.setStorageSync('inviterId', inviterId)
     }
     if (initCloud()) {
       restoreSessionFromStorage()
-      refreshSessionIfLoggedIn().catch(() => {
-        // 云环境未配置或未登录时在页面内提示
-      })
+      deferLaunchTask(refreshSessionIfLoggedIn, 500)
     }
+    deferLaunchTask(getPalette, 800)
+    deferLaunchTask(cleanupOnAppLaunch, 1200)
   })
 
   return children

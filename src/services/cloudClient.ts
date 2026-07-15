@@ -9,6 +9,14 @@ import {
 let initialized = false
 
 const UPLOAD_JSON_PATH = `${Taro.env.USER_DATA_PATH}/pindou_upload_latest.json`
+const TEMP_FILE_URL_TTL_MS = 50 * 60 * 1000
+
+interface CachedTempFileUrl {
+  url: string
+  expiresAt: number
+}
+
+const tempFileUrlCache = new Map<string, CachedTempFileUrl>()
 
 function getFileSystemManager() {
   return Taro.getFileSystemManager()
@@ -145,9 +153,9 @@ export async function uploadJsonCloudFile(
 
 export async function getTempFileUrl(fileId: string): Promise<string> {
   if (!fileId) return ''
-  ensureCloudReady()
-  const response = await Taro.cloud.getTempFileURL({ fileList: [fileId] })
-  return response.fileList[0]?.tempFileURL || ''
+  if (!fileId.startsWith('cloud://')) return fileId
+  const urlMap = await getTempFileUrls([fileId])
+  return urlMap[fileId] || ''
 }
 
 const TEMP_FILE_URL_BATCH_SIZE = 50
@@ -157,11 +165,30 @@ export async function getTempFileUrls(fileIds: string[]): Promise<Record<string,
   if (ids.length === 0) return {}
   ensureCloudReady()
   const map: Record<string, string> = {}
-  for (let i = 0; i < ids.length; i += TEMP_FILE_URL_BATCH_SIZE) {
-    const chunk = ids.slice(i, i + TEMP_FILE_URL_BATCH_SIZE)
+  const now = Date.now()
+  const missingIds: string[] = []
+
+  ids.forEach((id) => {
+    const cached = tempFileUrlCache.get(id)
+    if (cached && cached.expiresAt > now) {
+      map[id] = cached.url
+      return
+    }
+    tempFileUrlCache.delete(id)
+    missingIds.push(id)
+  })
+
+  for (let i = 0; i < missingIds.length; i += TEMP_FILE_URL_BATCH_SIZE) {
+    const chunk = missingIds.slice(i, i + TEMP_FILE_URL_BATCH_SIZE)
     const response = await Taro.cloud.getTempFileURL({ fileList: chunk })
     response.fileList.forEach((item) => {
-      if (item.fileID && item.tempFileURL) map[item.fileID] = item.tempFileURL
+      if (item.fileID && item.tempFileURL) {
+        map[item.fileID] = item.tempFileURL
+        tempFileUrlCache.set(item.fileID, {
+          url: item.tempFileURL,
+          expiresAt: Date.now() + TEMP_FILE_URL_TTL_MS,
+        })
+      }
     })
   }
   return map

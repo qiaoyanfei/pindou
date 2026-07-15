@@ -17,6 +17,7 @@ import {
   getCachedUser,
   searchPosts,
   buildPostDetailUrl,
+  buildPostDetailForPreview,
 } from '@/services/communityService'
 import { isUserAuthenticated } from '@/services/wechatAuth'
 import { buildLoginUrl } from '@/utils/authRoute'
@@ -39,6 +40,7 @@ import {
   readHomeFeedCache,
   writeHomeFeedCache,
 } from '@/utils/homeFeedCache'
+import { cachePostDetail } from '@/utils/postDetailCache'
 import './index.scss'
 
 const TABS: { key: FeedTab; label: string }[] = [
@@ -109,7 +111,7 @@ const FeedCard = memo(function FeedCard({ item, onClick }: { item: PostSummary; 
         style={{ paddingTop: coverAspectPadding }}
       >
         {item.coverUrl ? (
-          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFit' showMenuByLongpress={false} />
+          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFit' showMenuByLongpress={false} lazyLoad />
         ) : (
           <View className='home-page__card-cover home-page__card-cover--placeholder' />
         )}
@@ -122,7 +124,7 @@ const FeedCard = memo(function FeedCard({ item, onClick }: { item: PostSummary; 
         <View className='home-page__card-footer'>
           <View className='home-page__card-author'>
             {item.author.avatarUrl ? (
-              <Image className='home-page__card-avatar' src={item.author.avatarUrl} />
+              <Image className='home-page__card-avatar' src={item.author.avatarUrl} lazyLoad />
             ) : (
               <View className='home-page__card-avatar home-page__card-avatar--placeholder' />
             )}
@@ -625,6 +627,7 @@ export default function HomePage() {
 
   const openPost = useCallback((item: PostSummary) => {
     restoreSessionFromStorage()
+    cachePostDetail(buildPostDetailForPreview(item))
     Taro.navigateTo({ url: buildPostDetailUrl(item._id, item.author?.openid, item.visibility) })
   }, [])
 

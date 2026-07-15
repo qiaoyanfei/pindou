@@ -167,12 +167,13 @@ export async function searchPosts(
 export async function fetchPostDetail(postId: string): Promise<PostDetail> {
   const result = await callCloudApi<{ post: PostDetail }>('getPost', { postId })
   const post = result.post
-  const coverUrl = post.coverFileId ? await getTempFileUrl(post.coverFileId) : ''
-  const avatarUrl = post.author?.avatarUrl ? await getTempFileUrl(post.author.avatarUrl) : ''
+  const coverFileId = post.coverFileId || ''
+  const avatarFileId = post.author?.avatarUrl || ''
+  const urlMap = await getTempFileUrls([coverFileId, avatarFileId])
   return normalizePostSummary({
     ...post,
-    coverUrl,
-    author: { ...post.author, avatarUrl },
+    coverUrl: urlMap[coverFileId] || post.coverUrl || '',
+    author: { ...post.author, avatarUrl: urlMap[avatarFileId] || post.author?.avatarUrl || '' },
   }) as PostDetail
 }
 
