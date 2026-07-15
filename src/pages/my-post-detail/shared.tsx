@@ -2,6 +2,7 @@ import { View, Text, Image, ScrollView, Button } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  buildPostDetailForPreview,
   deletePost,
   fetchPostDetail,
   formatCount,
@@ -14,6 +15,7 @@ import { STYLE_MODE_LABELS } from '@/utils/constants'
 import { resolveErrorMessage } from '@/utils/errorMessage'
 import { setStorageSafe } from '@/utils/localCache'
 import { invalidateMyListCache } from '@/utils/myListCache'
+import { getCachedMyPostDetail, type MyPostDetailMode } from '@/utils/myPostDetailCache'
 import { formatDateTime } from '@/utils/formatDate'
 import {
   formatReviewHistory,
@@ -29,10 +31,10 @@ import { safeNavigateBack, safeNavigateTo } from '@/utils/navigation'
 import { useShareContent, claimShareReward } from '@/utils/shareReward'
 import { PATTERN_STORAGE_KEY } from '@/types'
 import { createPostPreviewStoragePayload } from '@/utils/patternStorage'
-import type { PostCategory, PostDetail, PostReviewHistoryItem, PostReviewStatus, PostVisibility } from '@/types/community'
+import type { PostCategory, PostDetail, PostReviewHistoryItem, PostReviewStatus, PostSummary, PostVisibility } from '@/types/community'
 import './index.scss'
 
-export type DetailMode = 'published' | 'pending'
+export type DetailMode = MyPostDetailMode
 
 interface DetailSource {
   mode: DetailMode
@@ -59,24 +61,61 @@ interface DetailSource {
   reviewHistory: PostReviewHistoryItem[]
 }
 
+type DetailSourceInput = PostSummary & Partial<Pick<PostDetail, 'description' | 'stats' | 'totalBeads' | 'visibility'>>
+
+function toDetailSource(post: DetailSourceInput, preferredMode?: DetailMode): DetailSource {
+  const fallbackVisibility: PostVisibility = preferredMode === 'published' ? 'public' : 'private'
+  const status = resolveReviewStatus(post.reviewStatus, post.visibility || fallbackVisibility)
+  return {
+    mode: status === 'approved' ? 'published' : 'pending',
+    id: post._id,
+    title: post.title,
+    category: post.category,
+    coverUrl: post.coverUrl || '',
+    width: post.width,
+    height: post.height,
+    styleMode: post.styleMode,
+    paletteId: post.paletteId,
+    stats: post.stats || {},
+    totalBeads: post.totalBeads || 0,
+    description: post.description || '',
+    likeCount: post.likeCount,
+    favoriteCount: post.favoriteCount,
+    downloadCount: post.downloadCount,
+    publishedAt: post.publishedAt,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+    visibility: post.visibility,
+    reviewStatus: status,
+    reviewNote: post.reviewNote,
+    reviewHistory: formatReviewHistory(post.reviewHistory),
+  }
+}
+
 export default function MyPostDetail() {
   const router = useRouter()
   const itemId = router.params.id || ''
-  const [source, setSource] = useState<DetailSource | null>(null)
-  const [loading, setLoading] = useState(true)
+  const initialCachedDetail = getCachedMyPostDetail(itemId)
+  const [source, setSource] = useState<DetailSource | null>(
+    initialCachedDetail ? toDetailSource(initialCachedDetail.item, initialCachedDetail.mode) : null,
+  )
+  const [loading, setLoading] = useState(!initialCachedDetail)
   const [previewing, setPreviewing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hiding, setHiding] = useState(false)
   const loadTokenRef = useRef(0)
-  const postRef = useRef<PostDetail | null>(null)
+  const postRef = useRef<PostDetail | null>(
+    initialCachedDetail ? buildPostDetailForPreview(initialCachedDetail.item) : null,
+  )
   const sourceRef = useRef<DetailSource | null>(null)
 
   sourceRef.current = source
 
   useEffect(() => {
-    setSource(null)
-    postRef.current = null
-    setLoading(true)
+    const cached = getCachedMyPostDetail(itemId)
+    setSource(cached ? toDetailSource(cached.item, cached.mode) : null)
+    postRef.current = cached ? buildPostDetailForPreview(cached.item) : null
+    setLoading(!cached)
   }, [itemId])
 
   const reviewStatus = source?.reviewStatus || 'draft'
@@ -99,31 +138,7 @@ export default function MyPostDetail() {
       if (token !== loadTokenRef.current) return
       postRef.current = post
       void resolvePatternForPreview(post).catch(() => {})
-      const status = resolveReviewStatus(post.reviewStatus, post.visibility)
-      setSource({
-        mode: status === 'approved' ? 'published' : 'pending',
-        id: post._id,
-        title: post.title,
-        category: post.category,
-        coverUrl: post.coverUrl || '',
-        width: post.width,
-        height: post.height,
-        styleMode: post.styleMode,
-        paletteId: post.paletteId,
-        stats: post.stats,
-        totalBeads: post.totalBeads,
-        description: post.description,
-        likeCount: post.likeCount,
-        favoriteCount: post.favoriteCount,
-        downloadCount: post.downloadCount,
-        publishedAt: post.publishedAt,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-        visibility: post.visibility,
-        reviewStatus: status,
-        reviewNote: post.reviewNote,
-        reviewHistory: formatReviewHistory(post.reviewHistory),
-      })
+      setSource(toDetailSource(post))
     } catch (error) {
       if (token !== loadTokenRef.current) return
       if (!silent) {

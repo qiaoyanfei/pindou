@@ -4,7 +4,9 @@ import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
 import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { fetchPendingPosts } from '@/services/communityService'
+import { cacheMyPostDetail } from '@/utils/myPostDetailCache'
 import { useDefaultPageShare } from '@/utils/shareReward'
+import type { PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
 
@@ -20,6 +22,11 @@ export default function DraftsPage() {
     loadMore,
   } = useCachedPostList('drafts', fetchPendingPosts)
   const displayedCount = total ?? list.length
+
+  const openPost = (item: PostSummary) => {
+    cacheMyPostDetail(item, 'pending')
+    Taro.navigateTo({ url: `/pages/my-pending-detail/index?id=${item._id}` })
+  }
 
   return (
     <View className='list-page drafts-page'>
@@ -49,7 +56,7 @@ export default function DraftsPage() {
                   item={item}
                   mode='pending'
                   tintIndex={index}
-                  onClick={() => Taro.navigateTo({ url: `/pages/my-pending-detail/index?id=${item._id}` })}
+                  onClick={() => openPost(item)}
                 />
               ))}
               <Text className='list-page__end'>

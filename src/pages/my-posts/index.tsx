@@ -4,7 +4,9 @@ import PageListBanner from '@/components/PageListBanner'
 import PostListItem from '@/components/PostListItem'
 import { useCachedPostList } from '@/hooks/useCachedPostList'
 import { fetchMyPosts } from '@/services/communityService'
+import { cacheMyPostDetail } from '@/utils/myPostDetailCache'
 import { useDefaultPageShare } from '@/utils/shareReward'
+import type { PostSummary } from '@/types/community'
 import '@/styles/list-page.scss'
 import './index.scss'
 
@@ -14,8 +16,9 @@ export default function MyPostsPage() {
   const { list, loading, loadingMore, hasMore, total, loadMore } = useCachedPostList('my-posts', fetchMyPosts)
   const displayedCount = total ?? list.length
 
-  const openPost = (postId: string) => {
-    Taro.navigateTo({ url: `/pages/my-published-detail/index?id=${postId}` })
+  const openPost = (item: PostSummary) => {
+    cacheMyPostDetail(item, 'published')
+    Taro.navigateTo({ url: `/pages/my-published-detail/index?id=${item._id}` })
   }
 
   return (
@@ -43,7 +46,7 @@ export default function MyPostsPage() {
                   item={item}
                   mode='published'
                   tintIndex={index}
-                  onClick={() => openPost(item._id)}
+                  onClick={() => openPost(item)}
                 />
               ))}
               <Text className='list-page__end'>
