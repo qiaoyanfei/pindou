@@ -1,8 +1,12 @@
-import { View, Text, Image, Button } from '@tarojs/components'
+import { View, Text, Image, Button, Switch } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useEffect, useState } from 'react'
 import { checkIsAdmin, getCachedConfig } from '@/services/communityService'
 import { getTempFileUrl } from '@/services/cloudClient'
+import {
+  getLocalRequireExportVideo,
+  setLocalRequireExportVideo,
+} from '@/utils/localRequireExportVideo'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
 
@@ -14,8 +18,10 @@ export default function FeedbackPage() {
   const qrFileId = config?.feedbackQrUrl || ''
   const [qrUrl, setQrUrl] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [requireExportVideo, setRequireExportVideo] = useState(getLocalRequireExportVideo)
 
   useDidShow(() => {
+    setRequireExportVideo(getLocalRequireExportVideo())
     checkIsAdmin()
       .then((result) => setIsAdmin(result.isAdmin))
       .catch(() => setIsAdmin(false))
@@ -38,6 +44,15 @@ export default function FeedbackPage() {
       success: () => {
         Taro.showToast({ title: `${label}已复制`, icon: 'success' })
       },
+    })
+  }
+
+  const handleToggleExportVideo = (next: boolean) => {
+    setLocalRequireExportVideo(next)
+    setRequireExportVideo(next)
+    Taro.showToast({
+      title: next ? '本机已开启：保存需看完视频' : '本机已关闭：保存无需看视频',
+      icon: 'none',
     })
   }
 
@@ -70,12 +85,36 @@ export default function FeedbackPage() {
         </View>
 
         {isAdmin ? (
-          <Button
-            className='feedback-page__admin'
-            onClick={() => Taro.navigateTo({ url: '/pages/admin-review/index' })}
-          >
-            作品审核
-          </Button>
+          <View className='feedback-page__admin-group'>
+            <View className='feedback-page__admin-card'>
+              <View className='feedback-page__admin-switch-row'>
+                <View className='feedback-page__admin-switch-copy'>
+                  <Text className='feedback-page__admin-switch-title'>保存相册需看完视频</Text>
+                  <Text className='feedback-page__admin-switch-desc'>
+                    仅影响本机。关闭后当前设备保存 PNG 到相册可跳过激励视频，不影响其他用户
+                  </Text>
+                </View>
+                <Switch
+                  checked={requireExportVideo}
+                  color='#7c3aed'
+                  onChange={(event) => handleToggleExportVideo(event.detail.value)}
+                />
+              </View>
+            </View>
+
+            <Button
+              className='feedback-page__admin'
+              onClick={() => Taro.navigateTo({ url: '/pages/admin-review/index' })}
+            >
+              作品审核
+            </Button>
+            <Button
+              className='feedback-page__admin feedback-page__admin--secondary'
+              onClick={() => Taro.navigateTo({ url: '/pages/admin-upload-finished/index' })}
+            >
+              管理用户成品
+            </Button>
+          </View>
         ) : null}
       </View>
     </View>

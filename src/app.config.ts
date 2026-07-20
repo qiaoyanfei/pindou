@@ -33,6 +33,8 @@ export default defineAppConfig({
     'pages/feedback-form/index',
     'pages/admin-review/index',
     'pages/admin-author-posts/index',
+    'pages/admin-upload-finished/index',
+    'pages/finished-product-detail/index',
   ],
   window: {
     backgroundTextStyle: 'light',

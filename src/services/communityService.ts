@@ -4,6 +4,8 @@ import type {
   BeanTransaction,
   DraftItem,
   FeedTab,
+  FinishedProductDetail,
+  FinishedProductSummary,
   PostCategory,
   PostDetail,
   PostReviewStatus,
@@ -577,6 +579,150 @@ export async function reviewPost(
   reviewTitle?: string,
 ): Promise<void> {
   await callCloudApi('reviewPost', { postId, action, note, reviewTitle })
+}
+
+async function mapFinishedProductsWithCover(
+  list: FinishedProductSummary[],
+): Promise<FinishedProductSummary[]> {
+  const coverIds = list.flatMap((item) => {
+    const ids = item.imageFileIds?.length
+      ? item.imageFileIds
+      : [item.coverFileId].filter(Boolean)
+    return ids as string[]
+  })
+  const linkedCoverIds = list
+    .map((item) => (item as FinishedProductDetail).linkedPost?.coverFileId)
+    .filter(Boolean) as string[]
+  const avatarIds = list
+    .map((item) => item.author?.avatarUrl)
+    .filter((id): id is string => Boolean(id) && id.startsWith('cloud://'))
+  const urlMap = await getTempFileUrls([...coverIds, ...linkedCoverIds, ...avatarIds])
+  return list.map((item) => {
+    const imageFileIds = (item.imageFileIds?.length
+      ? item.imageFileIds
+      : [item.coverFileId].filter(Boolean)) as string[]
+    const imageUrls = imageFileIds.map((id) => urlMap[id] || '').filter(Boolean)
+    const coverFileId = item.coverFileId || imageFileIds[0] || ''
+    const avatarKey = item.author?.avatarUrl || ''
+    const detail = item as FinishedProductDetail
+    const linkedCoverId = detail.linkedPost?.coverFileId || ''
+    return {
+      ...item,
+      coverFileId,
+      coverUrl: urlMap[coverFileId] || item.coverUrl || imageUrls[0] || '',
+      imageFileIds,
+      imageUrls: imageUrls.length ? imageUrls : (item.coverUrl ? [item.coverUrl] : []),
+      author: {
+        ...item.author,
+        avatarUrl: urlMap[avatarKey] || item.author?.avatarUrl || '',
+      },
+      ...(detail.linkedPost
+        ? {
+          linkedPost: {
+            ...detail.linkedPost,
+            coverUrl: urlMap[linkedCoverId] || detail.linkedPost.coverUrl || '',
+          },
+        }
+        : {}),
+    }
+  })
+}
+
+export async function fetchFinishedProductFeed(
+  page = 1,
+  category: PostCategory | '' = '',
+): Promise<{ list: FinishedProductSummary[]; hasMore: boolean }> {
+  const result = await callCloudApi<{ list: FinishedProductSummary[]; hasMore: boolean }>(
+    'getFinishedProductFeed',
+    { page, category: category || undefined },
+  )
+  return {
+    list: await mapFinishedProductsWithCover(result.list || []),
+    hasMore: Boolean(result.hasMore),
+  }
+}
+
+export async function fetchFinishedProduct(
+  productId: string,
+): Promise<FinishedProductDetail> {
+  const result = await callCloudApi<{ product: FinishedProductDetail }>('getFinishedProduct', {
+    productId,
+  })
+  const [mapped] = await mapFinishedProductsWithCover([result.product])
+  return mapped as FinishedProductDetail
+}
+
+export async function createFinishedProduct(payload: {
+  title: string
+  coverFileId: string
+  postId: string
+  description?: string
+  authorNickName?: string
+  authorAvatarUrl?: string
+  authorOpenid?: string
+}): Promise<{ productId: string }> {
+  const result = await callCloudApi<{ productId: string }>('createFinishedProduct', {
+    title: payload.title,
+    coverFileId: payload.coverFileId,
+    postId: payload.postId,
+    description: payload.description || '',
+    authorNickName: payload.authorNickName || '',
+    authorAvatarUrl: payload.authorAvatarUrl || '',
+    authorOpenid: payload.authorOpenid || '',
+  })
+  return { productId: result.productId }
+}
+
+export async function updateFinishedProduct(payload: {
+  productId: string
+  title: string
+  coverFileId: string
+  postId: string
+  description?: string
+  authorNickName?: string
+  authorOpenid?: string
+}): Promise<void> {
+  await callCloudApi('updateFinishedProduct', {
+    productId: payload.productId,
+    title: payload.title,
+    coverFileId: payload.coverFileId,
+    postId: payload.postId,
+    description: payload.description || '',
+    authorNickName: payload.authorNickName || '',
+    authorOpenid: payload.authorOpenid || '',
+  })
+}
+
+export async function deleteFinishedProduct(productId: string): Promise<void> {
+  await callCloudApi('deleteFinishedProduct', { productId })
+}
+
+export async function toggleFinishedProductLike(
+  productId: string,
+): Promise<{ liked: boolean; likeCount: number }> {
+  return callCloudApi('toggleFinishedProductLike', { productId })
+}
+
+export interface AuthorSearchItem {
+  openid: string
+  nickName: string
+  avatarUrl: string
+}
+
+export async function searchUsersByNickName(keyword: string): Promise<AuthorSearchItem[]> {
+  const result = await callCloudApi<{ list: AuthorSearchItem[] }>('searchUsersByNickName', {
+    keyword: keyword.trim(),
+  })
+  const list = result.list || []
+  const avatarIds = list
+    .map((item) => item.avatarUrl)
+    .filter((id): id is string => Boolean(id) && id.startsWith('cloud://'))
+  if (!avatarIds.length) return list
+  const urlMap = await getTempFileUrls(avatarIds)
+  return list.map((item) => ({
+    ...item,
+    avatarUrl: urlMap[item.avatarUrl] || item.avatarUrl || '',
+  }))
 }
 
 export async function prepareRegenerateFromPost(postId: string): Promise<void> {

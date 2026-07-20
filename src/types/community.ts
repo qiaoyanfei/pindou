@@ -25,6 +25,49 @@ export interface PostReviewHistoryItem {
 
 export type FeedTab = 'recommend' | 'latest'
 
+/** 首页 Tab：图纸推荐/最新 + 成品展示 */
+export type HomeTab = FeedTab | 'finished'
+
+export interface FinishedProductSummary {
+  _id: string
+  title: string
+  coverFileId?: string
+  coverUrl?: string
+  /** 多图时使用；缺省则仅 cover */
+  imageFileIds?: string[]
+  imageUrls?: string[]
+  postId: string
+  postTitle?: string
+  /** 与关联图纸相同的类别 */
+  category?: PostCategory
+  likeCount: number
+  liked?: boolean
+  author: {
+    nickName: string
+    avatarUrl: string
+    openid?: string
+    level?: number
+  }
+  createdAt: string
+  publishedAt?: string
+}
+
+export interface FinishedProductLinkedPost {
+  _id: string
+  title: string
+  coverFileId?: string
+  coverUrl?: string
+  width: number
+  height: number
+  colorCount: number
+  styleMode?: string
+}
+
+export interface FinishedProductDetail extends FinishedProductSummary {
+  description?: string
+  linkedPost?: FinishedProductLinkedPost | null
+}
+
 export interface UserProfile {
   _id?: string
   openid?: string

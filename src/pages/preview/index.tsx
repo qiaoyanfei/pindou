@@ -31,6 +31,7 @@ import {
 } from '@/utils/patternGenerationProgress'
 import { handleImageProcessError } from '@/utils/mediaPickerError'
 import { requireAuthenticated, restoreSessionFromStorage } from '@/services/session'
+import { getLocalRequireExportVideo } from '@/utils/localRequireExportVideo'
 import bulbIcon from '@/assets/icons/preview-bulb.svg'
 import editIcon from '@/assets/icons/preview-edit.svg'
 import refreshIcon from '@/assets/icons/preview-refresh.svg'
@@ -170,6 +171,8 @@ export default function PreviewPage() {
     if (!basePattern) return null
     return resolveDisplayedPattern(basePattern, variant)
   }, [basePattern, variant])
+
+  const requireExportVideo = getLocalRequireExportVideo()
 
   const pendingLongEdge = useMemo(
     () => clampLongEdge(Number(longEdgeInput || config.longEdge), config.styleMode),
@@ -357,10 +360,16 @@ export default function PreviewPage() {
       return
     }
 
-    // PNG 存相册：优先看完激励视频；广告失败/无填充不阻断正常保存
+    // PNG 存相册：本机开关决定是否必须看完激励视频；广告失败/无填充不阻断正常保存
     setSaveOptionsOpen(false)
 
-    if (process.env.TARO_ENV === 'weapp' && hasRewardedVideoExportAd()) {
+    const requireExportVideo = getLocalRequireExportVideo()
+
+    if (
+      requireExportVideo
+      && process.env.TARO_ENV === 'weapp'
+      && hasRewardedVideoExportAd()
+    ) {
       if (!rewardedVideoRef.current) {
         rewardedVideoRef.current = createRewardedVideoSession(REWARDED_VIDEO_EXPORT_AD_UNIT_ID)
       }
@@ -794,7 +803,11 @@ export default function PreviewPage() {
                   onClick={() => setExportFormat('png')}
                 >
                   <Text className='preview-page__format-option-title'>PNG</Text>
-                  <Text className='preview-page__format-option-desc'>需完整观看短视频后，才能保存到相册</Text>
+                  <Text className='preview-page__format-option-desc'>
+                    {requireExportVideo
+                      ? '需完整观看短视频后，才能保存到相册'
+                      : '保存高清图片到手机相册'}
+                  </Text>
                 </View>
                 <View
                   className={`preview-page__format-option${exportFormat === 'svg' ? ' is-active' : ''}`}
@@ -835,7 +848,9 @@ export default function PreviewPage() {
                 取消
               </Button>
               <Button className='preview-page__save-modal-btn preview-page__save-modal-btn--primary' onClick={handleConfirmExport}>
-                {exportFormat === 'png' ? '看视频后保存' : '分享文件'}
+                {exportFormat === 'png'
+                  ? (requireExportVideo ? '看视频后保存' : '保存到相册')
+                  : '分享文件'}
               </Button>
             </View>
           </View>

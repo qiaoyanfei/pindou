@@ -1462,6 +1462,412 @@ async function handleGetCounts(openid) {
   })
 }
 
+function mapFinishedProductSummary(doc) {
+  const imageFileIds = Array.isArray(doc.imageFileIds)
+    ? doc.imageFileIds.filter(Boolean)
+    : []
+  const coverFileId = doc.coverFileId || imageFileIds[0] || ''
+  return {
+    _id: doc._id,
+    title: doc.title || '',
+    coverFileId,
+    imageFileIds: imageFileIds.length ? imageFileIds : (coverFileId ? [coverFileId] : []),
+    postId: doc.postId || '',
+    postTitle: doc.postTitle || '',
+    category: doc.category || '',
+    likeCount: Number(doc.likeCount) || 0,
+    description: doc.description || '',
+    author: {
+      nickName: resolveDisplayNickName(doc.authorNickName, doc.authorOpenid),
+      avatarUrl: doc.authorAvatarUrl || '',
+      openid: doc.authorOpenid || '',
+      level: Number(doc.authorLevel) || 0,
+    },
+    createdAt: doc.createdAt,
+    publishedAt: doc.publishedAt,
+  }
+}
+
+/** 旧数据没有 category 时，从关联图纸补齐并写回 */
+async function ensureFinishedProductCategories(docs) {
+  const missing = docs.filter((doc) => !String(doc.category || '').trim() && doc.postId)
+  if (!missing.length) return docs
+
+  const postIds = [...new Set(missing.map((doc) => doc.postId))]
+  let posts = []
+  try {
+    const postRes = await db.collection('posts').where({ _id: _.in(postIds) }).get()
+    posts = postRes.data || []
+  } catch (error) {
+    return docs
+  }
+
+  const categoryMap = {}
+  posts.forEach((post) => {
+    const category = String(post.category || '').trim()
+    if (category) categoryMap[post._id] = category
+  })
+
+  await Promise.all(missing.map(async (doc) => {
+    const category = categoryMap[doc.postId]
+    if (!category) return
+    doc.category = category
+    try {
+      await db.collection('finished_products').doc(doc._id).update({
+        data: { category },
+      })
+    } catch (error) {
+      // 忽略写回失败，至少本次响应带上类别
+    }
+  }))
+
+  return docs
+}
+
+function isCollectionNotExistsError(error) {
+  const message = String(error?.message || error?.errMsg || error || '')
+  return message.includes('-502005')
+    || message.includes('collection not exist')
+    || message.includes('Db or Table not exist')
+}
+
+async function attachFinishedProductLikeFlags(openid, list) {
+  if (!list.length) return list
+  const ids = list.map((item) => item._id)
+  try {
+    const likes = await db.collection('finished_product_likes')
+      .where({ _openid: openid, productId: _.in(ids) })
+      .get()
+    const likedSet = new Set(likes.data.map((item) => item.productId))
+    return list.map((item) => ({
+      ...item,
+      liked: likedSet.has(item._id),
+    }))
+  } catch (error) {
+    if (isCollectionNotExistsError(error)) {
+      return list.map((item) => ({ ...item, liked: false }))
+    }
+    throw error
+  }
+}
+
+async function handleGetFinishedProductFeed(openid, data) {
+  const { page, pageSize, skip } = getPagination(data, 10, 20)
+  const category = String(data?.category || '').trim()
+  const filter = { visibility: 'public' }
+  if (category) filter.category = category
+
+  try {
+    // 首页首屏加载时补齐旧数据缺少的 category（来自关联图纸）
+    if (page === 1) {
+      try {
+        const legacy = await db.collection('finished_products')
+          .where({ visibility: 'public' })
+          .orderBy('publishedAt', 'desc')
+          .limit(50)
+          .get()
+        await ensureFinishedProductCategories(legacy.data || [])
+      } catch (error) {
+        // 补齐失败不影响列表
+      }
+    }
+
+    const res = await db.collection('finished_products')
+      .where(filter)
+      .orderBy('publishedAt', 'desc')
+      .skip(skip)
+      .limit(pageSize)
+      .get()
+    const list = (res.data || []).map(mapFinishedProductSummary)
+    return ok({
+      list: await attachFinishedProductLikeFlags(openid, list),
+      hasMore: res.data.length >= pageSize,
+      page,
+    })
+  } catch (error) {
+    // 集合尚未创建时返回空列表，避免首页成品 Tab 直接报错
+    if (isCollectionNotExistsError(error)) {
+      return ok({ list: [], hasMore: false, page })
+    }
+    throw error
+  }
+}
+
+async function handleGetFinishedProduct(openid, data) {
+  const productId = data?.productId
+  if (!productId) return fail('缺少 productId')
+  const res = await db.collection('finished_products').doc(productId).get()
+  const doc = res.data
+  if (!doc || doc.visibility !== 'public') return fail('成品不存在')
+
+  const [mapped] = await attachFinishedProductLikeFlags(openid, [mapFinishedProductSummary(doc)])
+  const product = { ...mapped, linkedPost: null }
+
+  if (doc.authorOpenid) {
+    try {
+      const authorUser = await getUser(doc.authorOpenid)
+      if (authorUser) {
+        product.author = {
+          ...product.author,
+          level: Number(authorUser.level) || 1,
+          avatarUrl: product.author.avatarUrl || authorUser.avatarUrl || '',
+          nickName: product.author.nickName
+            || resolveDisplayNickName(authorUser.nickName, doc.authorOpenid),
+        }
+      }
+    } catch (error) {
+      // 作者资料缺失不影响详情
+    }
+  } else if (!product.author.level) {
+    product.author.level = 1
+  }
+
+  if (doc.postId) {
+    try {
+      const postRes = await db.collection('posts').doc(doc.postId).get()
+      const post = postRes.data
+      if (post && (post.visibility === 'public' || post._openid === openid || await isAdmin(openid))) {
+        const stats = post.stats && typeof post.stats === 'object' ? post.stats : {}
+        product.linkedPost = {
+          _id: post._id,
+          title: post.title || doc.postTitle || '',
+          coverFileId: post.coverFileId || '',
+          width: Number(post.width) || 0,
+          height: Number(post.height) || 0,
+          colorCount: Object.keys(stats).length || Number(post.colorCount) || 0,
+          styleMode: post.styleMode || '',
+        }
+        if (!product.postTitle) product.postTitle = product.linkedPost.title
+      }
+    } catch (error) {
+      // 关联图纸缺失时仍返回成品本体
+    }
+  }
+
+  return ok({ product })
+}
+
+async function resolveFinishedProductAuthor(data, post) {
+  let authorOpenid = String(data?.authorOpenid || '').trim()
+  let authorNickName = String(data?.authorNickName || '').trim()
+  let authorAvatarUrl = ''
+
+  if (authorOpenid) {
+    const authorUser = await getUser(authorOpenid)
+    if (!authorUser) return { error: '关联作者不存在' }
+    authorNickName = authorNickName || resolveDisplayNickName(authorUser.nickName, authorOpenid)
+    authorAvatarUrl = authorUser.avatarUrl || ''
+  } else {
+    authorOpenid = post._openid || ''
+    authorNickName = authorNickName || post.authorNickName || '拼豆玩家'
+    authorAvatarUrl = post.authorAvatarUrl || ''
+  }
+
+  return { authorOpenid, authorNickName, authorAvatarUrl }
+}
+
+async function handleCreateFinishedProduct(openid, data) {
+  if (!(await isAdmin(openid))) return fail('无管理员权限')
+  const coverFileId = String(data?.coverFileId || '').trim()
+  const postId = String(data?.postId || '').trim()
+  const title = String(data?.title || '').trim()
+  if (!coverFileId) return fail('请上传成品照片')
+  if (!postId) return fail('请关联图纸')
+  if (!title) return fail('请填写标题')
+
+  const postRes = await db.collection('posts').doc(postId).get()
+  const post = postRes.data
+  if (!post) return fail('关联图纸不存在')
+
+  const author = await resolveFinishedProductAuthor(data, post)
+  if (author.error) return fail(author.error)
+
+  const description = String(data?.description || '').trim()
+  const now = db.serverDate()
+
+  let addRes
+  try {
+    addRes = await db.collection('finished_products').add({
+      data: {
+        title,
+        description,
+        coverFileId,
+        postId,
+        postTitle: post.title || '',
+        category: post.category || '',
+        authorNickName: author.authorNickName,
+        authorAvatarUrl: author.authorAvatarUrl,
+        authorOpenid: author.authorOpenid,
+        likeCount: 0,
+        visibility: 'public',
+        publishedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        uploadedBy: openid,
+      },
+    })
+  } catch (error) {
+    if (isCollectionNotExistsError(error)) {
+      return fail('云数据库缺少集合 finished_products，请在云开发控制台新建后再发布')
+    }
+    throw error
+  }
+
+  return ok({
+    productId: addRes._id,
+    product: mapFinishedProductSummary({
+      _id: addRes._id,
+      title,
+      description,
+      coverFileId,
+      postId,
+      postTitle: post.title || '',
+      category: post.category || '',
+      authorNickName: author.authorNickName,
+      authorAvatarUrl: author.authorAvatarUrl,
+      authorOpenid: author.authorOpenid,
+      likeCount: 0,
+      createdAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+    }),
+  })
+}
+
+async function handleUpdateFinishedProduct(openid, data) {
+  if (!(await isAdmin(openid))) return fail('无管理员权限')
+  const productId = String(data?.productId || '').trim()
+  if (!productId) return fail('缺少 productId')
+
+  const productRes = await db.collection('finished_products').doc(productId).get()
+  if (!productRes.data) return fail('成品不存在')
+
+  const coverFileId = String(data?.coverFileId || productRes.data.coverFileId || '').trim()
+  const postId = String(data?.postId || productRes.data.postId || '').trim()
+  const title = String(data?.title || '').trim()
+  if (!coverFileId) return fail('请上传成品照片')
+  if (!postId) return fail('请关联图纸')
+  if (!title) return fail('请填写标题')
+
+  const postRes = await db.collection('posts').doc(postId).get()
+  const post = postRes.data
+  if (!post) return fail('关联图纸不存在')
+
+  const author = await resolveFinishedProductAuthor(data, post)
+  if (author.error) return fail(author.error)
+
+  const description = String(data?.description || '').trim()
+  await db.collection('finished_products').doc(productId).update({
+    data: {
+      title,
+      description,
+      coverFileId,
+      postId,
+      postTitle: post.title || '',
+      category: post.category || '',
+      authorNickName: author.authorNickName,
+      authorAvatarUrl: author.authorAvatarUrl,
+      authorOpenid: author.authorOpenid,
+      updatedAt: db.serverDate(),
+    },
+  })
+
+  return ok({ productId })
+}
+
+async function handleDeleteFinishedProduct(openid, data) {
+  if (!(await isAdmin(openid))) return fail('无管理员权限')
+  const productId = String(data?.productId || '').trim()
+  if (!productId) return fail('缺少 productId')
+
+  const productRes = await db.collection('finished_products').doc(productId).get()
+  if (!productRes.data) return fail('成品不存在')
+
+  await db.collection('finished_products').doc(productId).remove()
+
+  // 清理点赞记录（分批删除）
+  try {
+    while (true) {
+      const likes = await db.collection('finished_product_likes')
+        .where({ productId })
+        .limit(100)
+        .get()
+      if (!likes.data.length) break
+      await Promise.all(
+        likes.data.map((item) => db.collection('finished_product_likes').doc(item._id).remove()),
+      )
+      if (likes.data.length < 100) break
+    }
+  } catch (error) {
+    if (!isCollectionNotExistsError(error)) {
+      console.warn('清理成品点赞失败', error)
+    }
+  }
+
+  return ok({ deleted: true, productId })
+}
+
+async function handleToggleFinishedProductLike(openid, data) {
+  const productId = data?.productId
+  if (!productId) return fail('缺少 productId')
+  const productRes = await db.collection('finished_products').doc(productId).get()
+  if (!productRes.data || productRes.data.visibility !== 'public') {
+    return fail('成品不存在')
+  }
+
+  const existing = await db.collection('finished_product_likes')
+    .where({ _openid: openid, productId })
+    .limit(1)
+    .get()
+
+  if (existing.data.length > 0) {
+    await db.collection('finished_product_likes').doc(existing.data[0]._id).remove()
+    await db.collection('finished_products').doc(productId).update({
+      data: { likeCount: _.inc(-1) },
+    })
+    return ok({
+      liked: false,
+      likeCount: Math.max(0, (productRes.data.likeCount || 0) - 1),
+    })
+  }
+
+  await db.collection('finished_product_likes').add({
+    data: { _openid: openid, productId, createdAt: db.serverDate() },
+  })
+  await db.collection('finished_products').doc(productId).update({
+    data: { likeCount: _.inc(1) },
+  })
+  return ok({
+    liked: true,
+    likeCount: (productRes.data.likeCount || 0) + 1,
+  })
+}
+
+async function handleSearchUsersByNickName(openid, data) {
+  if (!(await isAdmin(openid))) return fail('无管理员权限')
+  const keyword = String(data?.keyword || '').trim()
+  if (!keyword) return fail('请输入昵称关键词')
+  if (keyword.length > 20) return fail('昵称关键词过长')
+
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const res = await db.collection('users')
+    .where({
+      nickName: db.RegExp({
+        regexp: escaped,
+        options: 'i',
+      }),
+    })
+    .limit(20)
+    .get()
+
+  const list = (res.data || []).map((user) => ({
+    openid: user._openid || '',
+    nickName: resolveDisplayNickName(user.nickName, user._openid),
+    avatarUrl: user.avatarUrl || '',
+  })).filter((item) => item.openid)
+
+  return ok({ list })
+}
+
 exports.main = async (event) => {
   const { action, data = {} } = event
   const wxContext = cloud.getWXContext()
@@ -1522,6 +1928,20 @@ exports.main = async (event) => {
         return await handleGetReviewAuthorPosts(openid, data)
       case 'reviewPost':
         return await handleReviewPost(openid, data)
+      case 'getFinishedProductFeed':
+        return await handleGetFinishedProductFeed(openid, data)
+      case 'getFinishedProduct':
+        return await handleGetFinishedProduct(openid, data)
+      case 'createFinishedProduct':
+        return await handleCreateFinishedProduct(openid, data)
+      case 'updateFinishedProduct':
+        return await handleUpdateFinishedProduct(openid, data)
+      case 'deleteFinishedProduct':
+        return await handleDeleteFinishedProduct(openid, data)
+      case 'toggleFinishedProductLike':
+        return await handleToggleFinishedProductLike(openid, data)
+      case 'searchUsersByNickName':
+        return await handleSearchUsersByNickName(openid, data)
       default:
         return fail(`未知 action: ${action}`)
     }

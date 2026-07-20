@@ -1,0 +1,391 @@
+@import '@/styles/variables.scss';
+
+.admin-upload-finished-page {
+  min-height: 100vh;
+  background: $color-bg;
+}
+
+.admin-upload-finished-page--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 32px;
+  color: $color-text-secondary;
+  font-size: 28px;
+}
+
+.admin-upload-finished-page__scroll {
+  height: calc(100vh - 140px);
+}
+
+.admin-upload-finished-page__scroll--list {
+  height: 100vh;
+}
+
+.admin-upload-finished-page__body {
+  padding: 24px 32px calc(env(safe-area-inset-bottom) + 24px);
+}
+
+.admin-upload-finished-page__list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-upload-finished-page__list-title {
+  display: block;
+  font-size: 34px;
+  font-weight: 700;
+  color: $color-text;
+  line-height: 1.3;
+}
+
+.admin-upload-finished-page__list-desc {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.4;
+}
+
+.admin-upload-finished-page__create-btn {
+  flex-shrink: 0;
+  margin: 0;
+  height: 64px;
+  padding: 0 24px;
+  border-radius: 999px;
+  background: $color-primary !important;
+  color: #fff !important;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 64px;
+}
+
+.admin-upload-finished-page__create-btn::after {
+  border: none;
+}
+
+.admin-upload-finished-page__empty-card {
+  padding: 64px 32px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: $shadow-card;
+  text-align: center;
+  color: $color-text-secondary;
+  font-size: 26px;
+}
+
+.admin-upload-finished-page__empty-title {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  color: $color-text;
+}
+
+.admin-upload-finished-page__empty-desc {
+  display: block;
+  margin-top: 10px;
+  font-size: 24px;
+  color: $color-text-secondary;
+}
+
+.admin-upload-finished-page__manage-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: $shadow-card;
+  display: flex;
+  gap: 16px;
+}
+
+.admin-upload-finished-page__manage-cover {
+  width: 140px;
+  height: 140px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+
+.admin-upload-finished-page__manage-cover--placeholder {
+  background: #e5e7eb;
+}
+
+.admin-upload-finished-page__manage-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-upload-finished-page__manage-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: $color-text;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-upload-finished-page__manage-meta {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-upload-finished-page__manage-actions {
+  margin-top: auto;
+  padding-top: 16px;
+  display: flex;
+  gap: 24px;
+}
+
+.admin-upload-finished-page__manage-link {
+  font-size: 26px;
+  font-weight: 600;
+  color: $color-primary;
+}
+
+.admin-upload-finished-page__manage-link--danger {
+  color: #ef4444;
+}
+
+.admin-upload-finished-page__more-btn {
+  margin: 8px 0 0;
+  height: 72px;
+  border-radius: 999px;
+  background: #fff !important;
+  color: $color-text-secondary !important;
+  font-size: 26px;
+  line-height: 72px;
+  border: 1px solid $color-border;
+}
+
+.admin-upload-finished-page__more-btn::after {
+  border: none;
+}
+
+.admin-upload-finished-page__form-back {
+  margin-bottom: 8px;
+  padding: 8px 0;
+  color: $color-primary;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.admin-upload-finished-page__section-title {
+  display: block;
+  margin: 24px 0 12px;
+  font-size: 26px;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.admin-upload-finished-page__section-hint {
+  display: block;
+  margin: -4px 0 12px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.4;
+}
+
+.admin-upload-finished-page__photo {
+  height: 360px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: $shadow-card;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.admin-upload-finished-page__photo-img {
+  width: 100%;
+  height: 100%;
+}
+
+.admin-upload-finished-page__photo-hint {
+  font-size: 28px;
+  color: $color-text-secondary;
+}
+
+.admin-upload-finished-page__input {
+  width: 100%;
+  height: 84px;
+  padding: 0 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-sizing: border-box;
+  font-size: 28px;
+}
+
+.admin-upload-finished-page__input--flex {
+  flex: 1;
+}
+
+.admin-upload-finished-page__textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-sizing: border-box;
+  font-size: 28px;
+}
+
+.admin-upload-finished-page__search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-upload-finished-page__search-btn {
+  flex-shrink: 0;
+  margin: 0;
+  height: 84px;
+  padding: 0 28px;
+  border-radius: 16px;
+  background: $color-primary !important;
+  color: #fff !important;
+  font-size: 26px;
+  line-height: 84px;
+}
+
+.admin-upload-finished-page__search-btn::after {
+  border: none;
+}
+
+.admin-upload-finished-page__selected {
+  margin-top: 16px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: $color-primary-soft;
+}
+
+.admin-upload-finished-page__selected-label {
+  display: block;
+  font-size: 22px;
+  color: $color-primary;
+}
+
+.admin-upload-finished-page__selected-title {
+  display: block;
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.admin-upload-finished-page__selected-author {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+  color: $color-text-secondary;
+}
+
+.admin-upload-finished-page__selected-author-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-upload-finished-page__author-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #e5e7eb;
+}
+
+.admin-upload-finished-page__author-avatar--placeholder {
+  background: #e5e7eb;
+}
+
+.admin-upload-finished-page__result {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #fff;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  box-shadow: $shadow-card;
+}
+
+.admin-upload-finished-page__result.is-active {
+  box-shadow: 0 0 0 2px $color-primary;
+}
+
+.admin-upload-finished-page__result-cover {
+  width: 96px;
+  height: 96px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+
+.admin-upload-finished-page__result-cover--round {
+  border-radius: 50%;
+  width: 72px;
+  height: 72px;
+}
+
+.admin-upload-finished-page__result-cover--placeholder {
+  background: #e5e7eb;
+}
+
+.admin-upload-finished-page__result-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-upload-finished-page__result-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: $color-text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-upload-finished-page__result-meta {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  color: $color-text-secondary;
+}
+
+.admin-upload-finished-page__footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px 32px calc(env(safe-area-inset-bottom) + 16px);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.admin-upload-finished-page__submit {
+  height: 88px;
+  border-radius: 999px;
+  background: $color-primary !important;
+  color: #fff !important;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 88px;
+}
+
+.admin-upload-finished-page__submit::after {
+  border: none;
+}

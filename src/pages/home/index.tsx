@@ -12,6 +12,7 @@ import {
 } from 'react'
 import {
   fetchFeed,
+  fetchFinishedProductFeed,
   formatCount,
   getCachedUser,
   searchPosts,
@@ -28,7 +29,7 @@ import heroBanner from '@/assets/home-hero-mascot.jpg'
 import searchIcon from '@/assets/icons/search.svg'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
 import { useShareContent } from '@/utils/shareReward'
-import type { FeedTab, PostCategory, PostSummary } from '@/types/community'
+import type { FeedTab, FinishedProductSummary, HomeTab, PostCategory, PostSummary } from '@/types/community'
 import {
   applyPatchesToPosts,
   patchPostInList,
@@ -41,11 +42,19 @@ import {
   writeHomeFeedCache,
 } from '@/utils/homeFeedCache'
 import { cachePostDetail } from '@/utils/postDetailCache'
+import { cacheFinishedProduct } from '@/utils/finishedProductCache'
+import {
+  applyPatchesToFinishedProducts,
+  FINISHED_PRODUCT_INTERACTION_EVENT,
+  patchFinishedProductInList,
+  type FinishedProductInteractionPatch,
+} from '@/utils/finishedProductInteractionSync'
 import './index.scss'
 
-const TABS: { key: FeedTab; label: string }[] = [
+const TABS: { key: HomeTab; label: string }[] = [
   { key: 'recommend', label: '推荐' },
   { key: 'latest', label: '最新' },
+  { key: 'finished', label: '成品' },
 ]
 
 const CATEGORY_FILTERS: { key: PostCategory | ''; label: string }[] = [
@@ -94,6 +103,16 @@ interface HeaderLayout {
 function splitWaterfall(list: PostSummary[]): [PostSummary[], PostSummary[]] {
   const left: PostSummary[] = []
   const right: PostSummary[] = []
+  list.forEach((item, index) => {
+    if (index % 2 === 0) left.push(item)
+    else right.push(item)
+  })
+  return [left, right]
+}
+
+function splitFinishedWaterfall(list: FinishedProductSummary[]): [FinishedProductSummary[], FinishedProductSummary[]] {
+  const left: FinishedProductSummary[] = []
+  const right: FinishedProductSummary[] = []
   list.forEach((item, index) => {
     if (index % 2 === 0) left.push(item)
     else right.push(item)
@@ -171,6 +190,69 @@ const WaterfallView = memo(function WaterfallView({
       <View className='home-page__column'>
         {rightCol.map((item) => (
           <FeedCard key={item._id} item={item} onClick={() => onOpenPost(item)} />
+        ))}
+      </View>
+    </View>
+  )
+})
+
+const FinishedFeedCard = memo(function FinishedFeedCard({
+  item,
+  onClick,
+}: {
+  item: FinishedProductSummary
+  onClick: () => void
+}) {
+  return (
+    <View className='home-page__card' onClick={onClick}>
+      <View className='home-page__card-cover-wrap' style={{ paddingTop: '100%' }}>
+        {item.coverUrl ? (
+          <Image className='home-page__card-cover' src={item.coverUrl} mode='aspectFill' showMenuByLongpress={false} lazyLoad />
+        ) : (
+          <View className='home-page__card-cover home-page__card-cover--placeholder' />
+        )}
+        <Text className='home-page__card-size'>成品</Text>
+      </View>
+      <View className='home-page__card-body'>
+        <Text className='home-page__card-title'>{item.title}</Text>
+        <View className='home-page__card-footer'>
+          <View className='home-page__card-author'>
+            {item.author.avatarUrl ? (
+              <Image className='home-page__card-avatar' src={item.author.avatarUrl} lazyLoad />
+            ) : (
+              <View className='home-page__card-avatar home-page__card-avatar--placeholder' />
+            )}
+            <Text className='home-page__card-author-name'>{item.author.nickName}</Text>
+          </View>
+          <View className={`home-page__card-like${item.liked ? ' is-liked' : ''}`}>
+            <Text className='home-page__card-like-icon'>♥</Text>
+            <Text className='home-page__card-like-count'>{formatCount(item.likeCount)}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  )
+})
+
+const FinishedWaterfallView = memo(function FinishedWaterfallView({
+  list,
+  onOpen,
+}: {
+  list: FinishedProductSummary[]
+  onOpen: (item: FinishedProductSummary) => void
+}) {
+  const [leftCol, rightCol] = useMemo(() => splitFinishedWaterfall(list), [list])
+
+  return (
+    <View className='home-page__waterfall'>
+      <View className='home-page__column'>
+        {leftCol.map((item) => (
+          <FinishedFeedCard key={item._id} item={item} onClick={() => onOpen(item)} />
+        ))}
+      </View>
+      <View className='home-page__column'>
+        {rightCol.map((item) => (
+          <FinishedFeedCard key={item._id} item={item} onClick={() => onOpen(item)} />
         ))}
       </View>
     </View>
@@ -272,8 +354,8 @@ const HomeModeBar = memo(function HomeModeBar({
   isSearching: boolean
   searchKeyword: string
   searchCategory: PostCategory | ''
-  tab: FeedTab
-  onTabChange: (nextTab: FeedTab) => void
+  tab: HomeTab
+  onTabChange: (nextTab: HomeTab) => void
   onClearSearch: () => void
 }) {
   const searchLabel = [
@@ -313,6 +395,7 @@ const HomeStickyControls = memo(function HomeStickyControls({
   onSearch,
   selectedCategory,
   onCategoryChange,
+  onFinishedCategoryChange,
   onTabChange,
   onClearSearch,
   onGenerate,
@@ -321,17 +404,24 @@ const HomeStickyControls = memo(function HomeStickyControls({
   onSearch: (value: string, category: PostCategory | '') => void
   selectedCategory: PostCategory | ''
   onCategoryChange: (category: PostCategory | '') => void
-  onTabChange: (nextTab: FeedTab) => void
+  onFinishedCategoryChange: (category: PostCategory | '') => void
+  onTabChange: (nextTab: HomeTab) => void
   onClearSearch: () => void
   onGenerate: () => void
 }) {
   const searchBoxRef = useRef<HomeSearchBoxHandle>(null)
-  const [displayTab, setDisplayTab] = useState<FeedTab>('recommend')
+  const [displayTab, setDisplayTab] = useState<HomeTab>('recommend')
   const [displaySearchKeyword, setDisplaySearchKeyword] = useState('')
-  const isSearching = displaySearchKeyword.length > 0 || Boolean(selectedCategory)
+  // 成品 Tab 的类别筛选不进入「搜索模式」，只过滤成品列表
+  const isSearching = displayTab !== 'finished'
+    && (displaySearchKeyword.length > 0 || Boolean(selectedCategory))
   const stickyTop = layout.paddingTop + layout.rowHeight + 8
 
   const handleSearch = useCallback((value: string) => {
+    if (displayTab === 'finished') {
+      Taro.showToast({ title: '成品暂不支持搜索', icon: 'none' })
+      return
+    }
     const trimmed = value.trim()
     if (!trimmed && !selectedCategory) {
       searchBoxRef.current?.clear()
@@ -341,18 +431,29 @@ const HomeStickyControls = memo(function HomeStickyControls({
     }
     setDisplaySearchKeyword(trimmed)
     onSearch(trimmed, selectedCategory)
-  }, [onClearSearch, onSearch, selectedCategory])
+  }, [displayTab, onClearSearch, onSearch, selectedCategory])
 
   const handleCategoryChange = useCallback((category: PostCategory | '') => {
     onCategoryChange(category)
+    if (displayTab === 'finished') {
+      onFinishedCategoryChange(category)
+      return
+    }
     if (displaySearchKeyword || category) {
       onSearch(displaySearchKeyword, category)
       return
     }
     onClearSearch()
-  }, [displaySearchKeyword, onCategoryChange, onClearSearch, onSearch])
+  }, [
+    displaySearchKeyword,
+    displayTab,
+    onCategoryChange,
+    onClearSearch,
+    onFinishedCategoryChange,
+    onSearch,
+  ])
 
-  const handleTabChange = useCallback((nextTab: FeedTab) => {
+  const handleTabChange = useCallback((nextTab: HomeTab) => {
     if (nextTab === displayTab && !isSearching) return
     searchBoxRef.current?.clear()
     setDisplaySearchKeyword('')
@@ -412,6 +513,7 @@ const HomeStickyControls = memo(function HomeStickyControls({
 export default function HomePage() {
   const [headerLayout, setHeaderLayout] = useState(getHeaderLayout)
   const inflightRef = useRef<Partial<Record<FeedTab, boolean>>>({})
+  const finishedInflightRef = useRef(false)
 
   useShareContent(() => ({
     title: `${MINI_PROGRAM_NAME}，图片一键生成拼豆图纸`,
@@ -437,21 +539,29 @@ export default function HomePage() {
     })
   }, [])
 
-  const [tab, setTab] = useState<FeedTab>('recommend')
+  const [tab, setTab] = useState<HomeTab>('recommend')
   const [feeds, setFeeds] = useState(readHomeFeedCache)
   const feedsRef = useRef(feeds)
+  const [finishedFeed, setFinishedFeed] = useState<{
+    list: FinishedProductSummary[]
+    page: number
+    hasMore: boolean
+    category: PostCategory | ''
+  }>({ list: [], page: 1, hasMore: true, category: '' })
+  const finishedFeedRef = useRef(finishedFeed)
   const [searchState, setSearchState] = useState<SearchState>(EMPTY_SEARCH_STATE)
   const [selectedCategory, setSelectedCategory] = useState<PostCategory | ''>('')
-  const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null)
+  const [loadingTab, setLoadingTab] = useState<HomeTab | null>(null)
   const runtimeRef = useRef({
-    tab: 'recommend' as FeedTab,
+    tab: 'recommend' as HomeTab,
     searchKeyword: '',
     searchCategory: '' as PostCategory | '',
     isSearching: false,
     hasMore: false,
-    loadingTab: null as FeedTab | null,
+    loadingTab: null as HomeTab | null,
     page: 1,
     searchPage: 1,
+    finishedCategory: '' as PostCategory | '',
   })
 
   const searchKeyword = searchState.keyword
@@ -461,17 +571,38 @@ export default function HomePage() {
   const searchHasMore = searchState.hasMore
   const searching = searchState.loading
   const isSearching = searchKeyword.length > 0 || Boolean(searchCategory)
-  const currentFeed = feeds[tab]
-  const posts = isSearching ? searchResults : currentFeed.posts
-  const hasMore = isSearching ? searchHasMore : currentFeed.hasMore
-  const page = isSearching ? searchPage : currentFeed.page
+  const isFinishedTab = tab === 'finished'
+  const currentFeed = tab === 'finished'
+    ? { posts: [], page: finishedFeed.page, hasMore: finishedFeed.hasMore }
+    : feeds[tab]
+  const posts = isSearching && !isFinishedTab ? searchResults : currentFeed.posts
+  const finishedList = finishedFeed.list
+  const hasMore = isSearching && !isFinishedTab
+    ? searchHasMore
+    : (tab === 'finished' ? finishedFeed.hasMore : currentFeed.hasMore)
+  const page = isSearching && !isFinishedTab
+    ? searchPage
+    : (tab === 'finished' ? finishedFeed.page : currentFeed.page)
   feedsRef.current = feeds
-  runtimeRef.current = { tab, searchKeyword, searchCategory, isSearching, hasMore, loadingTab, page, searchPage }
-  const showInitialLoading = !isSearching
-    && posts.length === 0
+  finishedFeedRef.current = finishedFeed
+  runtimeRef.current = {
+    tab,
+    searchKeyword,
+    searchCategory,
+    isSearching: isSearching && !isFinishedTab,
+    hasMore,
+    loadingTab,
+    page,
+    searchPage,
+    finishedCategory: finishedFeed.category,
+  }
+  const showInitialLoading = !(isSearching && !isFinishedTab)
+    && (isFinishedTab ? finishedList.length === 0 : posts.length === 0)
     && loadingTab === tab
-  const isLoadingMore = (isSearching && searching && posts.length > 0)
-    || (!isSearching && loadingTab === tab && posts.length > 0)
+  const isLoadingMore = (isSearching && !isFinishedTab && searching && posts.length > 0)
+    || (!(isSearching && !isFinishedTab) && loadingTab === tab && (
+      isFinishedTab ? finishedList.length > 0 : posts.length > 0
+    ))
 
   const updateFeeds = useCallback((
     updater: (prev: ReturnType<typeof readHomeFeedCache>) => ReturnType<typeof readHomeFeedCache>,
@@ -516,6 +647,43 @@ export default function HomePage() {
       Taro.stopPullDownRefresh()
     }
   }, [updateFeeds])
+
+  const loadFinishedFeed = useCallback(async (
+    nextPage: number,
+    replace = false,
+    category: PostCategory | '' = finishedFeedRef.current.category,
+  ) => {
+    if (finishedInflightRef.current) return
+    finishedInflightRef.current = true
+    if (!replace || finishedFeedRef.current.list.length === 0) {
+      setLoadingTab('finished')
+    }
+    try {
+      const result = await fetchFinishedProductFeed(nextPage, category)
+      setFinishedFeed({
+        list: replace ? result.list : [...finishedFeedRef.current.list, ...result.list],
+        page: nextPage,
+        hasMore: result.hasMore,
+        category,
+      })
+    } catch (error) {
+      if (finishedFeedRef.current.list.length === 0) {
+        Taro.showToast({
+          title: error instanceof Error ? error.message : '加载失败',
+          icon: 'none',
+        })
+      }
+    } finally {
+      finishedInflightRef.current = false
+      setLoadingTab((current) => (current === 'finished' ? null : current))
+      Taro.stopPullDownRefresh()
+    }
+  }, [])
+
+  const handleFinishedCategoryChange = useCallback((category: PostCategory | '') => {
+    setSelectedCategory(category)
+    void loadFinishedFeed(1, true, category)
+  }, [loadFinishedFeed])
 
   const loadSearch = useCallback(async (
     value: string,
@@ -614,9 +782,18 @@ export default function HomePage() {
       })
     }
 
+    const onFinishedInteractionChange = (patch: FinishedProductInteractionPatch) => {
+      setFinishedFeed((prev) => {
+        const list = patchFinishedProductInList(prev.list, patch)
+        return list === prev.list ? prev : { ...prev, list }
+      })
+    }
+
     Taro.eventCenter.on(POST_INTERACTION_EVENT, onInteractionChange)
+    Taro.eventCenter.on(FINISHED_PRODUCT_INTERACTION_EVENT, onFinishedInteractionChange)
     return () => {
       Taro.eventCenter.off(POST_INTERACTION_EVENT, onInteractionChange)
+      Taro.eventCenter.off(FINISHED_PRODUCT_INTERACTION_EVENT, onFinishedInteractionChange)
     }
   }, [updateFeeds])
 
@@ -646,6 +823,10 @@ export default function HomePage() {
       const results = applyPatchesToPosts(prev.results)
       return results === prev.results ? prev : { ...prev, results }
     })
+    setFinishedFeed((prev) => {
+      const list = applyPatchesToFinishedProducts(prev.list)
+      return list === prev.list ? prev : { ...prev, list }
+    })
   })
 
   usePullDownRefresh(() => {
@@ -654,9 +835,14 @@ export default function HomePage() {
       searchKeyword: keywordNow,
       searchCategory: categoryNow,
       tab: currentTab,
+      finishedCategory,
     } = runtimeRef.current
     if (searchingNow) {
       void loadSearch(keywordNow, categoryNow, { page: 1, silent: true })
+      return
+    }
+    if (currentTab === 'finished') {
+      void loadFinishedFeed(1, true, finishedCategory)
       return
     }
     void loadFeed(currentTab, 1, true)
@@ -669,6 +855,7 @@ export default function HomePage() {
       hasMore: canLoadMore,
       loadingTab: loadingNow,
       page: currentPage,
+      finishedCategory,
     } = runtimeRef.current
     if (searchingNow) {
       if (!canLoadMore || searching) return
@@ -683,19 +870,27 @@ export default function HomePage() {
       return
     }
     if (!canLoadMore || loadingNow === currentTab) return
+    if (currentTab === 'finished') {
+      void loadFinishedFeed(currentPage + 1, false, finishedCategory)
+      return
+    }
     void loadFeed(currentTab, currentPage + 1)
   })
 
-  const handleTabChange = useCallback((nextTab: FeedTab) => {
+  const handleTabChange = useCallback((nextTab: HomeTab) => {
     const { tab: currentTab, isSearching: searchingNow } = runtimeRef.current
     if (nextTab === currentTab && !searchingNow) return
     setSearchState(EMPTY_SEARCH_STATE)
     setSelectedCategory('')
     setTab(nextTab)
+    if (nextTab === 'finished') {
+      void loadFinishedFeed(1, true, '')
+      return
+    }
     if (feedsRef.current[nextTab].posts.length === 0) {
       void loadFeed(nextTab, 1, true)
     }
-  }, [loadFeed])
+  }, [loadFeed, loadFinishedFeed])
 
   const clearSearch = useCallback(() => {
     setSearchState(EMPTY_SEARCH_STATE)
@@ -708,6 +903,11 @@ export default function HomePage() {
     Taro.navigateTo({ url: buildPostDetailUrl(item._id, item.author?.openid, item.visibility) })
   }, [])
 
+  const openFinishedProduct = useCallback((item: FinishedProductSummary) => {
+    cacheFinishedProduct(item)
+    Taro.navigateTo({ url: `/pages/finished-product-detail/index?id=${item._id}` })
+  }, [])
+
   const goGenerate = useCallback(() => {
     restoreSessionFromStorage()
     if (!isUserAuthenticated(getCachedUser())) {
@@ -717,6 +917,14 @@ export default function HomePage() {
     redirectToGeneratePage(false)
   }, [])
 
+  const emptyText = showInitialLoading || (searching && !isFinishedTab)
+    ? '加载中...'
+    : isSearching && !isFinishedTab
+      ? '没有找到相关图纸'
+      : isFinishedTab
+        ? (selectedCategory ? `暂无「${selectedCategory}」成品` : '暂无成品，敬请期待')
+        : '暂无作品，快去生成吧'
+
   return (
     <View className='home-page'>
       <HomeStickyControls
@@ -724,26 +932,34 @@ export default function HomePage() {
         onSearch={loadSearch}
         selectedCategory={selectedCategory}
         onCategoryChange={setSelectedCategory}
+        onFinishedCategoryChange={handleFinishedCategoryChange}
         onTabChange={handleTabChange}
         onClearSearch={clearSearch}
         onGenerate={goGenerate}
       />
 
-      {posts.length === 0 ? (
+      {isFinishedTab ? (
+        finishedList.length === 0 ? (
+          <View className='home-page__empty'>
+            <Text>{emptyText}</Text>
+          </View>
+        ) : (
+          <FinishedWaterfallView list={finishedList} onOpen={openFinishedProduct} />
+        )
+      ) : posts.length === 0 ? (
         <View className='home-page__empty'>
-          <Text>
-            {showInitialLoading || searching
-              ? '加载中...'
-              : isSearching
-                ? '没有找到相关图纸'
-                : '暂无作品，快去生成吧'}
-          </Text>
+          <Text>{emptyText}</Text>
         </View>
       ) : (
         <WaterfallView list={posts} onOpenPost={openPost} />
       )}
 
-      {!showInitialLoading && !searching && !isLoadingMore && !hasMore && posts.length > 0 ? (
+      {isLoadingMore ? (
+        <View className='home-page__footer-tip'>加载更多...</View>
+      ) : null}
+
+      {!showInitialLoading && !(searching && !isFinishedTab) && !isLoadingMore && !hasMore
+        && (isFinishedTab ? finishedList.length > 0 : posts.length > 0) ? (
         <View className='home-page__footer-tip'>· 没有更多啦 ·</View>
       ) : null}
     </View>

@@ -115,8 +115,51 @@
   line-height: 1.2;
 }
 
-.feedback-page__admin {
+.feedback-page__admin-group {
   margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feedback-page__admin-card {
+  padding: 24px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+
+.feedback-page__admin-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.feedback-page__admin-switch-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.feedback-page__admin-switch-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a4b;
+  line-height: 1.35;
+}
+
+.feedback-page__admin-switch-desc {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  color: $color-text-secondary;
+  line-height: 1.5;
+}
+
+.feedback-page__admin {
+  margin-top: 0;
   height: 88px;
   border-radius: 999px;
   border: 2px solid $color-primary;
@@ -125,6 +168,12 @@
   font-size: 28px;
   font-weight: 600;
   line-height: 88px;
+}
+
+.feedback-page__admin--secondary {
+  background: $color-primary !important;
+  color: #fff !important;
+  border-color: $color-primary;
 }
 
 .feedback-page__admin::after {
