@@ -7,6 +7,8 @@ import { canvasToTempFile } from '@/utils/canvas'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { getCoverCellPx } from '@/services/patternRenderer'
 import { handleAlbumSaveError, saveCanvasToAlbum, exportSvgAndShareSync, handleSvgExportError, type PatternExportFormat } from '@/utils/patternExport'
+import { hasRewardedVideoExportAd, REWARDED_VIDEO_EXPORT_AD_UNIT_ID } from '@/utils/adUnits'
+import { createRewardedVideoSession, type RewardedVideoSession } from '@/utils/rewardedVideoAd'
 import { resolveCreatorNickname } from '@/utils/creatorNickname'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import {
@@ -148,6 +150,8 @@ export default function PreviewPage() {
   const regeneratingRef = useRef(false)
   const cancelRequestedRef = useRef(false)
   const gridSettingsInitializedRef = useRef(false)
+  /** 激励视频须绑定当前预览页，离开页面要 destroy，不能跨页复用 */
+  const rewardedVideoRef = useRef<RewardedVideoSession | null>(null)
 
   basePatternRef.current = basePattern
   sharePostIdRef.current = postId
@@ -180,6 +184,13 @@ export default function PreviewPage() {
       setRegeneratingMessage('')
     }
     restoreSessionFromStorage()
+    if (hasRewardedVideoExportAd()) {
+      // 小程序激励视频是页面级实例；每次进入预览页确保会话可用并预加载
+      if (!rewardedVideoRef.current) {
+        rewardedVideoRef.current = createRewardedVideoSession(REWARDED_VIDEO_EXPORT_AD_UNIT_ID)
+      }
+      rewardedVideoRef.current?.preload()
+    }
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       if (basePatternRef.current) return
@@ -219,6 +230,8 @@ export default function PreviewPage() {
 
   useUnload(() => {
     abortRef.current?.abort()
+    rewardedVideoRef.current?.destroy()
+    rewardedVideoRef.current = null
 
     if (!pristinePostPatternRef.current) return
     try {
@@ -317,7 +330,7 @@ export default function PreviewPage() {
     setSaveOptionsOpen(true)
   }
 
-  const handleConfirmExport = () => {
+  const handleConfirmExport = async () => {
     if (!displayedPattern || saving || exportBusy) return
 
     if (exportFormat === 'svg') {
@@ -344,7 +357,43 @@ export default function PreviewPage() {
       return
     }
 
+    // PNG 存相册：优先看完激励视频；广告失败/无填充不阻断正常保存
     setSaveOptionsOpen(false)
+
+    if (process.env.TARO_ENV === 'weapp' && hasRewardedVideoExportAd()) {
+      if (!rewardedVideoRef.current) {
+        rewardedVideoRef.current = createRewardedVideoSession(REWARDED_VIDEO_EXPORT_AD_UNIT_ID)
+      }
+      const videoSession = rewardedVideoRef.current
+
+      if (videoSession) {
+        Taro.showLoading({ title: '加载视频...', mask: true })
+        let loadingVisible = true
+        const hideLoadingSafe = () => {
+          if (!loadingVisible) return
+          loadingVisible = false
+          Taro.hideLoading()
+        }
+
+        const adResult = await videoSession.show({
+          onPresented: hideLoadingSafe,
+        })
+        hideLoadingSafe()
+
+        if (adResult === 'skipped') {
+          // 用户主动中途退出：不保存
+          Taro.showToast({ title: '需完整看完视频才能保存', icon: 'none', duration: 2500 })
+          return
+        }
+        if (adResult === 'completed') {
+          beginExportJob('save')
+          return
+        }
+        // failed / unavailable（无填充、超时、开发者工具等）：放行保存，不阻断使用
+        console.warn('激励视频不可用，已放行保存', adResult)
+      }
+    }
+
     beginExportJob('save')
   }
 
@@ -745,7 +794,7 @@ export default function PreviewPage() {
                   onClick={() => setExportFormat('png')}
                 >
                   <Text className='preview-page__format-option-title'>PNG</Text>
-                  <Text className='preview-page__format-option-desc'>高清位图，保存到相册</Text>
+                  <Text className='preview-page__format-option-desc'>需完整观看短视频后，才能保存到相册</Text>
                 </View>
                 <View
                   className={`preview-page__format-option${exportFormat === 'svg' ? ' is-active' : ''}`}
@@ -786,7 +835,7 @@ export default function PreviewPage() {
                 取消
               </Button>
               <Button className='preview-page__save-modal-btn preview-page__save-modal-btn--primary' onClick={handleConfirmExport}>
-                {exportFormat === 'png' ? '保存相册' : '分享文件'}
+                {exportFormat === 'png' ? '看视频后保存' : '分享文件'}
               </Button>
             </View>
           </View>
