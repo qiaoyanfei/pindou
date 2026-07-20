@@ -1,9 +1,14 @@
 import { Canvas, Image, ScrollView, Text, View } from '@tarojs/components'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { useEffect, useMemo, useState } from 'react'
+import Taro, { useDidShow, useUnload } from '@tarojs/taro'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getColorById } from '@/services/palette'
+import { hasInterstitialColorDetailAd, INTERSTITIAL_COLOR_DETAIL_AD_UNIT_ID } from '@/utils/adUnits'
 import { getCanvasNode } from '@/utils/canvas'
 import { getColorDisplayName } from '@/utils/colorDisplayName'
+import {
+  createInterstitialAdSession,
+  type InterstitialAdSession,
+} from '@/utils/interstitialAd'
 import {
   COLOR_DETAIL_STORAGE_KEY,
   PATTERN_STORAGE_KEY,
@@ -12,6 +17,9 @@ import {
 } from '@/types'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import './index.scss'
+
+/** 进页稍晚再弹，避免一进页打断阅读 */
+const INTERSTITIAL_SHOW_DELAY_MS = 800
 
 interface StoredPayload {
   pattern?: PatternResult
@@ -92,6 +100,9 @@ export default function ColorDetailPage() {
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [donutSrc, setDonutSrc] = useState('')
+  const interstitialRef = useRef<InterstitialAdSession | null>(null)
+  const interstitialShownRef = useRef(false)
+  const interstitialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useDidShow(() => {
     const stored = (
@@ -104,6 +115,34 @@ export default function ColorDetailPage() {
       return
     }
     setPattern(stored.pattern)
+
+    if (
+      process.env.TARO_ENV === 'weapp'
+      && hasInterstitialColorDetailAd()
+      && !interstitialShownRef.current
+    ) {
+      if (!interstitialRef.current) {
+        interstitialRef.current = createInterstitialAdSession(INTERSTITIAL_COLOR_DETAIL_AD_UNIT_ID)
+      }
+      if (interstitialTimerRef.current) {
+        clearTimeout(interstitialTimerRef.current)
+      }
+      interstitialTimerRef.current = setTimeout(() => {
+        interstitialTimerRef.current = null
+        if (interstitialShownRef.current) return
+        interstitialShownRef.current = true
+        void interstitialRef.current?.show()
+      }, INTERSTITIAL_SHOW_DELAY_MS)
+    }
+  })
+
+  useUnload(() => {
+    if (interstitialTimerRef.current) {
+      clearTimeout(interstitialTimerRef.current)
+      interstitialTimerRef.current = null
+    }
+    interstitialRef.current?.destroy()
+    interstitialRef.current = null
   })
 
   const entries = useMemo(() => {

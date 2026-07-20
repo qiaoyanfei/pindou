@@ -10,7 +10,9 @@ const DEFAULT_CONFIG = {
   publishReward: 3,
   registerReward: 5,
   inviteReward: 5,
-  shareReward: 5,
+  shareReward: 2,
+  /** 每人每日最多领取分享奖励次数，0 表示不限制 */
+  dailyShareLimit: 3,
   feedbackWechatId: 'doudou_shouzuo',
   feedbackQrUrl: '',
   adminOpenIds: [],
@@ -286,7 +288,23 @@ async function getConfig() {
   if (!Number.isFinite(merged.dailyPublishLimit) || merged.dailyPublishLimit < 0) {
     merged.dailyPublishLimit = DEFAULT_CONFIG.dailyPublishLimit
   }
+  merged.dailyShareLimit = Number(merged.dailyShareLimit)
+  if (!Number.isFinite(merged.dailyShareLimit) || merged.dailyShareLimit < 0) {
+    merged.dailyShareLimit = DEFAULT_CONFIG.dailyShareLimit
+  }
   return merged
+}
+
+async function getTodayShareRewardCount(openid) {
+  const { start, end } = getChinaDayRange()
+  const res = await db.collection('bean_transactions')
+    .where({
+      _openid: openid,
+      title: '分享奖励',
+      createdAt: _.gte(start).and(_.lt(end)),
+    })
+    .count()
+  return res.total || 0
 }
 
 async function getUser(openid) {
@@ -593,6 +611,14 @@ async function handleRewardShare(openid) {
   const amount = Number(config.shareReward)
   if (!Number.isFinite(amount) || amount <= 0) {
     return ok({ rewarded: false, amount: 0, beanBalance: user.beanBalance })
+  }
+
+  const limit = Number(config.dailyShareLimit)
+  if (Number.isFinite(limit) && limit > 0) {
+    const count = await getTodayShareRewardCount(openid)
+    if (count >= limit) {
+      return fail(`今日分享奖励已达上限（${limit} 次），明天再来吧`)
+    }
   }
 
   await addBeanTransaction(openid, 'income', amount, '分享奖励', '分享给好友')

@@ -1,5 +1,5 @@
 import { View, Text, Image, ScrollView, Button, CoverView } from '@tarojs/components'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useUnload } from '@tarojs/taro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PatternCanvas from '@/components/PatternCanvas'
 import ZoomablePatternViewer from '@/components/ZoomablePatternViewer'
@@ -15,6 +15,7 @@ import {
 } from '@/services/communityService'
 import { restoreSessionFromStorage } from '@/services/session'
 import { isUserAuthenticated } from '@/services/wechatAuth'
+import { hasRewardedVideoDownloadAd, REWARDED_VIDEO_DOWNLOAD_AD_UNIT_ID } from '@/utils/adUnits'
 import { buildLoginUrl } from '@/utils/authRoute'
 import { safeNavigateTo } from '@/utils/navigation'
 import { patchPostInteraction } from '@/utils/postInteractionSync'
@@ -22,6 +23,7 @@ import { invalidateMyListCache } from '@/utils/myListCache'
 import { MINI_PROGRAM_NAME, STYLE_MODE_LABELS } from '@/utils/constants'
 import { setStorageSafe } from '@/utils/localCache'
 import { handleAlbumSaveError, saveCanvasToAlbum } from '@/utils/patternExport'
+import { createRewardedVideoSession, type RewardedVideoSession } from '@/utils/rewardedVideoAd'
 import HdPatternPreviewHost, { requestHdPatternPreview } from '@/components/HdPatternPreviewHost'
 import {
   buildPreviewConfigFromPost,
@@ -48,6 +50,7 @@ interface ExportPayload {
   creatorNickname: string
   charged: boolean
   beanCost?: number
+  rewardedVideoFree?: boolean
   incrementDownloadCount: boolean
   showMirrorLabel: boolean
 }
@@ -59,6 +62,13 @@ function getErrorMessage(error: unknown): string {
 
 function isBeanShortageError(error: unknown): boolean {
   return getErrorMessage(error).includes('小豆不足')
+}
+
+/** ActionSheet / Loading 关闭后再弹 Modal，避免被系统交互层冲掉 */
+function waitForUiSettle(ms = 280): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 interface PreviewData {
@@ -86,12 +96,21 @@ export default function PostDetailPage() {
   const exportPayloadRef = useRef<ExportPayload | null>(null)
   const postRef = useRef<PostDetail | null>(null)
   const variantRef = useRef<PreviewVariant>('original')
+  const rewardedVideoRef = useRef<RewardedVideoSession | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const downloadCost = getCachedConfig()?.downloadCost ?? 0
   const loginRedirectUrl = `/pages/post-detail/index?id=${postId}`
 
   postRef.current = post
   variantRef.current = variant
+
+  const ensureRewardedVideoSession = () => {
+    if (!hasRewardedVideoDownloadAd()) return null
+    if (!rewardedVideoRef.current) {
+      rewardedVideoRef.current = createRewardedVideoSession(REWARDED_VIDEO_DOWNLOAD_AD_UNIT_ID)
+    }
+    return rewardedVideoRef.current
+  }
 
   useEffect(() => {
     const cached = getCachedPostDetail(postId)
@@ -151,7 +170,13 @@ export default function PostDetailPage() {
   useDidShow(() => {
     restoreSessionFromStorage()
     setIsLoggedIn(isUserAuthenticated(getCachedUser()))
+    ensureRewardedVideoSession()?.preload()
     void loadPost({ silent: Boolean(postRef.current) })
+  })
+
+  useUnload(() => {
+    rewardedVideoRef.current?.destroy()
+    rewardedVideoRef.current = null
   })
 
   useShareContent(() => ({
@@ -265,7 +290,11 @@ export default function PostDetailPage() {
       await saveCanvasToAlbum(POST_DETAIL_EXPORT_CANVAS_ID)
       Taro.hideLoading()
       Taro.showToast({
-        title: payload.charged && payload.beanCost ? `已保存，消耗 ${payload.beanCost} 小豆` : '已保存到相册',
+        title: payload.charged && payload.beanCost
+          ? `已保存，消耗 ${payload.beanCost} 小豆`
+          : payload.rewardedVideoFree
+            ? '已保存，观看视频免费下载'
+            : '已保存到相册',
         icon: 'success',
       })
       if (payload.incrementDownloadCount) {
@@ -283,14 +312,18 @@ export default function PostDetailPage() {
     }
   }
 
-  const startDownloadExport = async (): Promise<void> => {
+  const startDownloadExport = async (options?: {
+    rewardedVideoCompleted?: boolean
+  }): Promise<void> => {
     const currentPost = postRef.current
     if (!currentPost) return
 
     setDownloading(true)
     Taro.showLoading({ title: '下载中...' })
     try {
-      const result = await downloadPost(currentPost._id)
+      const result = await downloadPost(currentPost._id, {
+        rewardedVideoCompleted: Boolean(options?.rewardedVideoCompleted),
+      })
       const basePattern = await loadPatternFromPost(result.post)
       const config: PatternConfig = buildPreviewConfigFromPost(result.post)
       const currentVariant = variantRef.current
@@ -302,6 +335,7 @@ export default function PostDetailPage() {
         creatorNickname: result.post.author?.nickName || '',
         charged: Boolean(result.charged),
         beanCost: result.beanCost,
+        rewardedVideoFree: Boolean(result.rewardedVideoFree),
         incrementDownloadCount,
         showMirrorLabel: currentVariant === 'mirror',
       }
@@ -311,25 +345,46 @@ export default function PostDetailPage() {
     } catch (error) {
       Taro.hideLoading()
       setDownloading(false)
-      if (isBeanShortageError(error)) {
-        Taro.showModal({
-          title: '小豆不足',
-          content: '当前小豆不足，去我的小豆页面攒豆子后再下载。',
-          confirmText: '去攒豆子',
-          cancelText: '取消',
-          success: (res) => {
-            if (res.confirm) {
-              safeNavigateTo('/pages/beans/index')
-            }
-          },
-        })
-        return
-      }
       Taro.showToast({
-        title: getErrorMessage(error) || '下载失败',
+        title: isBeanShortageError(error)
+          ? '小豆不足，看视频免费下载吧'
+          : (getErrorMessage(error) || '下载失败'),
         icon: 'none',
+        duration: 2500,
       })
     }
+  }
+
+  const watchVideoThenDownload = async (): Promise<void> => {
+    const videoSession = ensureRewardedVideoSession()
+    if (!videoSession) {
+      Taro.showToast({ title: '当前无法播放视频，请改用小豆下载', icon: 'none' })
+      return
+    }
+
+    Taro.showLoading({ title: '加载视频...', mask: true })
+    let loadingVisible = true
+    const hideLoadingSafe = () => {
+      if (!loadingVisible) return
+      loadingVisible = false
+      Taro.hideLoading()
+    }
+
+    const adResult = await videoSession.show({
+      onPresented: hideLoadingSafe,
+    })
+    hideLoadingSafe()
+
+    if (adResult === 'skipped') {
+      Taro.showToast({ title: '需完整看完视频才能免费下载', icon: 'none', duration: 2500 })
+      return
+    }
+    if (adResult !== 'completed') {
+      Taro.showToast({ title: '暂无可用视频，请改用小豆下载', icon: 'none', duration: 2500 })
+      return
+    }
+
+    await startDownloadExport({ rewardedVideoCompleted: true })
   }
 
   const handleDownload = async () => {
@@ -340,18 +395,59 @@ export default function PostDetailPage() {
       return
     }
 
-    const willChargeBeans = downloadCost > 0 && post.author?.openid !== getCachedUser()?.openid && !post.downloaded
+    const willChargeBeans = downloadCost > 0
+      && post.author?.openid !== getCachedUser()?.openid
+      && !post.downloaded
+
+    if (!willChargeBeans) {
+      const confirm = await new Promise<boolean>((resolve) => {
+        Taro.showModal({
+          title: '下载图纸',
+          content: '确认下载该图纸到相册？',
+          confirmText: '确认下载',
+          cancelText: '取消',
+          success: (res) => resolve(!!res.confirm),
+          fail: () => resolve(false),
+        })
+      })
+      if (!confirm) return
+      await startDownloadExport()
+      return
+    }
+
+    // 付费下载：看视频免豆 / 花小豆
+    if (hasRewardedVideoDownloadAd()) {
+      try {
+        const sheet = await Taro.showActionSheet({
+          itemList: ['看视频免费下载', `消耗 ${downloadCost} 小豆下载`],
+        })
+        // 等 ActionSheet 完全收起再继续，否则后续 Loading/Modal 可能弹不出来
+        await waitForUiSettle()
+        if (sheet.tapIndex === 0) {
+          await watchVideoThenDownload()
+          return
+        }
+        if (sheet.tapIndex === 1) {
+          await startDownloadExport()
+          return
+        }
+      } catch {
+        // 用户取消 actionSheet
+      }
+      return
+    }
+
     const confirm = await new Promise<boolean>((resolve) => {
       Taro.showModal({
         title: '下载图纸',
-        content: willChargeBeans ? `下载将消耗 ${downloadCost} 小豆，确认下载？` : '确认下载该图纸？',
+        content: `下载将消耗 ${downloadCost} 小豆，确认下载？`,
         confirmText: '确认下载',
         cancelText: '取消',
         success: (res) => resolve(!!res.confirm),
+        fail: () => resolve(false),
       })
     })
     if (!confirm) return
-
     await startDownloadExport()
   }
 

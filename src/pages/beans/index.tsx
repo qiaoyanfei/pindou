@@ -35,7 +35,7 @@ export default function BeansPage() {
   const [logs, setLogs] = useState<BeanTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const hasLoadedLogsRef = useRef(false)
-  const shareReward = getCachedConfig()?.shareReward ?? 5
+  const shareReward = getCachedConfig()?.shareReward ?? 2
 
   const loadLogs = useCallback(async (nextFilter: BeanFilter) => {
     setLoading(true)

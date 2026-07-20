@@ -123,6 +123,8 @@ export interface AppRemoteConfig {
   adminOpenIds?: string[]
   /** 每人每日最多发布次数，0 表示不限制 */
   dailyPublishLimit?: number
+  /** 每人每日最多领取分享奖励次数，0 表示不限制 */
+  dailyShareLimit?: number
   /** 发布白名单 OpenID，不受每日发布次数限制 */
   publishWhitelistOpenIds?: string[]
 }

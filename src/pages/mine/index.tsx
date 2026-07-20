@@ -229,7 +229,7 @@ export default function MinePage() {
         <View className='mine-page__invite-content'>
           <Text className='mine-page__invite-title'>邀请好友，一起{MINI_PROGRAM_NAME}</Text>
           <Text className='mine-page__invite-desc'>
-            分享小程序可获得{config?.shareReward ?? 5}小豆
+            分享小程序可获得{config?.shareReward ?? 2}小豆
           </Text>
           <Button
             className='mine-page__invite-btn'
