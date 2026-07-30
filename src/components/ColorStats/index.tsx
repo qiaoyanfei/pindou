@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { getColorById } from '@/services/palette'
 import { getColorDisplayName } from '@/utils/colorDisplayName'
 import { formatColorStatsTitle } from '@/utils/colorStatsTitle'
+import { getBeadSwatchStyle } from '@/utils/transparentBead'
 import type { PatternResult } from '@/types'
 import './index.scss'
 
@@ -36,7 +37,7 @@ export default function ColorStats({ pattern, previewLimit = 4 }: ColorStatsProp
             <View className='color-stats__item' key={id}>
               <View
                 className='color-stats__swatch'
-                style={{ backgroundColor: color?.hex ?? '#ccc' }}
+                style={getBeadSwatchStyle(id, color?.hex)}
               />
               <View className='color-stats__meta'>
                 <Text className='color-stats__id'>{id}</Text>

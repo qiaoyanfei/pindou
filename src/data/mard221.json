@@ -1832,19 +1832,21 @@
   {
     "id": "H1",
     "series": "H",
-    "hex": "#FDFBFF",
+    "hex": "#E4F0F8",
     "rgb": [
-      253,
-      251,
-      255
-    ]
+      228,
+      240,
+      248
+    ],
+    "type": "transparent",
+    "textColor": "#343A42"
   },
   {
     "id": "H2",
     "series": "H",
-    "hex": "#FEFFFF",
+    "hex": "#FFFFFF",
     "rgb": [
-      254,
+      255,
       255,
       255
     ]

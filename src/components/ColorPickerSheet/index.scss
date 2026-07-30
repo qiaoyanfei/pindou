@@ -330,6 +330,11 @@ $color-picker-summary-height: 104px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
+.color-picker-sheet__check--dark {
+  color: #1a1a1a;
+  text-shadow: none;
+}
+
 .color-picker-sheet__id {
   font-size: 20px;
   font-weight: 600;
@@ -402,6 +407,10 @@ $color-picker-summary-height: 104px;
 
 .color-picker-sheet__summary-to {
   color: #fff;
+}
+
+.color-picker-sheet__summary-to--transparent {
+  color: #1a1a1a;
 }
 
 .color-picker-sheet__summary-arrow {

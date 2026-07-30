@@ -1,4 +1,5 @@
 import { getColorById } from '@/services/palette'
+import { isTransparentBeadId } from '@/utils/transparentBead'
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   const rn = r / 255
@@ -44,6 +45,7 @@ function hueName(hue: number): string {
 export function getColorDisplayName(id: string): string {
   const color = getColorById(id)
   if (!color) return id
+  if (color.type === 'transparent' || isTransparentBeadId(id)) return '透明'
 
   const [h, s, l] = rgbToHsl(...color.rgb)
 

@@ -89,10 +89,17 @@ export const PATTERN_MIXED_LIGHT_RATIO = 0.35
 
 export const PATTERN_LIGHT_NEUTRAL_IDS = new Set(['H2', 'H13'])
 
+/** 透明豆（渲染走玻璃材质；自动配色不参与匹配） */
+export const PATTERN_TRANSPARENT_IDS = new Set(['H1'])
+
 const PATTERN_DARK_IDS = new Set(['H16', 'H7', 'H17', 'H3', 'H18', 'H9'])
 
 export function isLightNeutralId(id: string): boolean {
   return PATTERN_LIGHT_NEUTRAL_IDS.has(id)
+}
+
+export function isTransparentBeadId(id: string): boolean {
+  return PATTERN_TRANSPARENT_IDS.has(id)
 }
 
 export function isDarkBeadId(id: string): boolean {

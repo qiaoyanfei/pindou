@@ -2,7 +2,7 @@ import { getPalette } from '@/services/palette'
 import { finalizePattern } from '@/services/patternStats'
 import type { BeadColor, PatternResult } from '@/types'
 import type { Rgb } from '@/services/imageProcessor'
-import { PATTERN_EMPTY_CELL } from '@/utils/constants'
+import { PATTERN_EMPTY_CELL, isTransparentBeadId } from '@/utils/constants'
 import { deltaE2000, labDistance, rgbToLab } from '@/utils/colorSpace'
 import { throwIfAborted, yieldToMain, type PatternAbortSignal } from '@/utils/patternGenerationProgress'
 
@@ -43,7 +43,7 @@ export function matchRgbGridToPattern(
   width: number,
   height: number,
 ): PatternResult {
-  const palette = getPalette()
+  const palette = getPalette().filter((color) => !isTransparentBeadId(color.id))
   const grid: string[] = new Array(width * height)
   const stats: Record<string, number> = {}
 
@@ -71,7 +71,7 @@ export async function matchRgbGridWithExteriorBackground(
   signal?: PatternAbortSignal,
   onCellProgress?: (done: number, total: number) => void,
 ): Promise<PatternResult> {
-  const palette = getPalette()
+  const palette = getPalette().filter((color) => !isTransparentBeadId(color.id))
   const grid: string[] = new Array(width * height)
 
   for (let i = 0; i < colors.length; i += 1) {

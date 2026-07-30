@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isEmptyCell } from '@/services/patternStats'
 import { getColorById, getPalette } from '@/services/palette'
 import { countCellsWithColor, getPatternColorIds } from '@/utils/patternEdit'
+import { getBeadSwatchStyle, isTransparentBeadId } from '@/utils/transparentBead'
 import type { PatternResult } from '@/types'
 import searchIcon from '@/assets/icons/search.svg'
 import closeIcon from '@/assets/icons/editor-close.svg'
@@ -29,9 +30,9 @@ function formatColorLabel(colorId: string): string {
   return isEmptyCell(colorId) ? '空白' : colorId
 }
 
-function colorIdToHex(colorId: string): string {
-  if (isEmptyCell(colorId)) return '#f3f4f6'
-  return getColorById(colorId)?.hex ?? '#ccc'
+function colorIdToSwatchStyle(colorId: string): Record<string, string> {
+  if (isEmptyCell(colorId)) return { backgroundColor: '#f3f4f6' }
+  return getBeadSwatchStyle(colorId, getColorById(colorId)?.hex)
 }
 
 const STATUS_COLOR_ID_LIMIT = 4
@@ -116,14 +117,13 @@ export default function ColorPickerSheet({
     () => statusColorIds.map((colorId) => ({
       colorId,
       count: countCellsWithColor(pattern, colorId),
-      hex: colorIdToHex(colorId),
     })),
     [pattern, statusColorIds],
   )
-  const currentHex = colorIdToHex(currentColorId)
-  const pendingHex = pendingColorId
-    ? colorIdToHex(pendingColorId)
-    : '#f3f4f6'
+  const currentSwatchStyle = colorIdToSwatchStyle(currentColorId)
+  const pendingSwatchStyle = pendingColorId
+    ? colorIdToSwatchStyle(pendingColorId)
+    : { backgroundColor: '#f3f4f6' }
 
   const lockModePanelHeight = useCallback(() => {
     if (!visible) return
@@ -198,7 +198,7 @@ export default function ColorPickerSheet({
                   <View
                     key={colorId}
                     className='color-picker-sheet__status-swatch color-picker-sheet__status-swatch--mini'
-                    style={{ backgroundColor: colorIdToHex(colorId) }}
+                    style={colorIdToSwatchStyle(colorId)}
                   />
                 ))}
                 {hiddenStatusColorCount > 0 ? (
@@ -208,7 +208,7 @@ export default function ColorPickerSheet({
             ) : (
               <View
                 className='color-picker-sheet__status-swatch'
-                style={{ backgroundColor: currentHex }}
+                style={currentSwatchStyle}
               />
             )}
             <Text className='color-picker-sheet__status-text'>
@@ -228,7 +228,7 @@ export default function ColorPickerSheet({
             <Text className='color-picker-sheet__same-color-label'>按色号全选</Text>
             <ScrollView scrollX className='color-picker-sheet__same-color-scroll' showScrollbar={false}>
               <View className='color-picker-sheet__same-color-list'>
-                {sameColorOptions.map(({ colorId, count, hex }) => (
+                {sameColorOptions.map(({ colorId, count }) => (
                   <View
                     key={colorId}
                     className='color-picker-sheet__same-color-chip'
@@ -236,7 +236,7 @@ export default function ColorPickerSheet({
                   >
                     <View
                       className='color-picker-sheet__same-color-chip-swatch'
-                      style={{ backgroundColor: hex }}
+                      style={colorIdToSwatchStyle(colorId)}
                     />
                     <Text className='color-picker-sheet__same-color-chip-text'>
                       {formatColorLabel(colorId)}({count})
@@ -317,9 +317,15 @@ export default function ColorPickerSheet({
                         >
                           <View
                             className='color-picker-sheet__swatch'
-                            style={{ backgroundColor: color?.hex ?? '#ccc' }}
+                            style={getBeadSwatchStyle(id, color?.hex)}
                           >
-                            {active ? <Text className='color-picker-sheet__check'>✓</Text> : null}
+                            {active ? (
+                              <Text
+                                className={`color-picker-sheet__check${isTransparentBeadId(id) ? ' color-picker-sheet__check--dark' : ''}`}
+                              >
+                                ✓
+                              </Text>
+                            ) : null}
                           </View>
                           <Text className='color-picker-sheet__id'>{id}</Text>
                         </View>
@@ -348,7 +354,7 @@ export default function ColorPickerSheet({
                         {statusColorIds.length === 1 ? (
                           <View
                             className='color-picker-sheet__erase-preview-swatch'
-                            style={{ backgroundColor: currentHex }}
+                            style={currentSwatchStyle}
                           />
                         ) : (
                           <View className='color-picker-sheet__erase-preview-swatches'>
@@ -356,7 +362,7 @@ export default function ColorPickerSheet({
                               <View
                                 key={colorId}
                                 className='color-picker-sheet__erase-preview-swatch color-picker-sheet__erase-preview-swatch--mini'
-                                style={{ backgroundColor: colorIdToHex(colorId) }}
+                                style={colorIdToSwatchStyle(colorId)}
                               />
                             ))}
                           </View>
@@ -392,8 +398,8 @@ export default function ColorPickerSheet({
                     <Text className='color-picker-sheet__summary-count'>{selectedCount}格</Text>
                     <Text className='color-picker-sheet__summary-arrow'>→</Text>
                     <View
-                      className='color-picker-sheet__summary-to'
-                      style={{ backgroundColor: pendingHex }}
+                      className={`color-picker-sheet__summary-to${pendingColorId && isTransparentBeadId(pendingColorId) ? ' color-picker-sheet__summary-to--transparent' : ''}`}
+                      style={pendingSwatchStyle}
                     >
                       <Text>{pendingColorId}</Text>
                     </View>

@@ -5,6 +5,9 @@ export interface BeadColor {
   series: string
   hex: string
   rgb: [number, number, number]
+  /** 透明豆需单独材质渲染，勿仅靠 hex 判断 */
+  type?: 'solid' | 'transparent'
+  textColor?: string
   lab?: [number, number, number]
 }
 

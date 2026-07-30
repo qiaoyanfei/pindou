@@ -2,6 +2,13 @@ import { getColorById } from '@/services/palette'
 import { getSheetLayoutMetrics } from '@/services/patternRenderer'
 import { isEmptyCell } from '@/services/patternStats'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
+import {
+  appendTransparentSvgCell,
+  appendTransparentSvgDefs,
+  getBeadSvgFill,
+  getTransparentLabelColor,
+  isTransparentBeadId,
+} from '@/utils/transparentBead'
 import type { PatternResult, RenderOptions } from '@/types'
 
 const GRID_LINE_COLOR = '#d0d0d0'
@@ -191,6 +198,7 @@ export function buildPatternSheetSvg(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}">`,
     `<rect width="100%" height="100%" fill="#ffffff"/>`,
   ]
+  appendTransparentSvgDefs(parts)
 
   const gridOriginX = layout.padding + layout.axisWidth
   const gridOriginY = layout.padding + layout.headerHeight + layout.axisHeight
@@ -245,11 +253,21 @@ export function buildPatternSheetSvg(
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const colorId = grid[y * width + x]
-      const fill = isEmptyCell(colorId)
-        ? EMPTY_CELL_FILL
-        : (getColorById(colorId)?.hex ?? '#cccccc')
+      const cellX = gridOriginX + x * cellPx
+      const cellY = gridOriginY + y * cellPx
+      if (isEmptyCell(colorId)) {
+        parts.push(
+          `<rect x="${cellX}" y="${cellY}" width="${cellPx}" height="${cellPx}" fill="${EMPTY_CELL_FILL}"/>`,
+        )
+        continue
+      }
+      if (isTransparentBeadId(colorId)) {
+        appendTransparentSvgCell(parts, cellX, cellY, cellPx)
+        continue
+      }
+      const fill = getBeadSvgFill(colorId, getColorById(colorId)?.hex)
       parts.push(
-        `<rect x="${gridOriginX + x * cellPx}" y="${gridOriginY + y * cellPx}" width="${cellPx}" height="${cellPx}" fill="${fill}"/>`,
+        `<rect x="${cellX}" y="${cellY}" width="${cellPx}" height="${cellPx}" fill="${fill}"/>`,
       )
     }
   }
@@ -267,8 +285,11 @@ export function buildPatternSheetSvg(
         if (isEmptyCell(colorId)) continue
         const color = getColorById(colorId)
         if (!color) continue
+        const labelFill = isTransparentBeadId(colorId)
+          ? (color.textColor || getTransparentLabelColor())
+          : getLabelColor(color.hex)
         parts.push(
-          `<text x="${gridOriginX + x * cellPx + cellPx / 2}" y="${gridOriginY + y * cellPx + cellPx / 2}" fill="${getLabelColor(color.hex)}" font-size="${fontSize}" font-weight="700" font-family="sans-serif" text-anchor="middle" dominant-baseline="middle">${escapeXml(color.id)}</text>`,
+          `<text x="${gridOriginX + x * cellPx + cellPx / 2}" y="${gridOriginY + y * cellPx + cellPx / 2}" fill="${labelFill}" font-size="${fontSize}" font-weight="700" font-family="sans-serif" text-anchor="middle" dominant-baseline="middle">${escapeXml(color.id)}</text>`,
         )
       }
     }
@@ -285,10 +306,16 @@ export function buildPatternSheetSvg(
     const col = index % itemsPerRow
     const itemX = layout.padding + col * layout.legendItemWidth
     const itemY = legendTop + row * (layout.legendItemHeight + layout.legendGap)
-    const hex = getColorById(id)?.hex ?? '#cccccc'
     const swatchY = itemY + (layout.legendItemHeight - swatchSize) / 2
+    if (isTransparentBeadId(id)) {
+      appendTransparentSvgCell(parts, itemX, swatchY, swatchSize)
+    } else {
+      const hex = getBeadSvgFill(id, getColorById(id)?.hex)
+      parts.push(
+        `<rect x="${itemX}" y="${swatchY}" width="${swatchSize}" height="${swatchSize}" fill="${hex}" stroke="${GRID_LINE_COLOR}" stroke-width="1"/>`,
+      )
+    }
     parts.push(
-      `<rect x="${itemX}" y="${swatchY}" width="${swatchSize}" height="${swatchSize}" fill="${hex}" stroke="${GRID_LINE_COLOR}" stroke-width="1"/>`,
       `<text x="${itemX + swatchSize + 6}" y="${itemY + layout.legendItemHeight / 2}" fill="${LEGEND_TEXT_COLOR}" font-size="${legendFontSize}" font-family="sans-serif" dominant-baseline="middle">${escapeXml(`${id} (${count})`)}</text>`,
     )
   })

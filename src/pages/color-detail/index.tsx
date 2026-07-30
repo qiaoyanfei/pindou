@@ -10,6 +10,10 @@ import {
   type InterstitialAdSession,
 } from '@/utils/interstitialAd'
 import {
+  getBeadDisplayHex,
+  getBeadSwatchStyle,
+} from '@/utils/transparentBead'
+import {
   COLOR_DETAIL_STORAGE_KEY,
   PATTERN_STORAGE_KEY,
   type PatternConfig,
@@ -44,7 +48,7 @@ function toEntry([id, count]: [string, number], total: number): ColorEntry {
   return {
     id,
     count,
-    hex: color?.hex ?? '#d1d5db',
+    hex: getBeadDisplayHex(id, color?.hex),
     name: getColorDisplayName(id),
     percent: total > 0 ? (count / total) * 100 : 0,
   }
@@ -203,7 +207,7 @@ export default function ColorDetailPage() {
             <View className='color-detail__legend'>
               {legendEntries.map((entry) => (
                 <View className='color-detail__legend-row' key={entry.id}>
-                  <View className='color-detail__swatch' style={{ backgroundColor: entry.hex }} />
+                  <View className='color-detail__swatch' style={getBeadSwatchStyle(entry.id, entry.hex)} />
                   <Text className='color-detail__legend-id'>{entry.id}</Text>
                   <Text className='color-detail__legend-count'>{entry.count}颗</Text>
                   <Text className='color-detail__legend-percent'>{entry.percent.toFixed(1)}%</Text>
@@ -223,11 +227,11 @@ export default function ColorDetailPage() {
             {visibleDetailEntries.map((entry) => (
               <View className='color-detail__table-row' key={entry.id}>
                 <View className='color-detail__cell-id'>
-                  <View className='color-detail__swatch color-detail__swatch--detail' style={{ backgroundColor: entry.hex }} />
+                  <View className='color-detail__swatch color-detail__swatch--detail' style={getBeadSwatchStyle(entry.id, entry.hex)} />
                   <Text>{entry.id}</Text>
                 </View>
                 <View className='color-detail__cell-color'>
-                  <View className='color-detail__swatch color-detail__swatch--detail' style={{ backgroundColor: entry.hex }} />
+                  <View className='color-detail__swatch color-detail__swatch--detail' style={getBeadSwatchStyle(entry.id, entry.hex)} />
                   <Text>{entry.name}</Text>
                 </View>
                 <Text className='color-detail__cell-strong'>{entry.count}颗</Text>

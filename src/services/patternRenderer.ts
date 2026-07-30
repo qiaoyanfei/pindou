@@ -2,6 +2,11 @@ import { getColorById } from '@/services/palette'
 import { isEmptyCell } from '@/services/patternStats'
 import { drawGlobalWatermarks } from '@/services/patternWatermark'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
+import {
+  drawTransparentBeadFill,
+  getTransparentLabelColor,
+  isTransparentBeadId,
+} from '@/utils/transparentBead'
 import type { PatternResult, RenderOptions } from '@/types'
 
 type CanvasNode = {
@@ -136,9 +141,14 @@ function drawGridCellFill(
 ): void {
   if (isEmptyCell(colorId)) {
     ctx.fillStyle = EMPTY_CELL_FILL
-  } else {
-    ctx.fillStyle = getColorById(colorId)?.hex ?? '#cccccc'
+    ctx.fillRect(Math.round(x), Math.round(y), cellPx, cellPx)
+    return
   }
+  if (isTransparentBeadId(colorId)) {
+    drawTransparentBeadFill(ctx, x, y, cellPx)
+    return
+  }
+  ctx.fillStyle = getColorById(colorId)?.hex ?? '#cccccc'
   ctx.fillRect(Math.round(x), Math.round(y), cellPx, cellPx)
 }
 
@@ -223,7 +233,9 @@ function drawGridCellOverlay(
   if (!color) return
 
   const fontSize = Math.max(8, Math.floor(cellPx * 0.38))
-  ctx.fillStyle = getLabelColor(color.hex)
+  ctx.fillStyle = isTransparentBeadId(colorId)
+    ? (color.textColor || getTransparentLabelColor())
+    : getLabelColor(color.hex)
   ctx.font = `bold ${fontSize}px sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -554,15 +566,14 @@ export function renderPatternSheetToCanvas(
     const itemX = layout.padding + col * layout.legendItemWidth
     const itemY = legendTop + row * (layout.legendItemHeight + layout.legendGap)
     const color = getColorById(id)
-    const hex = color?.hex ?? '#cccccc'
-
-    ctx.fillStyle = hex
-    ctx.fillRect(
-      Math.round(itemX),
-      Math.round(itemY + (layout.legendItemHeight - swatchSize) / 2),
-      swatchSize,
-      swatchSize,
-    )
+    const swatchX = Math.round(itemX)
+    const swatchY = Math.round(itemY + (layout.legendItemHeight - swatchSize) / 2)
+    if (isTransparentBeadId(id)) {
+      drawTransparentBeadFill(ctx, swatchX, swatchY, swatchSize)
+    } else {
+      ctx.fillStyle = color?.hex ?? '#cccccc'
+      ctx.fillRect(swatchX, swatchY, swatchSize, swatchSize)
+    }
     ctx.strokeStyle = GRID_LINE_COLOR
     ctx.lineWidth = 1
     ctx.strokeRect(
