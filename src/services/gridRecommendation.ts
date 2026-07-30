@@ -1,5 +1,5 @@
 import { analyzeContentCrop } from '@/services/backgroundMatting'
-import { loadCanvasNode } from '@/services/imageProcessor'
+import { loadCanvasImageWithRetry, loadCanvasNode } from '@/services/imageProcessor'
 import {
   STYLE_MODE_AUTO_LONG_EDGE_LIMITS,
   STYLE_MODE_DEFAULT_LONG_EDGE,
@@ -133,12 +133,7 @@ export async function recommendLongEdgeFromImage(
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.imageSmoothingEnabled = true
 
-  const image = canvas.createImage()
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error('图片加载失败'))
-    image.src = imagePath
-  })
+  const image = await loadCanvasImageWithRetry(canvas, imagePath)
   throwIfAborted(signal)
 
   ctx.clearRect(0, 0, analysisWidth, analysisHeight)

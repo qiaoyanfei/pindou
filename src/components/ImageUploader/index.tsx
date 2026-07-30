@@ -5,7 +5,7 @@ import './index.scss'
 
 interface ImageUploaderProps {
   imagePath: string
-  onSelect: (path: string) => void
+  onSelect: (path: string) => void | Promise<void>
   onBeforeChoose?: () => boolean | Promise<boolean>
 }
 
@@ -25,7 +25,7 @@ export default function ImageUploader({ imagePath, onSelect, onBeforeChoose }: I
 
       const path = res.tempFiles?.[0]?.tempFilePath
       if (path) {
-        onSelect(path)
+        await onSelect(path)
         return
       }
       notifyMediaPickerEmptyResult()

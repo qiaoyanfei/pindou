@@ -404,7 +404,7 @@ const HomeStickyControls = memo(function HomeStickyControls({
   onSearch: (value: string, category: PostCategory | '') => void
   selectedCategory: PostCategory | ''
   onCategoryChange: (category: PostCategory | '') => void
-  onFinishedCategoryChange: (category: PostCategory | '') => void
+  onFinishedCategoryChange: (category: PostCategory | '', keyword?: string) => void
   onTabChange: (nextTab: HomeTab) => void
   onClearSearch: () => void
   onGenerate: () => void
@@ -412,17 +412,24 @@ const HomeStickyControls = memo(function HomeStickyControls({
   const searchBoxRef = useRef<HomeSearchBoxHandle>(null)
   const [displayTab, setDisplayTab] = useState<HomeTab>('recommend')
   const [displaySearchKeyword, setDisplaySearchKeyword] = useState('')
-  // 成品 Tab 的类别筛选不进入「搜索模式」，只过滤成品列表
-  const isSearching = displayTab !== 'finished'
-    && (displaySearchKeyword.length > 0 || Boolean(selectedCategory))
+  // 成品 Tab：有关键词时进入搜索提示条；仅分类筛选时仍显示 Tab
+  const isSearching = displaySearchKeyword.length > 0
+    || (displayTab !== 'finished' && Boolean(selectedCategory))
   const stickyTop = layout.paddingTop + layout.rowHeight + 8
 
   const handleSearch = useCallback((value: string) => {
+    const trimmed = value.trim()
     if (displayTab === 'finished') {
-      Taro.showToast({ title: '成品暂不支持搜索', icon: 'none' })
+      if (!trimmed && !selectedCategory) {
+        searchBoxRef.current?.clear()
+        setDisplaySearchKeyword('')
+        onClearSearch()
+        return
+      }
+      setDisplaySearchKeyword(trimmed)
+      onSearch(trimmed, selectedCategory)
       return
     }
-    const trimmed = value.trim()
     if (!trimmed && !selectedCategory) {
       searchBoxRef.current?.clear()
       setDisplaySearchKeyword('')
@@ -436,7 +443,7 @@ const HomeStickyControls = memo(function HomeStickyControls({
   const handleCategoryChange = useCallback((category: PostCategory | '') => {
     onCategoryChange(category)
     if (displayTab === 'finished') {
-      onFinishedCategoryChange(category)
+      onFinishedCategoryChange(category, displaySearchKeyword)
       return
     }
     if (displaySearchKeyword || category) {
@@ -547,7 +554,8 @@ export default function HomePage() {
     page: number
     hasMore: boolean
     category: PostCategory | ''
-  }>({ list: [], page: 1, hasMore: true, category: '' })
+    keyword: string
+  }>({ list: [], page: 1, hasMore: true, category: '', keyword: '' })
   const finishedFeedRef = useRef(finishedFeed)
   const [searchState, setSearchState] = useState<SearchState>(EMPTY_SEARCH_STATE)
   const [selectedCategory, setSelectedCategory] = useState<PostCategory | ''>('')
@@ -562,6 +570,7 @@ export default function HomePage() {
     page: 1,
     searchPage: 1,
     finishedCategory: '' as PostCategory | '',
+    finishedKeyword: '',
   })
 
   const searchKeyword = searchState.keyword
@@ -572,6 +581,7 @@ export default function HomePage() {
   const searching = searchState.loading
   const isSearching = searchKeyword.length > 0 || Boolean(searchCategory)
   const isFinishedTab = tab === 'finished'
+  const isFinishedSearching = isFinishedTab && finishedFeed.keyword.length > 0
   const currentFeed = tab === 'finished'
     ? { posts: [], page: finishedFeed.page, hasMore: finishedFeed.hasMore }
     : feeds[tab]
@@ -595,6 +605,7 @@ export default function HomePage() {
     page,
     searchPage,
     finishedCategory: finishedFeed.category,
+    finishedKeyword: finishedFeed.keyword,
   }
   const showInitialLoading = !(isSearching && !isFinishedTab)
     && (isFinishedTab ? finishedList.length === 0 : posts.length === 0)
@@ -652,19 +663,22 @@ export default function HomePage() {
     nextPage: number,
     replace = false,
     category: PostCategory | '' = finishedFeedRef.current.category,
+    keyword: string = finishedFeedRef.current.keyword,
   ) => {
     if (finishedInflightRef.current) return
     finishedInflightRef.current = true
+    const trimmedKeyword = keyword.trim()
     if (!replace || finishedFeedRef.current.list.length === 0) {
       setLoadingTab('finished')
     }
     try {
-      const result = await fetchFinishedProductFeed(nextPage, category)
+      const result = await fetchFinishedProductFeed(nextPage, category, trimmedKeyword)
       setFinishedFeed({
         list: replace ? result.list : [...finishedFeedRef.current.list, ...result.list],
         page: nextPage,
         hasMore: result.hasMore,
         category,
+        keyword: trimmedKeyword,
       })
     } catch (error) {
       if (finishedFeedRef.current.list.length === 0) {
@@ -680,9 +694,17 @@ export default function HomePage() {
     }
   }, [])
 
-  const handleFinishedCategoryChange = useCallback((category: PostCategory | '') => {
+  const handleFinishedCategoryChange = useCallback((
+    category: PostCategory | '',
+    keyword?: string,
+  ) => {
     setSelectedCategory(category)
-    void loadFinishedFeed(1, true, category)
+    void loadFinishedFeed(
+      1,
+      true,
+      category,
+      keyword === undefined ? finishedFeedRef.current.keyword : keyword,
+    )
   }, [loadFinishedFeed])
 
   const loadSearch = useCallback(async (
@@ -746,6 +768,15 @@ export default function HomePage() {
       Taro.stopPullDownRefresh()
     }
   }, [loadFeed])
+
+  const handleHomeSearch = useCallback((value: string, category: PostCategory | '' = '') => {
+    if (runtimeRef.current.tab === 'finished') {
+      setSelectedCategory(category)
+      void loadFinishedFeed(1, true, category, value)
+      return
+    }
+    void loadSearch(value, category)
+  }, [loadFinishedFeed, loadSearch])
 
   useEffect(() => {
     if (!hasHomeFeedCache('recommend')) {
@@ -836,13 +867,14 @@ export default function HomePage() {
       searchCategory: categoryNow,
       tab: currentTab,
       finishedCategory,
+      finishedKeyword,
     } = runtimeRef.current
     if (searchingNow) {
       void loadSearch(keywordNow, categoryNow, { page: 1, silent: true })
       return
     }
     if (currentTab === 'finished') {
-      void loadFinishedFeed(1, true, finishedCategory)
+      void loadFinishedFeed(1, true, finishedCategory, finishedKeyword)
       return
     }
     void loadFeed(currentTab, 1, true)
@@ -856,6 +888,7 @@ export default function HomePage() {
       loadingTab: loadingNow,
       page: currentPage,
       finishedCategory,
+      finishedKeyword,
     } = runtimeRef.current
     if (searchingNow) {
       if (!canLoadMore || searching) return
@@ -871,7 +904,7 @@ export default function HomePage() {
     }
     if (!canLoadMore || loadingNow === currentTab) return
     if (currentTab === 'finished') {
-      void loadFinishedFeed(currentPage + 1, false, finishedCategory)
+      void loadFinishedFeed(currentPage + 1, false, finishedCategory, finishedKeyword)
       return
     }
     void loadFeed(currentTab, currentPage + 1)
@@ -879,12 +912,12 @@ export default function HomePage() {
 
   const handleTabChange = useCallback((nextTab: HomeTab) => {
     const { tab: currentTab, isSearching: searchingNow } = runtimeRef.current
-    if (nextTab === currentTab && !searchingNow) return
+    if (nextTab === currentTab && !searchingNow && !runtimeRef.current.finishedKeyword) return
     setSearchState(EMPTY_SEARCH_STATE)
     setSelectedCategory('')
     setTab(nextTab)
     if (nextTab === 'finished') {
-      void loadFinishedFeed(1, true, '')
+      void loadFinishedFeed(1, true, '', '')
       return
     }
     if (feedsRef.current[nextTab].posts.length === 0) {
@@ -895,7 +928,10 @@ export default function HomePage() {
   const clearSearch = useCallback(() => {
     setSearchState(EMPTY_SEARCH_STATE)
     setSelectedCategory('')
-  }, [])
+    if (runtimeRef.current.tab === 'finished') {
+      void loadFinishedFeed(1, true, '', '')
+    }
+  }, [loadFinishedFeed])
 
   const openPost = useCallback((item: PostSummary) => {
     restoreSessionFromStorage()
@@ -919,17 +955,21 @@ export default function HomePage() {
 
   const emptyText = showInitialLoading || (searching && !isFinishedTab)
     ? '加载中...'
-    : isSearching && !isFinishedTab
-      ? '没有找到相关图纸'
-      : isFinishedTab
-        ? (selectedCategory ? `暂无「${selectedCategory}」成品` : '暂无成品，敬请期待')
+    : isFinishedTab
+      ? (
+        isFinishedSearching
+          ? '没有找到相关成品'
+          : (selectedCategory ? `暂无「${selectedCategory}」成品` : '暂无成品，敬请期待')
+      )
+      : isSearching
+        ? '没有找到相关图纸'
         : '暂无作品，快去生成吧'
 
   return (
     <View className='home-page'>
       <HomeStickyControls
         layout={headerLayout}
-        onSearch={loadSearch}
+        onSearch={handleHomeSearch}
         selectedCategory={selectedCategory}
         onCategoryChange={setSelectedCategory}
         onFinishedCategoryChange={handleFinishedCategoryChange}

@@ -17,10 +17,33 @@ export function serializePatternFingerprint(pattern: PatternResult): string {
   return `${pattern.width}x${pattern.height}:${pattern.totalBeads}:${pattern.grid.join('|')}`
 }
 
+/** 仅「从作品只读打开且未改」不可恢复；生成中 / 本地已改均可恢复 */
 export function isRecoverableGeneratePattern(stored?: PatternStoragePayload | null): boolean {
   if (!stored?.pattern) return false
   if (stored.previewOrigin === 'post') return false
   return true
+}
+
+export function hasSubstantialPatternChange(
+  pattern: PatternResult,
+  baselineFingerprint?: string,
+): boolean {
+  if (!baselineFingerprint) return false
+  return serializePatternFingerprint(pattern) !== baselineFingerprint
+}
+
+/**
+ * 从作品打开后发生实质变化：改为可恢复本地草稿（仍保留 postId 便于之后更新发布）。
+ */
+export function markAsRecoverableLocalDraft(
+  payload: PatternStoragePayload,
+  reason: string,
+): PatternStoragePayload {
+  const nextOrigin = payload.previewOrigin === 'post' ? 'edit' : (payload.previewOrigin || 'generate')
+  return bumpPatternPreviewSession({
+    ...payload,
+    previewOrigin: nextOrigin,
+  }, reason)
 }
 
 export function createPostPreviewStoragePayload(
@@ -46,6 +69,7 @@ export function createPostPreviewStoragePayload(
     postTitle: options.title?.trim() || undefined,
     postCategory: options.category,
     existingSourceImageFileId: options.existingSourceImageFileId || undefined,
+    sourcePatternFingerprint: serializePatternFingerprint(pattern),
   }
 }
 

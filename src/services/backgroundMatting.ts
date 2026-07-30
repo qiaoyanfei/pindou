@@ -1,6 +1,9 @@
-import type { Rgb } from '@/services/imageProcessor'
-import type { CanvasNode } from '@/services/imageProcessor'
-import { getImageDimensions } from '@/services/imageProcessor'
+import {
+  getImageDimensions,
+  loadCanvasImageWithRetry,
+  type CanvasNode,
+  type Rgb,
+} from '@/services/imageProcessor'
 import { findBestSymmetryAxis } from '@/services/patternSymmetryAnalysis'
 import {
   BACKGROUND_ANALYSIS_MAX_EDGE,
@@ -606,12 +609,7 @@ export async function analyzeContentCrop(
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.imageSmoothingEnabled = true
 
-  const image = canvas.createImage()
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error('图片加载失败'))
-    image.src = imagePath
-  })
+  const image = await loadCanvasImageWithRetry(canvas, imagePath)
 
   ctx.clearRect(0, 0, analysisWidth, analysisHeight)
   ctx.drawImage(

@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro'
 import { PATTERN_STORAGE_KEY, PUBLISH_STORAGE_KEY } from '@/types'
-import { clearGenerateDraft } from '@/services/generateSession'
+import { cleanupOrphanSourceImages, clearGenerateDraft } from '@/services/generateSession'
 import { clearPatternPreviewCache } from '@/utils/patternPreviewCache'
 
 const UPLOAD_JSON_PREFIX = 'pindou_upload_'
@@ -42,7 +42,7 @@ export function isLocalStorageLimitError(error: unknown): boolean {
   )
 }
 
-/** USER_DATA_PATH 下的上传临时文件，可安全删除 */
+/** USER_DATA_PATH 下可安全删除的临时文件 + 未在用的源图 */
 export function cleanupDisposableLocalFiles(): void {
   if (process.env.TARO_ENV !== 'weapp') return
   try {
@@ -56,6 +56,7 @@ export function cleanupDisposableLocalFiles(): void {
   } catch {
     // ignore unreadable cache dir
   }
+  cleanupOrphanSourceImages()
 }
 
 /** 发布成功后清理工作流缓存，避免 pattern 重复占用 storage */
@@ -101,6 +102,7 @@ function resolveInlineErrorMessage(error: unknown, fallback: string): string {
 /** 存储满时弹窗引导；其他错误 toast */
 export function notifyOperationError(error: unknown, fallback: string): void {
   if (isLocalStorageLimitError(error)) {
+    cleanupDisposableLocalFiles()
     showStorageLimitModal()
     return
   }

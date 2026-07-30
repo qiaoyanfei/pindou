@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro'
 import { MINI_PROGRAM_NAME } from '@/utils/constants'
-import { isLocalStorageLimitError, showStorageLimitModal } from '@/utils/localCache'
+import { cleanupDisposableLocalFiles, isLocalStorageLimitError, showStorageLimitModal } from '@/utils/localCache'
 import {
   ensurePrivacyForMediaAction,
   isPrivacyAlreadyAgreed,
@@ -195,10 +195,31 @@ function promptFormatHelp(): void {
   })
 }
 
+function isSourceImagePersistError(error: unknown): boolean {
+  return (
+    (error instanceof Error && error.name === 'SourceImagePersistError')
+    || (error instanceof Error && (
+      error.message.includes('无法保存所选图片')
+      || error.message.includes('无法读取所选图片')
+      || error.message.includes('本地图片已失效')
+      || error.message.includes('请先上传图片')
+    ))
+  )
+}
+
+function promptSourceImageUnavailable(message?: string): void {
+  Taro.showModal({
+    title: '请重新选择照片',
+    content: message || '本地图片暂时无法读取，请再试一次或重新选择该照片。',
+    showCancel: false,
+    confirmText: '知道了',
+  })
+}
+
 function promptImageReadFailed(): void {
   const content = isIosDevice()
-    ? '请尝试：\n1. 换一张本机 JPG / PNG（非实况）\n2. 若照片在 iCloud，先在相册打开并等待下载完成\n3. 检查「设置 → 微信 → 照片」是否选择了「所有照片」'
-    : '请换一张 JPG / PNG 普通照片，或重新选择体积更小、清晰度适中的图片后重试。'
+    ? '请尝试：\n1. 再点一次「下一步」或「重新预览」\n2. 回到生成页重新选择该照片后再生成\n3. 若仍失败，换一张本机 JPG / PNG（非实况）'
+    : '请再试一次，或回到生成页重新选择该照片。多半是本地缓存路径失效，不一定是图片格式问题。'
 
   Taro.showModal({
     title: '无法读取这张照片',
@@ -280,7 +301,13 @@ export function handleImageProcessError(error: unknown, fallback = '生成失败
   if (isPrivacyAgreementCancelled(error)) return
 
   if (isLocalStorageLimitError(error)) {
+    cleanupDisposableLocalFiles()
     showStorageLimitModal()
+    return
+  }
+
+  if (isSourceImagePersistError(error)) {
+    promptSourceImageUnavailable(message)
     return
   }
 

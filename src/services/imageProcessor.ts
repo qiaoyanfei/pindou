@@ -55,6 +55,30 @@ export async function getImageDimensions(imagePath: string): Promise<GridSize> {
   return { width: info.width, height: info.height }
 }
 
+/** getImageInfo 偶发失败时重试，避免误判本地图不可读 */
+export async function getImageDimensionsWithRetry(
+  imagePath: string,
+  retries = 2,
+  retryDelayMs = 100,
+): Promise<GridSize> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const size = await getImageDimensions(imagePath)
+      if (!size.width || !size.height) {
+        throw new Error('图片加载失败')
+      }
+      return size
+    } catch (error) {
+      lastError = error
+      if (attempt < retries) {
+        await yieldToMain(retryDelayMs)
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('图片加载失败')
+}
+
 type CanvasNode = {
   getContext: (type: '2d') => CanvasRenderingContext2D | null
   width: number
@@ -79,6 +103,33 @@ export function loadCanvasNode(canvasId: string): Promise<CanvasNode> {
         resolve(node)
       })
   })
+}
+
+/** Canvas createImage 偶发 onerror 时自动重试 */
+export async function loadCanvasImageWithRetry(
+  canvas: CanvasNode,
+  imagePath: string,
+  retries = 2,
+  retryDelayMs = 120,
+): Promise<WechatMiniprogram.Image> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const image = canvas.createImage()
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error('图片加载失败'))
+        image.src = imagePath
+      })
+      return image
+    } catch (error) {
+      lastError = error
+      if (attempt < retries) {
+        await yieldToMain(retryDelayMs)
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('图片加载失败')
 }
 
 function getLuma(rgb: Rgb): number {
@@ -216,12 +267,7 @@ export async function extractBlockDominantColors(
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.imageSmoothingEnabled = styleMode !== 'portrait'
 
-  const image = canvas.createImage()
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error('图片加载失败'))
-    image.src = imagePath
-  })
+  const image = await loadCanvasImageWithRetry(canvas, imagePath)
   throwIfAborted(signal)
   await notifyProgress(0.05)
 
@@ -336,12 +382,7 @@ export async function extractPixelGrid(
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.imageSmoothingEnabled = false
 
-  const image = canvas.createImage()
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error('图片加载失败'))
-    image.src = imagePath
-  })
+  const image = await loadCanvasImageWithRetry(canvas, imagePath)
 
   ctx.clearRect(0, 0, gridWidth, gridHeight)
   ctx.drawImage(image as unknown as CanvasImageSource, 0, 0, gridWidth, gridHeight)

@@ -68,6 +68,19 @@ function buildPostSearchText(post) {
     .join(' ')
 }
 
+function buildFinishedProductSearchText(doc) {
+  return [
+    doc?.title,
+    doc?.postTitle,
+    doc?.authorNickName,
+    doc?.category,
+    doc?.description,
+  ]
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+}
+
 function buildGeneratedPostTitle(post) {
   const category = String(post?.category || '').trim()
   const styleMode = post?.styleMode === 'portrait' ? '写实风' : '漫画风'
@@ -1512,12 +1525,35 @@ async function ensureFinishedProductCategories(docs) {
     const category = categoryMap[doc.postId]
     if (!category) return
     doc.category = category
+    const searchText = buildFinishedProductSearchText(doc)
+    doc.searchText = searchText
     try {
       await db.collection('finished_products').doc(doc._id).update({
-        data: { category },
+        data: { category, searchText },
       })
     } catch (error) {
       // 忽略写回失败，至少本次响应带上类别
+    }
+  }))
+
+  return docs
+}
+
+/** 旧数据缺少 searchText 时补齐，便于关键词搜索 */
+async function ensureFinishedProductSearchText(docs) {
+  const missing = docs.filter((doc) => !String(doc.searchText || '').trim())
+  if (!missing.length) return docs
+
+  await Promise.all(missing.map(async (doc) => {
+    const searchText = buildFinishedProductSearchText(doc)
+    if (!searchText) return
+    doc.searchText = searchText
+    try {
+      await db.collection('finished_products').doc(doc._id).update({
+        data: { searchText },
+      })
+    } catch (error) {
+      // 忽略写回失败
     }
   }))
 
@@ -1554,11 +1590,15 @@ async function attachFinishedProductLikeFlags(openid, list) {
 async function handleGetFinishedProductFeed(openid, data) {
   const { page, pageSize, skip } = getPagination(data, 10, 20)
   const category = String(data?.category || '').trim()
+  const keyword = String(data?.keyword || '').trim()
   const filter = { visibility: 'public' }
   if (category) filter.category = category
+  if (keyword) {
+    filter.searchText = db.RegExp({ regexp: escapeRegExp(keyword.toLowerCase()), options: 'i' })
+  }
 
   try {
-    // 首页首屏加载时补齐旧数据缺少的 category（来自关联图纸）
+    // 首页首屏加载时补齐旧数据缺少的 category / searchText
     if (page === 1) {
       try {
         const legacy = await db.collection('finished_products')
@@ -1567,6 +1607,7 @@ async function handleGetFinishedProductFeed(openid, data) {
           .limit(50)
           .get()
         await ensureFinishedProductCategories(legacy.data || [])
+        await ensureFinishedProductSearchText(legacy.data || [])
       } catch (error) {
         // 补齐失败不影响列表
       }
@@ -1684,6 +1725,13 @@ async function handleCreateFinishedProduct(openid, data) {
 
   const description = String(data?.description || '').trim()
   const now = db.serverDate()
+  const searchText = buildFinishedProductSearchText({
+    title,
+    postTitle: post.title || '',
+    authorNickName: author.authorNickName,
+    category: post.category || '',
+    description,
+  })
 
   let addRes
   try {
@@ -1700,6 +1748,7 @@ async function handleCreateFinishedProduct(openid, data) {
         authorOpenid: author.authorOpenid,
         likeCount: 0,
         visibility: 'public',
+        searchText,
         publishedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -1756,17 +1805,26 @@ async function handleUpdateFinishedProduct(openid, data) {
   if (author.error) return fail(author.error)
 
   const description = String(data?.description || '').trim()
+  const postTitle = post.title || ''
+  const category = post.category || ''
   await db.collection('finished_products').doc(productId).update({
     data: {
       title,
       description,
       coverFileId,
       postId,
-      postTitle: post.title || '',
-      category: post.category || '',
+      postTitle,
+      category,
       authorNickName: author.authorNickName,
       authorAvatarUrl: author.authorAvatarUrl,
       authorOpenid: author.authorOpenid,
+      searchText: buildFinishedProductSearchText({
+        title,
+        postTitle,
+        authorNickName: author.authorNickName,
+        category,
+        description,
+      }),
       updatedAt: db.serverDate(),
     },
   })

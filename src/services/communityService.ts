@@ -245,7 +245,7 @@ export async function resolvePostSourceImagePath(
   if (!post.sourceImageFileId) return ''
   try {
     const tempPath = await downloadCloudFile(post.sourceImageFileId)
-    return persistGenerateSourceImage(tempPath)
+    return await persistGenerateSourceImage(tempPath)
   } catch {
     return ''
   }
@@ -631,10 +631,15 @@ async function mapFinishedProductsWithCover(
 export async function fetchFinishedProductFeed(
   page = 1,
   category: PostCategory | '' = '',
+  keyword = '',
 ): Promise<{ list: FinishedProductSummary[]; hasMore: boolean }> {
   const result = await callCloudApi<{ list: FinishedProductSummary[]; hasMore: boolean }>(
     'getFinishedProductFeed',
-    { page, category: category || undefined },
+    {
+      page,
+      category: category || undefined,
+      keyword: keyword.trim() || undefined,
+    },
   )
   return {
     list: await mapFinishedProductsWithCover(result.list || []),

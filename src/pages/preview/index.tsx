@@ -19,7 +19,7 @@ import {
 } from '@/utils/constants'
 import { buildPatternSheetSvg } from '@/services/patternSvgBuilder'
 import { generatePatternFromImage } from '@/services/patternPipeline'
-import { setGenerateDraft } from '@/services/generateSession'
+import { resolveReadableSourceImagePath, setGenerateDraft } from '@/services/generateSession'
 import PatternGenerationOverlay from '@/components/PatternGenerationOverlay'
 import {
   createPatternAbortController,
@@ -46,7 +46,9 @@ import {
   type PatternStoragePayload,
 } from '@/types'
 import {
+  hasSubstantialPatternChange,
   isRecoverableGeneratePattern,
+  markAsRecoverableLocalDraft,
   resolvePreviewSessionKey,
   serializePatternFingerprint,
   buildPublishStorageFromPattern,
@@ -85,6 +87,7 @@ function applyStoredPreview(
     setPostTitle: (value: string) => void
     setPostCategory: (value: string) => void
     setExistingSourceImageFileId: (value: string) => void
+    setSourcePatternFingerprint: (value: string) => void
     setSaveOptionsOpen: (value: boolean) => void
     setExportJob: (value: ExportJob | null) => void
     setExportBusy: (value: boolean) => void
@@ -107,6 +110,7 @@ function applyStoredPreview(
   setters.setPostTitle(stored.postTitle?.trim() || '')
   setters.setPostCategory(stored.postCategory || '')
   setters.setExistingSourceImageFileId(stored.existingSourceImageFileId || '')
+  setters.setSourcePatternFingerprint(stored.sourcePatternFingerprint || '')
   setters.setSaveOptionsOpen(false)
   setters.setExportJob(null)
   setters.setExportBusy(false)
@@ -142,9 +146,9 @@ export default function PreviewPage() {
   const [postTitle, setPostTitle] = useState('')
   const [postCategory, setPostCategory] = useState('')
   const [existingSourceImageFileId, setExistingSourceImageFileId] = useState('')
+  const [sourcePatternFingerprint, setSourcePatternFingerprint] = useState('')
   const exportJobRef = useRef<ExportJob | null>(null)
   const basePatternRef = useRef<PatternResult | null>(null)
-  const pristinePostPatternRef = useRef<string | null>(null)
   const sharePostIdRef = useRef('')
   const shareTitleRef = useRef(MINI_PROGRAM_NAME)
   const abortRef = useRef<PatternAbortController | null>(null)
@@ -214,6 +218,7 @@ export default function PreviewPage() {
       setPostTitle,
       setPostCategory,
       setExistingSourceImageFileId,
+      setSourcePatternFingerprint,
       setSaveOptionsOpen,
       setExportJob,
       setExportBusy,
@@ -225,10 +230,6 @@ export default function PreviewPage() {
       setGridSettingsOpen(false)
       gridSettingsInitializedRef.current = true
     }
-
-    pristinePostPatternRef.current = stored.previewOrigin === 'post'
-      ? serializePatternFingerprint(stored.pattern)
-      : null
   })
 
   useUnload(() => {
@@ -236,11 +237,11 @@ export default function PreviewPage() {
     rewardedVideoRef.current?.destroy()
     rewardedVideoRef.current = null
 
-    if (!pristinePostPatternRef.current) return
+    // 从作品只读打开且图纸未实质变化：离开时清掉，避免误占本地草稿
     try {
       const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
       if (stored?.previewOrigin !== 'post' || !stored.pattern) return
-      if (serializePatternFingerprint(stored.pattern) !== pristinePostPatternRef.current) return
+      if (hasSubstantialPatternChange(stored.pattern, stored.sourcePatternFingerprint)) return
       Taro.removeStorageSync(PATTERN_STORAGE_KEY)
       Taro.removeStorageSync(PUBLISH_STORAGE_KEY)
     } catch {
@@ -319,6 +320,7 @@ export default function PreviewPage() {
       postTitle: postTitle || undefined,
       postCategory: postCategory || undefined,
       existingSourceImageFileId: existingSourceImageFileId || undefined,
+      sourcePatternFingerprint: sourcePatternFingerprint || undefined,
       creatorNickname,
       previewSessionId: nextSessionId,
     })
@@ -428,6 +430,7 @@ export default function PreviewPage() {
       postTitle: postTitle || undefined,
       postCategory: postCategory || undefined,
       existingSourceImageFileId: existingSourceImageFileId || undefined,
+      sourcePatternFingerprint: sourcePatternFingerprint || undefined,
       creatorNickname,
       previewSessionId: previewSessionKey,
     })
@@ -522,8 +525,13 @@ export default function PreviewPage() {
     let wasCancelled = false
 
     try {
+      const readyImagePath = await resolveReadableSourceImagePath(draftImagePath)
+      if (readyImagePath !== draftImagePath) {
+        setDraftImagePath(readyImagePath)
+      }
+
       const nextPattern = await generatePatternFromImage(
-        draftImagePath,
+        readyImagePath,
         nextConfig,
         PROCESS_CANVAS_ID,
         progress.report,
@@ -534,25 +542,38 @@ export default function PreviewPage() {
       setBasePattern(nextPattern)
       setConfig(nextConfig)
       setLongEdgeInput(String(nextConfig.longEdge))
-      setGenerateDraft(draftImagePath, nextConfig)
-      const nextSessionId = postId
-        ? `post:${postId}:regenerate:${Date.now()}`
-        : `generate:regenerate:${Date.now()}`
-      setPreviewSessionKey(nextSessionId)
-      if (!postId) {
-        setPreviewOrigin('generate')
-      }
-      setStorageSafe(PATTERN_STORAGE_KEY, {
+      setGenerateDraft(readyImagePath, nextConfig)
+
+      const baselineFingerprint = sourcePatternFingerprint
+        || (previewOrigin === 'post' ? serializePatternFingerprint(basePatternRef.current || nextPattern) : '')
+      let nextPayload: PatternStoragePayload = {
         pattern: nextPattern,
         config: nextConfig,
-        sourceImagePath: draftImagePath,
-        previewOrigin: postId ? 'post' : 'generate',
+        sourceImagePath: readyImagePath,
+        previewOrigin: previewOrigin || (postId ? 'post' : 'generate'),
         postId: postId || undefined,
         postTitle: postTitle || undefined,
         postCategory: postCategory || undefined,
         existingSourceImageFileId: existingSourceImageFileId || undefined,
-        previewSessionId: nextSessionId,
-      })
+        sourcePatternFingerprint: baselineFingerprint || undefined,
+        previewSessionId: postId
+          ? `post:${postId}:regenerate:${Date.now()}`
+          : `generate:regenerate:${Date.now()}`,
+      }
+
+      if (
+        nextPayload.previewOrigin === 'post'
+        && hasSubstantialPatternChange(nextPattern, nextPayload.sourcePatternFingerprint)
+      ) {
+        nextPayload = markAsRecoverableLocalDraft(nextPayload, 'regenerate')
+      }
+
+      setPreviewSessionKey(nextPayload.previewSessionId || '')
+      setPreviewOrigin(nextPayload.previewOrigin)
+      if (baselineFingerprint && !sourcePatternFingerprint) {
+        setSourcePatternFingerprint(baselineFingerprint)
+      }
+      setStorageSafe(PATTERN_STORAGE_KEY, nextPayload)
       Taro.showToast({ title: '已重新预览', icon: 'success' })
     } catch (error) {
       wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
@@ -582,6 +603,8 @@ export default function PreviewPage() {
     postCategory,
     postId,
     postTitle,
+    previewOrigin,
+    sourcePatternFingerprint,
   ])
 
   const handleRegenerateClick = useCallback(() => {

@@ -5,7 +5,7 @@ import PatternEditor from '@/components/PatternEditor'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
 import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternStoragePayload } from '@/types'
-import { bumpPatternPreviewSession } from '@/utils/patternStorage'
+import { bumpPatternPreviewSession, hasSubstantialPatternChange, markAsRecoverableLocalDraft, serializePatternFingerprint } from '@/utils/patternStorage'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import { safeNavigateBack } from '@/utils/navigation'
 import './index.scss'
@@ -34,8 +34,15 @@ export default function PatternEditPage() {
   const sourceImagePathRef = useRef('')
   const previewMetaRef = useRef<Pick<
     PatternStoragePayload,
-    'previewOrigin' | 'postId' | 'creatorNickname' | 'postTitle' | 'postCategory' | 'existingSourceImageFileId'
+    | 'previewOrigin'
+    | 'postId'
+    | 'creatorNickname'
+    | 'postTitle'
+    | 'postCategory'
+    | 'existingSourceImageFileId'
+    | 'sourcePatternFingerprint'
   >>({})
+  const entryFingerprintRef = useRef<string | null>(null)
 
   configRef.current = config
   patternRef.current = pattern
@@ -58,7 +65,8 @@ export default function PatternEditPage() {
     }
 
     const write = () => {
-      const payload = bumpPatternPreviewSession({
+      const baseline = previewMetaRef.current.sourcePatternFingerprint || entryFingerprintRef.current || undefined
+      let payload: PatternStoragePayload = bumpPatternPreviewSession({
         pattern: nextPattern,
         config: configRef.current,
         sourceImagePath: sourceImagePathRef.current || undefined,
@@ -68,7 +76,21 @@ export default function PatternEditPage() {
         postTitle: previewMetaRef.current.postTitle,
         postCategory: previewMetaRef.current.postCategory,
         existingSourceImageFileId: previewMetaRef.current.existingSourceImageFileId,
+        sourcePatternFingerprint: baseline,
       }, 'edit')
+
+      if (
+        payload.previewOrigin === 'post'
+        && hasSubstantialPatternChange(nextPattern, baseline)
+      ) {
+        payload = markAsRecoverableLocalDraft(payload, 'edit')
+        previewMetaRef.current = {
+          ...previewMetaRef.current,
+          previewOrigin: payload.previewOrigin,
+          sourcePatternFingerprint: baseline,
+        }
+      }
+
       setStorageSafe(PATTERN_STORAGE_KEY, payload)
     }
 
@@ -96,6 +118,7 @@ export default function PatternEditPage() {
     setPattern(stored.pattern)
     setConfig(normalizeConfig(stored.config))
     sourceImagePathRef.current = stored.sourceImagePath || ''
+    entryFingerprintRef.current = serializePatternFingerprint(stored.pattern)
     previewMetaRef.current = {
       previewOrigin: stored.previewOrigin,
       postId: stored.postId,
@@ -103,6 +126,7 @@ export default function PatternEditPage() {
       postTitle: stored.postTitle,
       postCategory: stored.postCategory,
       existingSourceImageFileId: stored.existingSourceImageFileId,
+      sourcePatternFingerprint: stored.sourcePatternFingerprint || entryFingerprintRef.current,
     }
   })
 

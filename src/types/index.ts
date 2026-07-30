@@ -62,6 +62,8 @@ export interface PatternStoragePayload {
   postCategory?: string
   /** 已有原图云文件 ID，更新时可复用避免重复上传 */
   existingSourceImageFileId?: string
+  /** 从作品打开时的原始图纸指纹；有实质变化后转为可恢复本地草稿 */
+  sourcePatternFingerprint?: string
 }
 
 export const COLOR_DETAIL_STORAGE_KEY = 'pindou_color_detail_pattern'

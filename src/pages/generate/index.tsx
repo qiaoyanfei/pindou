@@ -7,6 +7,7 @@ import { generatePatternFromImage } from '@/services/patternPipeline'
 import {
   getGenerateDraft,
   persistGenerateSourceImage,
+  resolveReadableSourceImagePath,
   resetGenerateDraft,
   setGenerateDraft,
   setGenerateImageWithDefaultConfig,
@@ -312,11 +313,25 @@ export default function GeneratePage() {
     setLoadingPercent(null)
   }
 
-  const handleImageSelect = (path: string) => {
+  const handleImageSelect = async (path: string) => {
     resetGenerationUi()
-    const sourcePath = persistGenerateSourceImage(path)
-    const next = setGenerateImageWithDefaultConfig(sourcePath, config.styleMode)
-    applyDraftState(next)
+    const loadingStartedAt = Date.now()
+    Taro.showLoading({ title: '加载图片...', mask: true })
+    try {
+      // 选图阶段只落盘+校验可读；Canvas 读图在生成时再校验/重试
+      const sourcePath = await persistGenerateSourceImage(path)
+      const next = setGenerateImageWithDefaultConfig(sourcePath, config.styleMode)
+      applyDraftState(next)
+    } catch (error) {
+      handleImageProcessError(error, '图片处理失败')
+    } finally {
+      const elapsed = Date.now() - loadingStartedAt
+      const minVisibleMs = 500
+      if (elapsed < minVisibleMs) {
+        await new Promise((resolve) => setTimeout(resolve, minVisibleMs - elapsed))
+      }
+      Taro.hideLoading()
+    }
   }
 
   const handleStyleModeChange = (styleMode: StyleMode) => {
@@ -359,8 +374,13 @@ export default function GeneratePage() {
     let wasCancelled = false
 
     try {
+      const readyImagePath = await resolveReadableSourceImagePath(imagePath)
+      if (readyImagePath !== imagePath) {
+        setImagePath(readyImagePath)
+      }
+
       const finalConfig = await resolveGenerateConfig(
-        imagePath,
+        readyImagePath,
         config,
         manualLongEdge,
         progress.report,
@@ -368,11 +388,11 @@ export default function GeneratePage() {
       )
       throwIfAborted(abortController.signal)
 
-      syncGenerateDraftFromPage(imagePath, finalConfig)
+      syncGenerateDraftFromPage(readyImagePath, finalConfig)
       setConfig(finalConfig)
 
       const pattern = await generatePatternFromImage(
-        imagePath,
+        readyImagePath,
         finalConfig,
         'process-canvas',
         progress.report,
@@ -380,7 +400,7 @@ export default function GeneratePage() {
       )
       throwIfAborted(abortController.signal)
 
-      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, finalConfig, imagePath))
+      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, finalConfig, readyImagePath))
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current
