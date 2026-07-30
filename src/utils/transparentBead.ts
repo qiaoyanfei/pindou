@@ -106,7 +106,7 @@ export function getBeadDisplayHex(colorId: string, solidHex?: string): string {
   return solidHex ?? '#ccc'
 }
 
-export const TRANSPARENT_SVG_GRADIENT_ID = 'pindou-transparent-bead-grad'
+const TRANSPARENT_SVG_GRADIENT_ID = 'pindou-transparent-bead-grad'
 const TRANSPARENT_SVG_HIGHLIGHT_ID = 'pindou-transparent-bead-hl'
 
 export function appendTransparentSvgDefs(parts: string[]): void {
