@@ -177,6 +177,9 @@ async function validatePublishText(openid, title, description) {
 function mapPostSummary(post) {
   return {
     ...post,
+    likeCount: nonNegativeCount(post.likeCount),
+    favoriteCount: nonNegativeCount(post.favoriteCount),
+    downloadCount: nonNegativeCount(post.downloadCount),
     reviewStatus: resolveReviewStatus(post),
     author: {
       nickName: resolveDisplayNickName(post.authorNickName, post._openid),
@@ -184,6 +187,19 @@ function mapPostSummary(post) {
       openid: post._openid,
     },
   }
+}
+
+function nonNegativeCount(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.floor(n)
+}
+
+/** 计数减一写回绝对值，避免 _.inc(-1) 把字段写成负数 */
+async function decrementPostCount(postId, field, current) {
+  const next = Math.max(0, nonNegativeCount(current) - 1)
+  await db.collection('posts').doc(postId).update({ data: { [field]: next } })
+  return next
 }
 
 function ok(data) {
@@ -719,6 +735,23 @@ async function handleGetPost(openid, data) {
   if (!post) return fail('图纸不存在')
   const canViewPrivatePost = post._openid === openid || await isAdmin(openid)
   if (post.visibility !== 'public' && !canViewPrivatePost) return fail('无权查看')
+
+  // 历史脏数据：取消收藏/点赞用了 _.inc(-1) 可能写出负数，读时顺手纠正
+  const likeCount = nonNegativeCount(post.likeCount)
+  const favoriteCount = nonNegativeCount(post.favoriteCount)
+  const downloadCount = nonNegativeCount(post.downloadCount)
+  const patch = {}
+  if (Number(post.likeCount) !== likeCount) patch.likeCount = likeCount
+  if (Number(post.favoriteCount) !== favoriteCount) patch.favoriteCount = favoriteCount
+  if (Number(post.downloadCount) !== downloadCount) patch.downloadCount = downloadCount
+  if (Object.keys(patch).length) {
+    try {
+      await db.collection('posts').doc(postId).update({ data: patch })
+    } catch {
+      // 展示已钳制，写回失败不阻断
+    }
+  }
+
   const [likes, favorites, downloads] = await Promise.all([
     db.collection('likes').where({ _openid: openid, postId }).limit(1).get(),
     db.collection('favorites').where({ _openid: openid, postId }).limit(1).get(),
@@ -726,7 +759,7 @@ async function handleGetPost(openid, data) {
   ])
   return ok({
     post: {
-      ...mapPostSummary(post),
+      ...mapPostSummary({ ...post, likeCount, favoriteCount, downloadCount }),
       liked: likes.data.length > 0,
       favorited: favorites.data.length > 0,
       downloaded: downloads.data.length > 0,
@@ -743,15 +776,15 @@ async function handleToggleLike(openid, data) {
 
   if (existing.data.length > 0) {
     await db.collection('likes').doc(existing.data[0]._id).remove()
-    await db.collection('posts').doc(postId).update({ data: { likeCount: _.inc(-1) } })
-    return ok({ liked: false, likeCount: Math.max(0, (postRes.data.likeCount || 0) - 1) })
+    const likeCount = await decrementPostCount(postId, 'likeCount', postRes.data.likeCount)
+    return ok({ liked: false, likeCount })
   }
 
   await db.collection('likes').add({
     data: { _openid: openid, postId, createdAt: db.serverDate() },
   })
   await db.collection('posts').doc(postId).update({ data: { likeCount: _.inc(1) } })
-  return ok({ liked: true, likeCount: (postRes.data.likeCount || 0) + 1 })
+  return ok({ liked: true, likeCount: nonNegativeCount(postRes.data.likeCount) + 1 })
 }
 
 async function handleToggleFavorite(openid, data) {
@@ -763,15 +796,15 @@ async function handleToggleFavorite(openid, data) {
 
   if (existing.data.length > 0) {
     await db.collection('favorites').doc(existing.data[0]._id).remove()
-    await db.collection('posts').doc(postId).update({ data: { favoriteCount: _.inc(-1) } })
-    return ok({ favorited: false, favoriteCount: Math.max(0, (postRes.data.favoriteCount || 0) - 1) })
+    const favoriteCount = await decrementPostCount(postId, 'favoriteCount', postRes.data.favoriteCount)
+    return ok({ favorited: false, favoriteCount })
   }
 
   await db.collection('favorites').add({
     data: { _openid: openid, postId, createdAt: db.serverDate() },
   })
   await db.collection('posts').doc(postId).update({ data: { favoriteCount: _.inc(1) } })
-  return ok({ favorited: true, favoriteCount: (postRes.data.favoriteCount || 0) + 1 })
+  return ok({ favorited: true, favoriteCount: nonNegativeCount(postRes.data.favoriteCount) + 1 })
 }
 
 async function handleDownloadPost(openid, data) {
@@ -1488,7 +1521,7 @@ function mapFinishedProductSummary(doc) {
     postId: doc.postId || '',
     postTitle: doc.postTitle || '',
     category: doc.category || '',
-    likeCount: Number(doc.likeCount) || 0,
+    likeCount: nonNegativeCount(doc.likeCount),
     description: doc.description || '',
     author: {
       nickName: resolveDisplayNickName(doc.authorNickName, doc.authorOpenid),
@@ -1879,12 +1912,13 @@ async function handleToggleFinishedProductLike(openid, data) {
 
   if (existing.data.length > 0) {
     await db.collection('finished_product_likes').doc(existing.data[0]._id).remove()
+    const likeCount = Math.max(0, nonNegativeCount(productRes.data.likeCount) - 1)
     await db.collection('finished_products').doc(productId).update({
-      data: { likeCount: _.inc(-1) },
+      data: { likeCount },
     })
     return ok({
       liked: false,
-      likeCount: Math.max(0, (productRes.data.likeCount || 0) - 1),
+      likeCount,
     })
   }
 
@@ -1896,7 +1930,7 @@ async function handleToggleFinishedProductLike(openid, data) {
   })
   return ok({
     liked: true,
-    likeCount: (productRes.data.likeCount || 0) + 1,
+    likeCount: nonNegativeCount(productRes.data.likeCount) + 1,
   })
 }
 

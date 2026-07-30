@@ -775,8 +775,9 @@ export function buildPostDetailForPreview(item: PostSummary): PostDetail | null 
 }
 
 export function formatCount(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`
-  return String(value)
+  const n = Math.max(0, Number(value) || 0)
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(n)
 }
 
 export function isOwnPost(authorOpenid?: string): boolean {
