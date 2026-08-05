@@ -24,6 +24,8 @@ export interface CropRect {
 export interface ContentAnalysis {
   crop: CropRect
   backgroundRgb: Rgb
+  sourceWidth: number
+  sourceHeight: number
 }
 
 function getPixelRgb(data: Uint8ClampedArray, width: number, x: number, y: number): Rgb {
@@ -655,6 +657,8 @@ export async function analyzeContentCrop(
   return {
     backgroundRgb,
     crop,
+    sourceWidth: source.width,
+    sourceHeight: source.height,
   }
 }
 

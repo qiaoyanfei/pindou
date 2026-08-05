@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import PatternEditor from '@/components/PatternEditor'
 import { notifyOperationError, setStorageSafe } from '@/utils/localCache'
 import { DEFAULT_CONFIG, normalizeConfig } from '@/utils/constants'
-import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternStoragePayload } from '@/types'
+import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type PatternSourceCrop, type PatternStoragePayload } from '@/types'
 import { bumpPatternPreviewSession, hasSubstantialPatternChange, markAsRecoverableLocalDraft, serializePatternFingerprint } from '@/utils/patternStorage'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import { safeNavigateBack } from '@/utils/navigation'
@@ -23,6 +23,8 @@ export default function PatternEditPage() {
 
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
+  const [sourceImagePath, setSourceImagePath] = useState('')
+  const [sourceCrop, setSourceCrop] = useState<PatternSourceCrop | null>(null)
   const [navLayout, setNavLayout] = useState({
     paddingTop: 48,
     rowHeight: 32,
@@ -32,6 +34,7 @@ export default function PatternEditPage() {
   const configRef = useRef(config)
   const patternRef = useRef<PatternResult | null>(null)
   const sourceImagePathRef = useRef('')
+  const sourceCropRef = useRef<PatternSourceCrop | null>(null)
   const previewMetaRef = useRef<Pick<
     PatternStoragePayload,
     | 'previewOrigin'
@@ -46,6 +49,7 @@ export default function PatternEditPage() {
 
   configRef.current = config
   patternRef.current = pattern
+  sourceCropRef.current = sourceCrop
 
   useEffect(() => {
     const windowInfo = Taro.getWindowInfo()
@@ -70,6 +74,7 @@ export default function PatternEditPage() {
         pattern: nextPattern,
         config: configRef.current,
         sourceImagePath: sourceImagePathRef.current || undefined,
+        sourceCrop: sourceCropRef.current || undefined,
         previewOrigin: previewMetaRef.current.previewOrigin,
         postId: previewMetaRef.current.postId,
         creatorNickname: previewMetaRef.current.creatorNickname,
@@ -118,6 +123,9 @@ export default function PatternEditPage() {
     setPattern(stored.pattern)
     setConfig(normalizeConfig(stored.config))
     sourceImagePathRef.current = stored.sourceImagePath || ''
+    setSourceImagePath(stored.sourceImagePath || '')
+    sourceCropRef.current = stored.sourceCrop || null
+    setSourceCrop(stored.sourceCrop || null)
     entryFingerprintRef.current = serializePatternFingerprint(stored.pattern)
     previewMetaRef.current = {
       previewOrigin: stored.previewOrigin,
@@ -130,10 +138,21 @@ export default function PatternEditPage() {
     }
   })
 
-  const handlePatternChange = useCallback((nextPattern: PatternResult) => {
+  const handlePatternChange = useCallback((
+    nextPattern: PatternResult,
+    options?: { immediate?: boolean },
+  ) => {
     patternRef.current = nextPattern
     setPattern(nextPattern)
-    persistPattern(nextPattern)
+    persistPattern(nextPattern, options?.immediate)
+  }, [persistPattern])
+
+  const handleSourceCropResolved = useCallback((crop: PatternSourceCrop) => {
+    sourceCropRef.current = crop
+    setSourceCrop(crop)
+    if (patternRef.current) {
+      persistPattern(patternRef.current, true)
+    }
   }, [persistPattern])
 
   useDidHide(flushPattern)
@@ -180,7 +199,10 @@ export default function PatternEditPage() {
       <PatternEditor
         pattern={pattern}
         config={config}
+        sourceImagePath={sourceImagePath}
+        sourceCrop={sourceCrop}
         onPatternChange={handlePatternChange}
+        onSourceCropResolved={handleSourceCropResolved}
       />
     </View>
   )

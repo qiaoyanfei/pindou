@@ -181,6 +181,20 @@ export function revertPatternBatchEdit(
   return finalizePattern(pattern.width, pattern.height, grid)
 }
 
+export function applyPatternEdit(
+  pattern: PatternResult,
+  edit: PatternUndoEntry,
+): PatternResult {
+  if (edit.kind === 'batch') {
+    const grid = pattern.grid.slice()
+    for (const change of edit.changes) {
+      grid[change.index] = edit.nextColorId
+    }
+    return finalizePattern(pattern.width, pattern.height, grid)
+  }
+  return applyPatternCellEdit(pattern, edit)
+}
+
 export function revertPatternEdit(
   pattern: PatternResult,
   edit: PatternUndoEntry,

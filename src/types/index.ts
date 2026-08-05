@@ -28,6 +28,28 @@ export interface PatternResult {
   totalBeads: number
 }
 
+/** 生成图纸时相对原图的采样裁剪区，用于编辑对照层一比一对齐 */
+export interface PatternSourceCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+  sourceWidth: number
+  sourceHeight: number
+  /**
+   * 内容在正方形图纸中的格子区域（居中留白后的有效区）。
+   * 缺省时对照层按整张图纸映射（兼容旧草稿）。
+   */
+  contentRect?: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  /** 正方形图纸边长（格）；与 contentRect 一起用于对照层对齐 */
+  squareSide?: number
+}
+
 export interface RenderOptions {
   cellPx: number
   showGrid: boolean
@@ -55,6 +77,8 @@ export interface PatternStoragePayload {
   pattern: PatternResult
   config: PatternConfig
   sourceImagePath?: string
+  /** 原图采样裁剪，编辑对照层与图纸对齐用 */
+  sourceCrop?: PatternSourceCrop
   previewOrigin?: PreviewOrigin
   /** 用于预览页强制刷新，避免页面栈复用时残留旧草稿状态 */
   previewSessionId?: string

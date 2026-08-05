@@ -74,6 +74,17 @@ $color-picker-summary-height: 104px;
   flex-shrink: 0;
 }
 
+.color-picker-sheet__brush-current {
+  margin: 20px 32px 0;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: $editor-bg;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .color-picker-sheet__selection-head {
   display: flex;
   align-items: center;

@@ -88,6 +88,7 @@ function applyStoredPreview(
     setPostCategory: (value: string) => void
     setExistingSourceImageFileId: (value: string) => void
     setSourcePatternFingerprint: (value: string) => void
+    setSourceCrop: (value: PatternStoragePayload['sourceCrop'] | undefined) => void
     setSaveOptionsOpen: (value: boolean) => void
     setExportJob: (value: ExportJob | null) => void
     setExportBusy: (value: boolean) => void
@@ -111,6 +112,7 @@ function applyStoredPreview(
   setters.setPostCategory(stored.postCategory || '')
   setters.setExistingSourceImageFileId(stored.existingSourceImageFileId || '')
   setters.setSourcePatternFingerprint(stored.sourcePatternFingerprint || '')
+  setters.setSourceCrop(stored.sourceCrop)
   setters.setSaveOptionsOpen(false)
   setters.setExportJob(null)
   setters.setExportBusy(false)
@@ -147,6 +149,7 @@ export default function PreviewPage() {
   const [postCategory, setPostCategory] = useState('')
   const [existingSourceImageFileId, setExistingSourceImageFileId] = useState('')
   const [sourcePatternFingerprint, setSourcePatternFingerprint] = useState('')
+  const [sourceCrop, setSourceCrop] = useState<PatternStoragePayload['sourceCrop']>()
   const exportJobRef = useRef<ExportJob | null>(null)
   const basePatternRef = useRef<PatternResult | null>(null)
   const sharePostIdRef = useRef('')
@@ -219,6 +222,7 @@ export default function PreviewPage() {
       setPostCategory,
       setExistingSourceImageFileId,
       setSourcePatternFingerprint,
+      setSourceCrop,
       setSaveOptionsOpen,
       setExportJob,
       setExportBusy,
@@ -315,6 +319,7 @@ export default function PreviewPage() {
       pattern: displayedPattern,
       config,
       sourceImagePath: draftImagePath || undefined,
+      sourceCrop,
       previewOrigin,
       postId: postId || undefined,
       postTitle: postTitle || undefined,
@@ -425,6 +430,7 @@ export default function PreviewPage() {
       pattern: displayedPattern,
       config,
       sourceImagePath: draftImagePath || undefined,
+      sourceCrop,
       previewOrigin,
       postId: postId || undefined,
       postTitle: postTitle || undefined,
@@ -530,7 +536,7 @@ export default function PreviewPage() {
         setDraftImagePath(readyImagePath)
       }
 
-      const nextPattern = await generatePatternFromImage(
+      const { pattern: nextPattern, sourceCrop: nextSourceCrop } = await generatePatternFromImage(
         readyImagePath,
         nextConfig,
         PROCESS_CANVAS_ID,
@@ -543,6 +549,7 @@ export default function PreviewPage() {
       setConfig(nextConfig)
       setLongEdgeInput(String(nextConfig.longEdge))
       setGenerateDraft(readyImagePath, nextConfig)
+      setSourceCrop(nextSourceCrop)
 
       const baselineFingerprint = sourcePatternFingerprint
         || (previewOrigin === 'post' ? serializePatternFingerprint(basePatternRef.current || nextPattern) : '')
@@ -550,6 +557,7 @@ export default function PreviewPage() {
         pattern: nextPattern,
         config: nextConfig,
         sourceImagePath: readyImagePath,
+        sourceCrop: nextSourceCrop,
         previewOrigin: previewOrigin || (postId ? 'post' : 'generate'),
         postId: postId || undefined,
         postTitle: postTitle || undefined,

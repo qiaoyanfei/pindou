@@ -30,8 +30,8 @@ import {
   computeStageProgressPercent,
   isPatternGenerationCancelled,
   throwIfAborted,
-  type PatternAbortController,
 } from '@/utils/patternGenerationProgress'
+import type { PatternAbortController } from '@/utils/patternGenerationProgress'
 import {
   clampLongEdge,
   createDefaultConfigForStyleMode,
@@ -41,10 +41,8 @@ import {
   PATTERN_STORAGE_KEY,
   PUBLISH_STORAGE_KEY,
   GENERATE_PAGE_RESET_KEY,
-  type PatternConfig,
-  type PatternStoragePayload,
-  type StyleMode,
 } from '@/types'
+import type { PatternConfig, PatternStoragePayload, StyleMode } from '@/types'
 import './index.scss'
 
 let launchRecoverPromptChecked = false
@@ -391,7 +389,7 @@ export default function GeneratePage() {
       syncGenerateDraftFromPage(readyImagePath, finalConfig)
       setConfig(finalConfig)
 
-      const pattern = await generatePatternFromImage(
+      const { pattern, sourceCrop } = await generatePatternFromImage(
         readyImagePath,
         finalConfig,
         'process-canvas',
@@ -400,7 +398,10 @@ export default function GeneratePage() {
       )
       throwIfAborted(abortController.signal)
 
-      setStorageSafe(PATTERN_STORAGE_KEY, createGeneratePreviewStoragePayload(pattern, finalConfig, readyImagePath))
+      setStorageSafe(
+        PATTERN_STORAGE_KEY,
+        createGeneratePreviewStoragePayload(pattern, finalConfig, readyImagePath, sourceCrop),
+      )
       Taro.navigateTo({ url: '/pages/preview/index' })
     } catch (error) {
       wasCancelled = isPatternGenerationCancelled(error) || cancelRequestedRef.current

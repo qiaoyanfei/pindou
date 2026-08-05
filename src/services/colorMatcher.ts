@@ -38,6 +38,12 @@ function findNearestColor(
   return best
 }
 
+/** 取色：单个像素匹配最接近的色号（透明豆需手动选，不参与自动匹配） */
+export function matchRgbToColorId(rgb: Rgb): string {
+  const palette = getPalette().filter((color) => !isTransparentBeadId(color.id))
+  return findNearestColor(rgb, palette).id
+}
+
 export function matchRgbGridToPattern(
   colors: [number, number, number][],
   width: number,

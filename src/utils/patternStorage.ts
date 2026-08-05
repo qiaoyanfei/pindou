@@ -94,11 +94,13 @@ export function createGeneratePreviewStoragePayload(
   pattern: PatternResult,
   config: PatternStoragePayload['config'],
   sourceImagePath: string,
+  sourceCrop?: PatternStoragePayload['sourceCrop'],
 ): PatternStoragePayload {
   return {
     pattern,
     config,
     sourceImagePath,
+    sourceCrop,
     previewOrigin: 'generate',
     previewSessionId: `generate:${Date.now()}`,
   }

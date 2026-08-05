@@ -19,6 +19,8 @@ interface ColorPickerSheetProps {
   currentColorId: string
   selectedColorIds: string[]
   selectedCount: number
+  /** brush：只选画笔颜色，不展示擦除/选区操作 */
+  variant?: 'selection' | 'brush'
   onConfirmColor: (colorId: string) => void
   onConfirmErase: () => void
   onSelectAllSameColor: (colorId: string) => void
@@ -62,12 +64,14 @@ export default function ColorPickerSheet({
   currentColorId,
   selectedColorIds,
   selectedCount,
+  variant = 'selection',
   onConfirmColor,
   onConfirmErase,
   onSelectAllSameColor,
   onClearSelection,
   onClose,
 }: ColorPickerSheetProps) {
+  const brushOnly = variant === 'brush'
   const [query, setQuery] = useState('')
   const [activeTab, setActiveTab] = useState<ColorPickerTab>('pattern')
   const [editMode, setEditMode] = useState<EditMode>('color')
@@ -81,13 +85,13 @@ export default function ColorPickerSheet({
     setQuery('')
     setActiveTab('pattern')
     setEditMode('color')
-    setPendingColorId('')
+    setPendingColorId(brushOnly && currentColorId ? currentColorId : '')
     setLockedModePanelHeight(null)
     setColorListScrollHeight(COLOR_LIST_FALLBACK_HEIGHT)
     setEraseMainHeight(ERASE_MAIN_FALLBACK_HEIGHT)
-  }, [visible])
+  }, [visible, brushOnly, currentColorId])
 
-  const showSummary = editMode === 'erase' || Boolean(pendingColorId)
+  const showSummary = !brushOnly && (editMode === 'erase' || Boolean(pendingColorId))
 
   const patternColorIds = useMemo(() => getPatternColorIds(pattern), [pattern])
 
@@ -165,6 +169,11 @@ export default function ColorPickerSheet({
   if (!visible) return null
 
   const handleConfirm = () => {
+    if (brushOnly) {
+      if (!pendingColorId) return
+      onConfirmColor(pendingColorId)
+      return
+    }
     if (selectedCount === 0) return
     if (editMode === 'erase') {
       onConfirmErase()
@@ -176,20 +185,22 @@ export default function ColorPickerSheet({
     onConfirmColor(pendingColorId)
   }
 
-  const confirmDisabled = selectedCount === 0
-    || (editMode === 'color' && !pendingColorId)
+  const confirmDisabled = brushOnly
+    ? !pendingColorId
+    : selectedCount === 0 || (editMode === 'color' && !pendingColorId)
 
   return (
-    <View className='color-picker-sheet'>
+    <View className={`color-picker-sheet${brushOnly ? ' color-picker-sheet--brush' : ''}`}>
       <View className='color-picker-sheet__mask' onClick={onClose} catchMove />
       <View className='color-picker-sheet__panel' onClick={(event) => event.stopPropagation()}>
         <View className='color-picker-sheet__header'>
-          <Text className='color-picker-sheet__title'>编辑格子</Text>
+          <Text className='color-picker-sheet__title'>{brushOnly ? '选择画笔颜色' : '编辑格子'}</Text>
           <View className='color-picker-sheet__close' onClick={onClose}>
             <Image className='color-picker-sheet__close-icon' src={closeIcon} mode='aspectFit' />
           </View>
         </View>
 
+        {!brushOnly ? (
         <View className='color-picker-sheet__selection-card'>
           <View className='color-picker-sheet__selection-head'>
             {statusColorIds.length > 1 ? (
@@ -247,7 +258,19 @@ export default function ColorPickerSheet({
             </ScrollView>
           </View>
         </View>
+        ) : (
+          <View className='color-picker-sheet__brush-current'>
+            <View
+              className='color-picker-sheet__status-swatch'
+              style={currentSwatchStyle}
+            />
+            <Text className='color-picker-sheet__status-text'>
+              当前画笔 · {formatColorLabel(currentColorId)}
+            </Text>
+          </View>
+        )}
 
+        {!brushOnly ? (
         <View className='color-picker-sheet__mode-tabs'>
           <View
             className={`color-picker-sheet__mode-tab${editMode === 'color' ? ' color-picker-sheet__mode-tab--active' : ''}`}
@@ -262,6 +285,7 @@ export default function ColorPickerSheet({
             <Text>擦除</Text>
           </View>
         </View>
+        ) : null}
 
         <View
           id={MODE_PANEL_ID}
@@ -269,7 +293,7 @@ export default function ColorPickerSheet({
           style={lockedModePanelHeight != null ? { height: `${lockedModePanelHeight}px` } : undefined}
         >
           <View className='color-picker-sheet__mode-panel-content' id={MODE_PANEL_CONTENT_ID}>
-            {editMode === 'color' ? (
+            {editMode === 'color' || brushOnly ? (
               <>
                 <View className='color-picker-sheet__search'>
                   <Image className='color-picker-sheet__search-icon' src={searchIcon} mode='aspectFit' />
@@ -313,7 +337,13 @@ export default function ColorPickerSheet({
                         <View
                           key={id}
                           className={`color-picker-sheet__item${active ? ' color-picker-sheet__item--active' : ''}`}
-                          onClick={() => setPendingColorId(id)}
+                          onClick={() => {
+                            if (brushOnly) {
+                              onConfirmColor(id)
+                              return
+                            }
+                            setPendingColorId(id)
+                          }}
                         >
                           <View
                             className='color-picker-sheet__swatch'
@@ -389,7 +419,21 @@ export default function ColorPickerSheet({
 
           {showSummary ? (
             <View className='color-picker-sheet__summary'>
-              {editMode === 'color' ? (
+              {brushOnly ? (
+                <>
+                  <Text className='color-picker-sheet__summary-text'>
+                    画笔将使用 {pendingColorId}
+                  </Text>
+                  <View className='color-picker-sheet__summary-row'>
+                    <View
+                      className={`color-picker-sheet__summary-to${pendingColorId && isTransparentBeadId(pendingColorId) ? ' color-picker-sheet__summary-to--transparent' : ''}`}
+                      style={pendingSwatchStyle}
+                    >
+                      <Text>{pendingColorId}</Text>
+                    </View>
+                  </View>
+                </>
+              ) : editMode === 'color' ? (
                 <>
                   <Text className='color-picker-sheet__summary-text'>
                     已选格子统一换为 {pendingColorId}
@@ -414,17 +458,19 @@ export default function ColorPickerSheet({
           ) : null}
         </View>
 
-        <View className='color-picker-sheet__footer'>
-          <View className='color-picker-sheet__footer-btn color-picker-sheet__footer-btn--ghost' onClick={onClose}>
-            <Text>取消</Text>
+        {!brushOnly ? (
+          <View className='color-picker-sheet__footer'>
+            <View className='color-picker-sheet__footer-btn color-picker-sheet__footer-btn--ghost' onClick={onClose}>
+              <Text>取消</Text>
+            </View>
+            <View
+              className={`color-picker-sheet__footer-btn color-picker-sheet__footer-btn--primary${confirmDisabled ? ' is-disabled' : ''}`}
+              onClick={handleConfirm}
+            >
+              <Text>{editMode === 'erase' ? '确认擦除' : '确认换色'}</Text>
+            </View>
           </View>
-          <View
-            className={`color-picker-sheet__footer-btn color-picker-sheet__footer-btn--primary${confirmDisabled ? ' is-disabled' : ''}`}
-            onClick={handleConfirm}
-          >
-            <Text>{editMode === 'erase' ? '确认擦除' : '确认换色'}</Text>
-          </View>
-        </View>
+        ) : null}
       </View>
     </View>
   )

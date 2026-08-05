@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: $editor-surface;
+  background: #f8f9fb;
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
@@ -22,6 +22,7 @@
 .pattern-edit-page__nav {
   flex-shrink: 0;
   background: #fff;
+  border-bottom: 1px solid #edf0f4;
 }
 
 .pattern-edit-page__nav-row {
@@ -33,7 +34,7 @@
 
 .pattern-edit-page__nav-done {
   position: absolute;
-  left: 24px;
+  left: 22px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
@@ -46,8 +47,8 @@
 
 .pattern-edit-page__nav-done-text {
   font-size: 17PX;
-  font-weight: 700;
-  color: $editor-primary;
+  font-weight: 500;
+  color: #7c20ff;
   line-height: 1;
 }
 

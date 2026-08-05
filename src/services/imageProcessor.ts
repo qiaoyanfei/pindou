@@ -32,12 +32,28 @@ export interface GridSize {
 export type Rgb = [number, number, number]
 
 export function computeGridSize(
-  imageWidth: number,
-  imageHeight: number,
+  _imageWidth: number,
+  _imageHeight: number,
   longEdge: number,
   styleMode: StyleMode = 'portrait',
 ): GridSize {
   const clampedEdge = clampLongEdge(longEdge, styleMode)
+  // 图纸固定为正方形：用户选的格数即边长（如 52 → 52×52）
+  return { width: clampedEdge, height: clampedEdge }
+}
+
+/** 内容区按原图比例适配进正方形，长边贴边、短边留白 */
+export function computeContentGridSize(
+  imageWidth: number,
+  imageHeight: number,
+  squareSide: number,
+  styleMode: StyleMode = 'portrait',
+): GridSize {
+  const clampedEdge = clampLongEdge(squareSide, styleMode)
+
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return { width: clampedEdge, height: clampedEdge }
+  }
 
   if (imageWidth >= imageHeight) {
     const width = clampedEdge
@@ -48,6 +64,22 @@ export function computeGridSize(
   const height = clampedEdge
   const width = Math.max(1, Math.round((clampedEdge * imageWidth) / imageHeight))
   return { width, height }
+}
+
+/** 内容在正方形图纸中的居中格子区域 */
+export function computeCenteredContentRect(
+  contentWidth: number,
+  contentHeight: number,
+  squareSide: number,
+): { x: number; y: number; width: number; height: number } {
+  const width = Math.max(1, Math.min(contentWidth, squareSide))
+  const height = Math.max(1, Math.min(contentHeight, squareSide))
+  return {
+    x: Math.floor((squareSide - width) / 2),
+    y: Math.floor((squareSide - height) / 2),
+    width,
+    height,
+  }
 }
 
 export async function getImageDimensions(imagePath: string): Promise<GridSize> {
