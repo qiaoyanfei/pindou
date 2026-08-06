@@ -8,6 +8,11 @@ import { PATTERN_STORAGE_KEY, type PatternConfig, type PatternResult, type Patte
 import { bumpPatternPreviewSession, hasSubstantialPatternChange, markAsRecoverableLocalDraft, serializePatternFingerprint } from '@/utils/patternStorage'
 import { useDefaultPageShare } from '@/utils/shareReward'
 import { safeNavigateBack } from '@/utils/navigation'
+import {
+  getEditorDisplaySettings,
+  setEditorDisplaySettings as persistEditorDisplaySettings,
+  type EditorDisplaySettings,
+} from '@/utils/editorDisplaySettings'
 import './index.scss'
 
 interface StoredPayload extends PatternStoragePayload {}
@@ -23,6 +28,9 @@ export default function PatternEditPage() {
 
   const [pattern, setPattern] = useState<PatternResult | null>(null)
   const [config, setConfig] = useState<PatternConfig>({ ...DEFAULT_CONFIG })
+  const [editorDisplaySettings, setEditorDisplaySettings] = useState<EditorDisplaySettings>(
+    getEditorDisplaySettings,
+  )
   const [sourceImagePath, setSourceImagePath] = useState('')
   const [sourceCrop, setSourceCrop] = useState<PatternSourceCrop | null>(null)
   const [navLayout, setNavLayout] = useState({
@@ -113,6 +121,8 @@ export default function PatternEditPage() {
   }, [persistPattern])
 
   useDidShow(() => {
+    setEditorDisplaySettings(getEditorDisplaySettings())
+
     const stored = Taro.getStorageSync(PATTERN_STORAGE_KEY) as StoredPayload | undefined
     if (!stored?.pattern) {
       Taro.showToast({ title: '请先生成图纸', icon: 'none' })
@@ -154,6 +164,11 @@ export default function PatternEditPage() {
       persistPattern(patternRef.current, true)
     }
   }, [persistPattern])
+
+  const handleEditorDisplaySettingsChange = useCallback((next: EditorDisplaySettings) => {
+    setEditorDisplaySettings(next)
+    persistEditorDisplaySettings(next)
+  }, [])
 
   useDidHide(flushPattern)
   useUnload(flushPattern)
@@ -201,6 +216,8 @@ export default function PatternEditPage() {
         config={config}
         sourceImagePath={sourceImagePath}
         sourceCrop={sourceCrop}
+        displaySettings={editorDisplaySettings}
+        onDisplaySettingsChange={handleEditorDisplaySettingsChange}
         onPatternChange={handlePatternChange}
         onSourceCropResolved={handleSourceCropResolved}
       />

@@ -183,6 +183,30 @@ function drawGridLines(
   ctx.restore()
 }
 
+function drawGridCellLines(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cellPx: number,
+): void {
+  const left = Math.round(x) + 0.5
+  const top = Math.round(y) + 0.5
+  const right = Math.round(x + cellPx) + 0.5
+  const bottom = Math.round(y + cellPx) + 0.5
+
+  ctx.save()
+  ctx.strokeStyle = GRID_LINE_COLOR
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(left, top)
+  ctx.lineTo(right, top)
+  ctx.lineTo(right, bottom)
+  ctx.lineTo(left, bottom)
+  ctx.lineTo(left, top)
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawMajorGridLines(
   ctx: CanvasRenderingContext2D,
   originX: number,
@@ -325,17 +349,22 @@ export function paintPatternCell(
   options: PatternGridPaintOptions,
 ): void {
   const { width, grid } = pattern
-  const { cellPx, showColorCode, minCellPxForLabel = 16 } = options
+  const { cellPx, showGrid, showColorCode, minCellPxForLabel = 16 } = options
   if (col < 0 || row < 0 || col >= pattern.width || row >= pattern.height) return
+  const x = col * cellPx
+  const y = row * cellPx
   drawGridCell(
     ctx,
-    col * cellPx,
-    row * cellPx,
+    x,
+    y,
     cellPx,
     grid[row * width + col],
     showColorCode,
     minCellPxForLabel,
   )
+  if (showGrid) {
+    drawGridCellLines(ctx, x, y, cellPx)
+  }
 }
 
 export function paintCellSelectionOutline(

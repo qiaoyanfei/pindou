@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useMemo, useRef, type CSSProperties } from 'react'
 import { View, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { PatternSourceCrop } from '@/types'
@@ -25,6 +25,21 @@ export const SCALE_MAX = 4
 const PAN_START_TOLERANCE = 6
 /** 画笔/橡皮下长按进入临时拖动画布 */
 const LONG_PRESS_PAN_MS = 220
+const MAJOR_GRID_EVERY = 5
+const GUIDE_HIT_SLOP_PX = 18
+const MAJOR_GRID_LINE_COLOR = '#f59e42'
+
+export interface EditorGuideLines {
+  vertical: number
+  horizontal: number
+}
+
+type EditorTouchEvent = {
+  touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
+  changedTouches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
+  stopPropagation?: () => void
+  preventDefault?: () => void
+}
 
 interface EditorViewportProps {
   patternBuffers: Array<{ key: string; src: string }>
@@ -36,10 +51,16 @@ interface EditorViewportProps {
   gestureMode: EditorGestureMode
   imageWidth: number
   imageHeight: number
+  gridCols: number
+  gridRows: number
   viewport: ViewportTransform
   interactive: boolean
   highlights: CellHighlight[]
   highlightCellPx: number
+  guideLines: EditorGuideLines
+  showGuideLines: boolean
+  showMajorGridLines: boolean
+  onGuideLinesChange: (guideLines: EditorGuideLines) => void
   onViewportChange: (viewport: ViewportTransform) => void
   /** 画笔模式下长按拖开始/结束，用于取消误触笔画 */
   onLongPressPanChange?: (active: boolean) => void
@@ -74,6 +95,10 @@ function readTouch(touch: {
 
 function clampScale(scale: number) {
   return Math.max(SCALE_MIN, Math.min(SCALE_MAX, scale))
+}
+
+function clampLineIndex(value: number, max: number) {
+  return Math.max(0, Math.min(max, value))
 }
 
 /** 把生成时的原图裁剪区映射到图纸画布；正方形留白时只对齐 contentRect */
@@ -147,10 +172,16 @@ function EditorViewport({
   gestureMode,
   imageWidth,
   imageHeight,
+  gridCols,
+  gridRows,
   viewport,
   interactive,
   highlights,
   highlightCellPx,
+  guideLines,
+  showGuideLines,
+  showMajorGridLines,
+  onGuideLinesChange,
   onViewportChange,
   onLongPressPanChange,
   onTouchStart,
@@ -186,6 +217,8 @@ function EditorViewport({
 
   const areaRectRef = useRef({ left: 0, top: 0 })
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const guideDragRef = useRef<'vertical' | 'horizontal' | null>(null)
+  const guideDraftRef = useRef<EditorGuideLines | null>(null)
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current) {
@@ -217,17 +250,121 @@ function EditorViewport({
     y: clientY - areaRectRef.current.top,
   })
 
+  const updateGuideLineFromTouch = (
+    axis: 'vertical' | 'horizontal',
+    event: EditorTouchEvent,
+    snap = false,
+  ) => {
+    const touch = readTouch((event.touches?.[0] ?? event.changedTouches?.[0] ?? {}))
+    if (!touch || !highlightCellPx) return
+    const point = toAreaPoint(touch.clientX, touch.clientY)
+    const logicalX = (point.x - viewport.x) / viewport.scale
+    const logicalY = (point.y - viewport.y) / viewport.scale
+    const baseGuideLines = guideDraftRef.current ?? guideLines
+
+    if (axis === 'vertical') {
+      const rawVertical = clampLineIndex(logicalX / highlightCellPx, gridCols)
+      const vertical = snap ? Math.round(rawVertical) : rawVertical
+      if (vertical !== baseGuideLines.vertical) {
+        const nextGuideLines = { ...baseGuideLines, vertical }
+        guideDraftRef.current = nextGuideLines
+        onGuideLinesChange(nextGuideLines)
+      }
+      return
+    }
+
+    const rawHorizontal = clampLineIndex(logicalY / highlightCellPx, gridRows)
+    const horizontal = snap ? Math.round(rawHorizontal) : rawHorizontal
+    if (horizontal !== baseGuideLines.horizontal) {
+      const nextGuideLines = { ...baseGuideLines, horizontal }
+      guideDraftRef.current = nextGuideLines
+      onGuideLinesChange(nextGuideLines)
+    }
+  }
+
+  const snapGuideLine = (axis: 'vertical' | 'horizontal') => {
+    const baseGuideLines = guideDraftRef.current ?? guideLines
+    const nextGuideLines = axis === 'vertical'
+      ? {
+        ...baseGuideLines,
+        vertical: clampLineIndex(Math.round(baseGuideLines.vertical), gridCols),
+      }
+      : {
+        ...baseGuideLines,
+        horizontal: clampLineIndex(Math.round(baseGuideLines.horizontal), gridRows),
+      }
+    guideDraftRef.current = null
+    onGuideLinesChange(nextGuideLines)
+  }
+
+  const resolveTouchedGuideAxis = (touch: { clientX: number; clientY: number }) => {
+    if (gestureMode !== 'pan') return null
+    if (!showGuideLines) return null
+    if (!highlightCellPx || !gridCols || !gridRows) return null
+    const point = toAreaPoint(touch.clientX, touch.clientY)
+    const logicalX = (point.x - viewport.x) / viewport.scale
+    const logicalY = (point.y - viewport.y) / viewport.scale
+    if (logicalX < 0 || logicalY < 0 || logicalX > imageWidth || logicalY > imageHeight) {
+      return null
+    }
+
+    const verticalX = clampLineIndex(guideLines.vertical, gridCols) * highlightCellPx
+    const horizontalY = clampLineIndex(guideLines.horizontal, gridRows) * highlightCellPx
+    const verticalDistance = Math.abs(logicalX - verticalX) * viewport.scale
+    const horizontalDistance = Math.abs(logicalY - horizontalY) * viewport.scale
+    const hitVertical = verticalDistance <= GUIDE_HIT_SLOP_PX
+    const hitHorizontal = horizontalDistance <= GUIDE_HIT_SLOP_PX
+    if (hitVertical && hitHorizontal) {
+      return verticalDistance <= horizontalDistance ? 'vertical' : 'horizontal'
+    }
+    if (hitVertical) return 'vertical'
+    if (hitHorizontal) return 'horizontal'
+    return null
+  }
+
+  const handleGuideTouchMove = (event: EditorTouchEvent) => {
+    event.stopPropagation?.()
+    event.preventDefault?.()
+    const axis = guideDragRef.current
+    if (!axis) return
+    updateGuideLineFromTouch(axis, event)
+  }
+
+  const handleGuideTouchEnd = (event: EditorTouchEvent) => {
+    event.stopPropagation?.()
+    event.preventDefault?.()
+    const axis = guideDragRef.current
+    if (axis) {
+      snapGuideLine(axis)
+    } else {
+      guideDraftRef.current = null
+    }
+    guideDragRef.current = null
+  }
+
   const handleAreaTouchStart = (event: {
     touches?: Array<{ clientX?: number; clientY?: number; x?: number; y?: number }>
   }) => {
     updateAreaRect()
     clearLongPressTimer()
     endLongPressPanIfNeeded()
-    onTouchStart(event)
 
     if (!interactive) return
 
     const touches = event.touches ?? []
+    const firstTouch = readTouch(touches[0] ?? {})
+    if (touches.length === 1 && firstTouch) {
+      const guideAxis = resolveTouchedGuideAxis(firstTouch)
+      if (guideAxis) {
+        guideDragRef.current = guideAxis
+        guideDraftRef.current = guideLines
+        updateGuideLineFromTouch(guideAxis, event)
+        return
+      }
+    }
+
+    onTouchStart(event)
+
     if (touches.length >= 2) {
       const t0 = readTouch(touches[0])
       const t1 = readTouch(touches[1])
@@ -313,6 +450,10 @@ function EditorViewport({
     const gesture = gestureRef.current
 
     if (touches.length >= 2) {
+      if (guideDragRef.current) {
+        snapGuideLine(guideDragRef.current)
+        guideDragRef.current = null
+      }
       clearLongPressTimer()
       endLongPressPanIfNeeded()
       onTouchMove(event)
@@ -352,6 +493,11 @@ function EditorViewport({
         x: midX - gesture.pinchWorldX * nextScale,
         y: midY - gesture.pinchWorldY * nextScale,
       })
+      return
+    }
+
+    if (guideDragRef.current) {
+      handleGuideTouchMove(event)
       return
     }
 
@@ -416,6 +562,11 @@ function EditorViewport({
     touches?: Array<unknown>
   }) => {
     clearLongPressTimer()
+    if (guideDragRef.current) {
+      handleGuideTouchEnd(event)
+      gestureRef.current.mode = 'none'
+      return
+    }
     const wasLongPressPan = gestureRef.current.longPressPan
     // 先交给编辑器收尾（此时仍可识别长按拖会话），再解除拖拽锁
     onTouchEnd(event)
@@ -428,6 +579,8 @@ function EditorViewport({
 
   const handleAreaTouchCancel = () => {
     clearLongPressTimer()
+    guideDragRef.current = null
+    guideDraftRef.current = null
     const wasLongPressPan = gestureRef.current.longPressPan
     onTouchCancel()
     if (wasLongPressPan) {
@@ -442,6 +595,22 @@ function EditorViewport({
   const showPattern = layerMode === 'pattern' || layerMode === 'compare'
   const patternOpacity = layerMode === 'compare' ? 0.58 : 1
   const sourceLayerStyle = resolveSourceLayerStyle(imageWidth, imageHeight, sourceCrop)
+  const clampedGuideLines = {
+    vertical: clampLineIndex(guideLines.vertical, gridCols),
+    horizontal: clampLineIndex(guideLines.horizontal, gridRows),
+  }
+  const guideVisualScale = viewport.scale > 0 ? viewport.scale : 1
+  const guideVisualVars = {
+    '--pattern-guide-stroke-size': `${2 / guideVisualScale}px`,
+    '--pattern-guide-outline-size': `${0.75 / guideVisualScale}px`,
+  } as CSSProperties
+  const majorGridLineWidth = Math.max(1.5, highlightCellPx * 0.1)
+  const majorGridLayerStyle = useMemo(() => ({
+    backgroundImage: [
+      `repeating-linear-gradient(to right, ${MAJOR_GRID_LINE_COLOR} 0, ${MAJOR_GRID_LINE_COLOR} ${majorGridLineWidth}px, transparent ${majorGridLineWidth}px, transparent ${highlightCellPx * MAJOR_GRID_EVERY}px)`,
+      `repeating-linear-gradient(to bottom, ${MAJOR_GRID_LINE_COLOR} 0, ${MAJOR_GRID_LINE_COLOR} ${majorGridLineWidth}px, transparent ${majorGridLineWidth}px, transparent ${highlightCellPx * MAJOR_GRID_EVERY}px)`,
+    ].join(', '),
+  }), [highlightCellPx, majorGridLineWidth])
 
   return (
     <View
@@ -510,6 +679,9 @@ function EditorViewport({
             })
             : null}
         </View>
+        {showMajorGridLines ? (
+          <View className='pattern-editor__major-grid-layer' style={majorGridLayerStyle} />
+        ) : null}
         <View className='pattern-editor__highlights-layer'>
           {highlights.map(({ index, col, row, color }) => (
             <View
@@ -525,6 +697,24 @@ function EditorViewport({
             />
           ))}
         </View>
+        {showGuideLines ? (
+          <View className='pattern-editor__guide-layer'>
+            <View
+              className='pattern-editor__guide-line pattern-editor__guide-line--vertical'
+              style={{
+                ...guideVisualVars,
+                left: `${clampedGuideLines.vertical * highlightCellPx}px`,
+              }}
+            />
+            <View
+              className='pattern-editor__guide-line pattern-editor__guide-line--horizontal'
+              style={{
+                ...guideVisualVars,
+                top: `${clampedGuideLines.horizontal * highlightCellPx}px`,
+              }}
+            />
+          </View>
+        ) : null}
       </View>
     </View>
   )

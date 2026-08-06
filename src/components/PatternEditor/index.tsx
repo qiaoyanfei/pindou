@@ -7,6 +7,7 @@ import EditorViewport, {
   SCALE_MIN,
   type CellHighlight,
   type EditorGestureMode,
+  type EditorGuideLines,
   type EditorLayerMode,
   type ViewportTransform,
 } from '@/components/PatternEditor/EditorViewport'
@@ -34,6 +35,7 @@ import {
   type PatternUndoEntry,
 } from '@/utils/patternEdit'
 import { getBeadSwatchStyle, isTransparentBeadId } from '@/utils/transparentBead'
+import type { EditorDisplaySettings } from '@/utils/editorDisplaySettings'
 import type { PatternConfig, PatternResult, PatternSourceCrop } from '@/types'
 import arrowRightIcon from '@/assets/icons/pattern-edit-arrow-right.svg'
 import brushIcon from '@/assets/icons/pattern-edit-brush.png'
@@ -53,8 +55,11 @@ import './index.scss'
 const CANVAS_ID = 'pattern-editor-canvas'
 const CROP_CANVAS_ID = 'pattern-editor-crop-canvas'
 const VIEWPORT_AREA_ID = 'pattern-editor-viewport-area'
+const SETTINGS_BAR_ID = 'pattern-editor-display-settings-bar'
 const PALETTE_BAR_ID = 'pattern-editor-palette-bar'
 const VIEW_PADDING = 16
+const TOP_VIEWPORT_RESERVE_FALLBACK = 64
+const TOP_VIEWPORT_GAP = 6
 const BOTTOM_VIEWPORT_RESERVE = 236
 const MAX_UNDO = 40
 /** 取色点按判定：与视口平移阈值一致，超过即视为拖动画布 */
@@ -71,7 +76,7 @@ const PREVIEW_REFRESH_IDLE_MS = 900
 /** 全图导出超过该时间才出现轻量提示，避免短笔画闪一下 */
 const PREVIEW_REFRESH_LOADING_MS = 500
 /** 新图纸 Image onLoad 后，小程序真正上屏可能晚一拍；稍等再撤掉跟手涂色层 */
-const PREVIEW_OVERLAY_CLEAR_DELAY_MS = 80
+const PREVIEW_OVERLAY_CLEAR_DELAY_MS = 180
 /** 原图取色缓冲区最长边，越接近原分辨率取色越准 */
 const SOURCE_SAMPLE_MAX_EDGE = 1600
 /** 取色窗口半径（缓冲区像素），用于避开描边抗锯齿过渡色 */
@@ -103,6 +108,8 @@ interface PatternEditorProps {
   config: PatternConfig
   sourceImagePath?: string
   sourceCrop?: PatternSourceCrop | null
+  displaySettings: EditorDisplaySettings
+  onDisplaySettingsChange: (settings: EditorDisplaySettings) => void
   onPatternChange: (pattern: PatternResult, options?: { immediate?: boolean }) => void
   onSourceCropResolved?: (crop: PatternSourceCrop) => void
 }
@@ -180,7 +187,7 @@ function pickDefaultBrushColor(pattern: PatternResult): string {
 }
 
 function resolvePaintPreviewColor(colorId: string): string {
-  if (isEmptyCell(colorId)) return '#ffffff'
+  if (isEmptyCell(colorId)) return '#f3f4f6'
   if (isTransparentBeadId(colorId)) return 'rgba(198, 222, 238, 0.88)'
   return getColorById(colorId)?.hex ?? '#cccccc'
 }
@@ -276,6 +283,8 @@ export default function PatternEditor({
   config,
   sourceImagePath = '',
   sourceCrop = null,
+  displaySettings,
+  onDisplaySettingsChange,
   onPatternChange,
   onSourceCropResolved,
 }: PatternEditorProps) {
@@ -288,6 +297,7 @@ export default function PatternEditor({
   )
 
   const [canvasAreaHeight, setCanvasAreaHeight] = useState(0)
+  const [topViewportReserve, setTopViewportReserve] = useState(TOP_VIEWPORT_RESERVE_FALLBACK)
   const cellPx = useMemo(
     () => getEditHdCellPx(pattern, config.exportCellPx),
     [pattern.width, pattern.height, config.exportCellPx],
@@ -303,6 +313,10 @@ export default function PatternEditor({
     }),
     [cellPx, config.showGrid, config.showColorCode],
   )
+  const [guideLines, setGuideLines] = useState<EditorGuideLines>(() => ({
+    vertical: Math.round(pattern.width / 2),
+    horizontal: Math.round(pattern.height / 2),
+  }))
 
   const canvasRef = useRef<CanvasNode | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -382,6 +396,7 @@ export default function PatternEditor({
   const [pickerVisible, setPickerVisible] = useState(false)
   const [paintOverlays, setPaintOverlays] = useState<CellHighlight[]>([])
   const [previewRefreshing, setPreviewRefreshing] = useState(false)
+  const [majorGridSuspended, setMajorGridSuspended] = useState(false)
   const [resolvedSourceCrop, setResolvedSourceCrop] = useState<PatternSourceCrop | null>(
     sourceCrop || null,
   )
@@ -460,18 +475,28 @@ export default function PatternEditor({
     Taro.createSelectorQuery()
       .select('#pattern-editor-viewport-frame')
       .boundingClientRect()
+      .select(`#${SETTINGS_BAR_ID}`)
+      .boundingClientRect()
       .select(`#${PALETTE_BAR_ID}`)
       .boundingClientRect()
       .exec((res) => {
         const frame = res?.[0] as { top: number; height: number } | null
-        const palette = res?.[1] as { top: number } | null
+        const settingsBar = res?.[1] as { bottom: number } | null
+        const palette = res?.[2] as { top: number } | null
         if (!frame?.height) return
 
+        const measuredTopReserve = settingsBar?.bottom
+          ? Math.max(0, Math.round(settingsBar.bottom - frame.top + TOP_VIEWPORT_GAP))
+          : TOP_VIEWPORT_RESERVE_FALLBACK
+        setTopViewportReserve((prev) => (
+          prev === measuredTopReserve ? prev : measuredTopReserve
+        ))
+
         const measuredAreaHeight = palette
-          ? Math.round(palette.top - frame.top)
+          ? Math.round(palette.top - frame.top - measuredTopReserve)
           : 0
         const fallbackAreaHeight = Math.round(
-          frame.height - BOTTOM_VIEWPORT_RESERVE - safeAreaBottomInset,
+          frame.height - measuredTopReserve - BOTTOM_VIEWPORT_RESERVE - safeAreaBottomInset,
         )
         setCanvasAreaHeight(Math.max(
           80,
@@ -526,9 +551,9 @@ export default function PatternEditor({
     const spareHeight = Math.max(0, canvasAreaHeightForLayout - scaledH)
     return {
       x: Math.round((viewportWidth - scaledW) / 2),
-      y: Math.round(spareHeight / 2),
+      y: Math.round(topViewportReserve + spareHeight / 2),
     }
-  }, [imageSize, initialScale, viewportWidth, canvasAreaHeightForLayout])
+  }, [imageSize, initialScale, viewportWidth, canvasAreaHeightForLayout, topViewportReserve])
 
   const applyImageSize = useCallback((width: number, height: number) => {
     const prev = imageSizeRef.current
@@ -747,6 +772,10 @@ export default function PatternEditor({
     viewportFitKeyRef.current = ''
     setViewport({ scale: 1, x: 0, y: 0 })
     setViewportReady(false)
+    setGuideLines({
+      vertical: Math.round(pattern.width / 2),
+      horizontal: Math.round(pattern.height / 2),
+    })
     setCanvasAreaHeight(0)
     setInitialLoading(true)
     const timer = setTimeout(() => initCanvasRef.current(), 80)
@@ -884,6 +913,7 @@ export default function PatternEditor({
   }) => {
     const seq = previewRefreshSeqRef.current + 1
     previewRefreshSeqRef.current = seq
+    let refreshedSuccessfully = false
     let loadingTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       if (previewRefreshSeqRef.current === seq) {
         setPreviewRefreshing(true)
@@ -891,12 +921,14 @@ export default function PatternEditor({
     }, options?.loadingDelayMs ?? PREVIEW_REFRESH_LOADING_MS)
     try {
       const refreshed = await refreshDisplay(true)
+      refreshedSuccessfully = refreshed
       if (previewRefreshSeqRef.current !== seq) return
       // 笔画进行中保留 overlay，避免导出完成时清掉正在涂的预览
       if (refreshed && !strokeRef.current?.active) {
         setTimeout(() => {
           if (previewRefreshSeqRef.current === seq && !strokeRef.current?.active) {
             clearPaintOverlays()
+            setMajorGridSuspended(false)
           }
         }, PREVIEW_OVERLAY_CLEAR_DELAY_MS)
       }
@@ -907,6 +939,9 @@ export default function PatternEditor({
       }
       if (previewRefreshSeqRef.current === seq) {
         setPreviewRefreshing(false)
+        if (!refreshedSuccessfully && !strokeRef.current?.active) {
+          setMajorGridSuspended(false)
+        }
       }
     }
   }, [clearPaintOverlays, refreshDisplay])
@@ -916,7 +951,7 @@ export default function PatternEditor({
     delayMs?: number
     showLoadingOnSchedule?: boolean
   }) => {
-    const showLoading = options?.showLoadingOnSchedule ?? true
+    const showLoading = options?.showLoadingOnSchedule ?? false
     if (previewRefreshTimerRef.current) {
       clearTimeout(previewRefreshTimerRef.current)
       previewRefreshTimerRef.current = null
@@ -954,6 +989,7 @@ export default function PatternEditor({
       lastRow: row,
       startedAt: Date.now(),
     }
+    setMajorGridSuspended(true)
   }, [])
 
   const paintCell = useCallback((col: number, row: number, colorId: string) => {
@@ -1008,7 +1044,10 @@ export default function PatternEditor({
     cancelHighlightFlush()
     flushPendingHighlights()
 
-    if (!stroke || stroke.changes.length === 0) return
+    if (!stroke || stroke.changes.length === 0) {
+      setMajorGridSuspended(false)
+      return
+    }
 
     const current = patternRef.current
     const finalized = finalizePattern(current.width, current.height, current.grid)
@@ -1056,6 +1095,7 @@ export default function PatternEditor({
       paintDirtyCells(reverted, stroke.changes.map((item) => item.index))
     }
     clearPaintOverlays()
+    setMajorGridSuspended(false)
   }, [cancelHighlightFlush, clearPaintOverlays, paintDirtyCells])
 
   /** 原图裁剪区按接近原分辨率缓存一份像素，取色时按点击位置直接查 */
@@ -1657,6 +1697,13 @@ export default function PatternEditor({
     setPickerVisible(true)
   }
 
+  const updateDisplaySetting = (key: keyof EditorDisplaySettings, value: boolean) => {
+    onDisplaySettingsChange({
+      ...displaySettings,
+      [key]: value,
+    })
+  }
+
   const handleConfirmBrushColor = (colorId: string) => {
     setBrushColorId(colorId)
     brushColorRef.current = colorId
@@ -1673,7 +1720,7 @@ export default function PatternEditor({
   const eraserToolEnabled = !drawToolsDisabled
   const quickPalette = buildQuickPalette(pattern, brushColorId)
   const railCenterStyle = canvasAreaHeightForLayout > 0
-    ? { top: `${Math.round(canvasAreaHeightForLayout / 2)}px` }
+    ? { top: `${Math.round(topViewportReserve + canvasAreaHeightForLayout / 2)}px` }
     : undefined
 
   return (
@@ -1693,6 +1740,23 @@ export default function PatternEditor({
           </View>
         ) : null}
 
+        <View id={SETTINGS_BAR_ID} className='pattern-editor__display-settings-bar'>
+          <View
+            className={`pattern-editor__display-setting${displaySettings.showGuideLines ? ' is-active' : ''}`}
+            onClick={() => updateDisplaySetting('showGuideLines', !displaySettings.showGuideLines)}
+          >
+            <View className='pattern-editor__display-setting-dot' />
+            <Text className='pattern-editor__display-setting-label'>辅助线</Text>
+          </View>
+          <View
+            className={`pattern-editor__display-setting${displaySettings.showMajorGridLines ? ' is-active' : ''}`}
+            onClick={() => updateDisplaySetting('showMajorGridLines', !displaySettings.showMajorGridLines)}
+          >
+            <View className='pattern-editor__display-setting-dot' />
+            <Text className='pattern-editor__display-setting-label'>五格线</Text>
+          </View>
+        </View>
+
         {showEditorViewport && (
           <EditorViewport
             patternBuffers={patternBuffers}
@@ -1704,10 +1768,16 @@ export default function PatternEditor({
             gestureMode={gestureMode}
             imageWidth={imageSize.width}
             imageHeight={imageSize.height}
+            gridCols={pattern.width}
+            gridRows={pattern.height}
             viewport={viewport}
             interactive={!pickerVisible}
             highlights={paintOverlays}
             highlightCellPx={highlightCellPx}
+            guideLines={guideLines}
+            showGuideLines={displaySettings.showGuideLines}
+            showMajorGridLines={displaySettings.showMajorGridLines && !majorGridSuspended}
+            onGuideLinesChange={setGuideLines}
             onViewportChange={handleViewportChange}
             onLongPressPanChange={handleLongPressPanChange}
             onTouchStart={handleWrapTouchStart}
