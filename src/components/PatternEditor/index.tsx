@@ -48,7 +48,9 @@ import originalLayerActiveIcon from '@/assets/icons/pattern-edit-layer-original-
 import originalLayerIcon from '@/assets/icons/pattern-edit-layer-original.svg'
 import patternLayerActiveIcon from '@/assets/icons/pattern-edit-layer-pattern-active.svg'
 import patternLayerIcon from '@/assets/icons/pattern-edit-layer-pattern.svg'
+import redoActiveIcon from '@/assets/icons/pattern-edit-redo-active.svg'
 import redoIcon from '@/assets/icons/pattern-edit-redo.svg'
+import undoActiveIcon from '@/assets/icons/pattern-edit-undo-active.svg'
 import undoIcon from '@/assets/icons/pattern-edit-undo.svg'
 import './index.scss'
 
@@ -57,6 +59,7 @@ const CROP_CANVAS_ID = 'pattern-editor-crop-canvas'
 const VIEWPORT_AREA_ID = 'pattern-editor-viewport-area'
 const SETTINGS_BAR_ID = 'pattern-editor-display-settings-bar'
 const PALETTE_BAR_ID = 'pattern-editor-palette-bar'
+const DOUBLE_TAP_HINT_STORAGE_KEY = 'patternEditDoubleTapHintDismissed'
 const VIEW_PADDING = 16
 const TOP_VIEWPORT_RESERVE_FALLBACK = 64
 const TOP_VIEWPORT_GAP = 6
@@ -68,11 +71,9 @@ const TAP_MOVE_TOLERANCE = 6
 const DOUBLE_TAP_MS = 340
 /** 画笔滑出画布多少格以内仍贴边着色，避免边缘行列涂不上 */
 const STROKE_EDGE_SLACK_CELLS = 2
-/** 超过这个规模的笔画，遇到第二根手指按下时保留而不回滚 */
-const MULTI_TOUCH_KEEP_MIN_CELLS = 4
-const MULTI_TOUCH_KEEP_MIN_MS = 150
 /** 抬笔后空闲多久再导出整图底图，避免每笔都整图刷新闪烁 */
-const PREVIEW_REFRESH_IDLE_MS = 900
+const PREVIEW_REFRESH_IDLE_MS = 220
+const PREVIEW_REFRESH_RETRY_MS = 260
 /** 全图导出超过该时间才出现轻量提示，避免短笔画闪一下 */
 const PREVIEW_REFRESH_LOADING_MS = 500
 /** 新图纸 Image onLoad 后，小程序真正上屏可能晚一拍；稍等再撤掉跟手涂色层 */
@@ -190,6 +191,18 @@ function resolvePaintPreviewColor(colorId: string): string {
   if (isEmptyCell(colorId)) return '#f3f4f6'
   if (isTransparentBeadId(colorId)) return 'rgba(198, 222, 238, 0.88)'
   return getColorById(colorId)?.hex ?? '#cccccc'
+}
+
+function resolvePaintPreviewLabelColor(colorId: string): string {
+  const color = getColorById(colorId)
+  if (!color) return '#1a1a1a'
+  if (isTransparentBeadId(colorId)) return color.textColor || '#343A42'
+  const hex = color.hex
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.62 ? '#1a1a1a' : '#ffffff'
 }
 
 function clampIndex(value: number, length: number): number {
@@ -334,6 +347,7 @@ export default function PatternEditor({
     width: number
     height: number
     key: PatternBufferKey
+    paintVersion: number
   } | null>(null)
   const displayCommitWaiterRef = useRef<((committed: boolean) => void) | null>(null)
   const viewportInitRef = useRef<ViewportTransform | null>(null)
@@ -347,12 +361,14 @@ export default function PatternEditor({
   const paintOverlayMapRef = useRef<Map<number, CellHighlight>>(new Map())
   const previewRefreshSeqRef = useRef(0)
   const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewRefreshRetryCountRef = useRef(0)
   const initCanvasRef = useRef<(retry?: number) => void>(() => undefined)
   /** 多指手势期间禁止绘制，直到所有手指抬起 */
   const multiTouchRef = useRef(false)
   /** 画笔长按拖动画布期间禁止着色 */
   const drawPanActiveRef = useRef(false)
   const pendingTapRef = useRef<ScreenTouch | null>(null)
+  const pendingDrawStartRef = useRef<ScreenTouch | null>(null)
   /** 双击同色替换：记录上一次轻点的格子与落点时的色号 */
   const lastTapRef = useRef<{
     time: number
@@ -379,6 +395,8 @@ export default function PatternEditor({
     lastRow: number
     startedAt: number
   } | null>(null)
+  const paintVersionRef = useRef(0)
+  const displayPaintVersionRef = useRef(0)
 
   const [imageSrc, setImageSrc] = useState('')
   const [patternBuffers, setPatternBuffers] = useState<PatternImageBuffer[]>([])
@@ -397,6 +415,13 @@ export default function PatternEditor({
   const [paintOverlays, setPaintOverlays] = useState<CellHighlight[]>([])
   const [previewRefreshing, setPreviewRefreshing] = useState(false)
   const [majorGridSuspended, setMajorGridSuspended] = useState(false)
+  const [showDoubleTapHint, setShowDoubleTapHint] = useState(() => {
+    try {
+      return Taro.getStorageSync(DOUBLE_TAP_HINT_STORAGE_KEY) !== true
+    } catch {
+      return true
+    }
+  })
   const [resolvedSourceCrop, setResolvedSourceCrop] = useState<PatternSourceCrop | null>(
     sourceCrop || null,
   )
@@ -411,11 +436,36 @@ export default function PatternEditor({
   const hasSourceImage = Boolean(sourceImagePath)
   const activeSourceCrop = resolvedSourceCrop || sourceCrop || null
   const drawToolsDisabled = layerMode === 'source'
+  const paintPreviewPending = displayPaintVersionRef.current !== paintVersionRef.current
+  const previewPinchDisabled = paintPreviewPending
+    && (previewRefreshing || pendingPatternBufferKey !== null)
+  const shouldShowDoubleTapHint = showDoubleTapHint
+    && !initialLoading
+    && !pickerVisible
+    && !previewRefreshing
+    && layerMode !== 'source'
+    && tool === 'brush'
+    && Boolean(brushColorId)
   const gestureMode: EditorGestureMode = (
     !drawToolsDisabled && (tool === 'brush' || tool === 'eraser')
   ) && !pickerVisible
     ? 'draw'
     : 'pan'
+
+  const dismissDoubleTapHint = useCallback(() => {
+    if (!showDoubleTapHint) return
+    setShowDoubleTapHint(false)
+    try {
+      Taro.setStorageSync(DOUBLE_TAP_HINT_STORAGE_KEY, true)
+    } catch {
+      // 忽略存储失败；本次会话内仍保持关闭。
+    }
+  }, [showDoubleTapHint])
+
+  const hideDoubleTapHint = useCallback(() => {
+    if (!showDoubleTapHint) return
+    setShowDoubleTapHint(false)
+  }, [showDoubleTapHint])
 
   useEffect(() => {
     if (!sourceCrop) {
@@ -577,8 +627,10 @@ export default function PatternEditor({
     width: number,
     height: number,
     key: PatternBufferKey = activePatternBufferKeyRef.current,
+    paintVersion = paintVersionRef.current,
   ) => {
     if (!src) return
+    displayPaintVersionRef.current = paintVersion
     patternBuffersRef.current[key] = src
     activePatternBufferKeyRef.current = key
     syncPatternBuffers()
@@ -607,13 +659,35 @@ export default function PatternEditor({
     resolveDisplayCommitWaiter(false)
   }, [resolveDisplayCommitWaiter, syncPatternBuffers])
 
+  const cancelPreviewRefresh = useCallback((options?: { keepMajorGridSuspended?: boolean }) => {
+    previewRefreshSeqRef.current += 1
+    refreshTokenRef.current += 1
+    if (previewRefreshTimerRef.current) {
+      clearTimeout(previewRefreshTimerRef.current)
+      previewRefreshTimerRef.current = null
+    }
+    cancelPreload()
+    setPreviewRefreshing(false)
+    if (!options?.keepMajorGridSuspended) {
+      setMajorGridSuspended(false)
+    }
+  }, [cancelPreload])
+
   const handlePatternBufferLoad = useCallback((key: string) => {
     const pending = preloadPendingRef.current
     if (!pending || pending.key !== key) return
+    if (pending.paintVersion !== paintVersionRef.current) {
+      patternBuffersRef.current[pending.key] = ''
+      syncPatternBuffers()
+      preloadPendingRef.current = null
+      setPendingPatternBufferKey(null)
+      resolveDisplayCommitWaiter(false)
+      return
+    }
     preloadPendingRef.current = null
-    commitDisplayImage(pending.src, pending.width, pending.height, pending.key)
+    commitDisplayImage(pending.src, pending.width, pending.height, pending.key, pending.paintVersion)
     resolveDisplayCommitWaiter(true)
-  }, [commitDisplayImage, resolveDisplayCommitWaiter])
+  }, [commitDisplayImage, resolveDisplayCommitWaiter, syncPatternBuffers])
 
   const handlePatternBufferError = useCallback((key: string) => {
     const pending = preloadPendingRef.current
@@ -630,21 +704,37 @@ export default function PatternEditor({
     width: number,
     height: number,
     token: number,
+    paintVersion: number,
   ): Promise<boolean> => new Promise((resolve) => {
+    if (paintVersion !== paintVersionRef.current) {
+      resolve(false)
+      return
+    }
     if (!imageSrcRef.current || src === imageSrcRef.current) {
+      if (paintVersion !== paintVersionRef.current) {
+        resolve(false)
+        return
+      }
       const key = activePatternBufferKeyRef.current
-      commitDisplayImage(src, width, height, key)
+      commitDisplayImage(src, width, height, key, paintVersion)
       resolve(true)
       return
     }
     const key: PatternBufferKey = activePatternBufferKeyRef.current === 'a' ? 'b' : 'a'
     displayCommitWaiterRef.current = resolve
-    preloadPendingRef.current = { src, width, height, key }
+    preloadPendingRef.current = { src, width, height, key, paintVersion }
     patternBuffersRef.current[key] = src
     syncPatternBuffers()
     setPendingPatternBufferKey(key)
     setTimeout(() => {
-      if (token !== refreshTokenRef.current) {
+      if (token !== refreshTokenRef.current || paintVersion !== paintVersionRef.current) {
+        const pending = preloadPendingRef.current
+        if (pending?.src === src && pending.key === key) {
+          patternBuffersRef.current[key] = ''
+          syncPatternBuffers()
+          preloadPendingRef.current = null
+          setPendingPatternBufferKey(null)
+        }
         resolveDisplayCommitWaiter(false)
         return
       }
@@ -661,16 +751,28 @@ export default function PatternEditor({
     }, 5000)
   }), [commitDisplayImage, resolveDisplayCommitWaiter, syncPatternBuffers])
 
-  const refreshDisplay = useCallback(async (silent = false): Promise<boolean> => {
+  const refreshDisplay = useCallback(async (
+    silent = false,
+    expectedPaintVersion = paintVersionRef.current,
+  ): Promise<boolean> => {
     const token = refreshTokenRef.current + 1
     refreshTokenRef.current = token
     cancelPreload()
     try {
       const tempFilePath = await canvasToTempFile(CANVAS_ID)
       if (token !== refreshTokenRef.current) return false
+      if (expectedPaintVersion !== paintVersionRef.current) return false
       // 显示尺寸固定为逻辑画布大小，避免 getImageInfo 偶发尺寸差导致缩放闪跳
-      const committed = await queueDisplayImage(tempFilePath, canvasWidth, canvasHeight, token)
-      return committed && token === refreshTokenRef.current
+      const committed = await queueDisplayImage(
+        tempFilePath,
+        canvasWidth,
+        canvasHeight,
+        token,
+        expectedPaintVersion,
+      )
+      return committed
+        && token === refreshTokenRef.current
+        && expectedPaintVersion === paintVersionRef.current
     } catch {
       if (token === refreshTokenRef.current && !silent) {
         Taro.showToast({ title: '图纸渲染失败', icon: 'none' })
@@ -740,6 +842,7 @@ export default function PatternEditor({
     multiTouchRef.current = false
     drawPanActiveRef.current = false
     pendingTapRef.current = null
+    pendingDrawStartRef.current = null
     lastTapRef.current = null
     sourcePixelsRef.current = null
     if (highlightRafRef.current != null) {
@@ -895,6 +998,19 @@ export default function PatternEditor({
     setPaintOverlays([])
   }, [cancelHighlightFlush])
 
+  const clearSettledPaintOverlays = useCallback(() => {
+    if (strokeRef.current?.active) return false
+    if (displayPaintVersionRef.current !== paintVersionRef.current) return false
+    if (paintOverlayMapRef.current.size === 0 && pendingHighlightsRef.current.length === 0) {
+      return false
+    }
+    clearPaintOverlays()
+    setMajorGridSuspended(false)
+    setPreviewRefreshing(false)
+    previewRefreshRetryCountRef.current = 0
+    return true
+  }, [clearPaintOverlays])
+
   const paintDirtyCells = useCallback((
     nextPattern: PatternResult,
     indices: Iterable<number>,
@@ -913,6 +1029,7 @@ export default function PatternEditor({
   }) => {
     const seq = previewRefreshSeqRef.current + 1
     previewRefreshSeqRef.current = seq
+    const refreshPaintVersion = paintVersionRef.current
     let refreshedSuccessfully = false
     let loadingTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
       if (previewRefreshSeqRef.current === seq) {
@@ -920,16 +1037,15 @@ export default function PatternEditor({
       }
     }, options?.loadingDelayMs ?? PREVIEW_REFRESH_LOADING_MS)
     try {
-      const refreshed = await refreshDisplay(true)
+      const refreshed = await refreshDisplay(true, refreshPaintVersion)
       refreshedSuccessfully = refreshed
       if (previewRefreshSeqRef.current !== seq) return
+      if (refreshPaintVersion !== paintVersionRef.current) return
       // 笔画进行中保留 overlay，避免导出完成时清掉正在涂的预览
       if (refreshed && !strokeRef.current?.active) {
+        previewRefreshRetryCountRef.current = 0
         setTimeout(() => {
-          if (previewRefreshSeqRef.current === seq && !strokeRef.current?.active) {
-            clearPaintOverlays()
-            setMajorGridSuspended(false)
-          }
+          clearSettledPaintOverlays()
         }, PREVIEW_OVERLAY_CLEAR_DELAY_MS)
       }
     } finally {
@@ -938,20 +1054,34 @@ export default function PatternEditor({
         loadingTimer = null
       }
       if (previewRefreshSeqRef.current === seq) {
+        const stillWaitingForPaint = displayPaintVersionRef.current !== paintVersionRef.current
+        if (stillWaitingForPaint && !strokeRef.current?.active) {
+          previewRefreshRetryCountRef.current += 1
+          setPreviewRefreshing(true)
+          if (!previewRefreshTimerRef.current) {
+            previewRefreshTimerRef.current = setTimeout(() => {
+              previewRefreshTimerRef.current = null
+              void runPreviewRefresh({ loadingDelayMs: 0 })
+            }, PREVIEW_REFRESH_RETRY_MS)
+          }
+          return
+        }
+
         setPreviewRefreshing(false)
+        previewRefreshRetryCountRef.current = 0
         if (!refreshedSuccessfully && !strokeRef.current?.active) {
           setMajorGridSuspended(false)
         }
       }
     }
-  }, [clearPaintOverlays, refreshDisplay])
+  }, [clearSettledPaintOverlays, refreshDisplay])
 
   const schedulePreviewRefresh = useCallback((options?: {
     immediate?: boolean
     delayMs?: number
     showLoadingOnSchedule?: boolean
   }) => {
-    const showLoading = options?.showLoadingOnSchedule ?? false
+    const showLoading = options?.showLoadingOnSchedule ?? true
     if (previewRefreshTimerRef.current) {
       clearTimeout(previewRefreshTimerRef.current)
       previewRefreshTimerRef.current = null
@@ -973,7 +1103,23 @@ export default function PatternEditor({
     }, options?.delayMs ?? PREVIEW_REFRESH_IDLE_MS)
   }, [runPreviewRefresh])
 
+  useEffect(() => {
+    if (paintOverlays.length === 0 && pendingHighlightsRef.current.length === 0) return undefined
+    const timer = setTimeout(() => {
+      clearSettledPaintOverlays()
+    }, PREVIEW_OVERLAY_CLEAR_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [
+    activePatternBufferKey,
+    clearSettledPaintOverlays,
+    paintOverlays.length,
+    pendingPatternBufferKey,
+    previewRefreshing,
+  ])
+
   const beginStroke = useCallback((colorId: string, col: number, row: number) => {
+    paintVersionRef.current += 1
+    cancelPreviewRefresh({ keepMajorGridSuspended: true })
     // 开笔拷一份 grid，笔画内可变写，避免每格 slice + finalize
     const current = patternRef.current
     patternRef.current = {
@@ -990,7 +1136,7 @@ export default function PatternEditor({
       startedAt: Date.now(),
     }
     setMajorGridSuspended(true)
-  }, [])
+  }, [cancelPreviewRefresh])
 
   const paintCell = useCallback((col: number, row: number, colorId: string) => {
     const stroke = strokeRef.current
@@ -1014,8 +1160,10 @@ export default function PatternEditor({
       col,
       row,
       color: resolvePaintPreviewColor(colorId),
+      label: !isEmptyCell(colorId) && paintOptions.showColorCode ? colorId : undefined,
+      labelColor: resolvePaintPreviewLabelColor(colorId),
     })
-  }, [queueHighlight])
+  }, [paintOptions.showColorCode, queueHighlight])
 
   const paintAtLogicalPoint = useCallback((x: number, y: number, colorId: string) => {
     const stroke = strokeRef.current
@@ -1046,6 +1194,7 @@ export default function PatternEditor({
 
     if (!stroke || stroke.changes.length === 0) {
       setMajorGridSuspended(false)
+      setPreviewRefreshing(false)
       return
     }
 
@@ -1246,9 +1395,56 @@ export default function PatternEditor({
       : cellPx
     const coord = coordFromTouchNearest(point.x, point.y, touchCellPx, patternRef.current)
     if (!coord) return
+    hideDoubleTapHint()
     beginStroke(colorId, coord.col, coord.row)
     paintCell(coord.col, coord.row, colorId)
-  }, [beginStroke, cellPx, paintCell])
+  }, [beginStroke, cellPx, hideDoubleTapHint, paintCell])
+
+  const commitPendingDrawStart = useCallback((
+    nextTouch?: ScreenTouch,
+    endAfterCommit = false,
+  ): boolean => {
+    const startTouch = pendingDrawStartRef.current
+    if (!startTouch) return false
+    pendingDrawStartRef.current = null
+
+    const finish = (point: { x: number; y: number }) => {
+      if (multiTouchRef.current || drawPanActiveRef.current || strokeRef.current?.active) return
+      startPaintAtPoint(point)
+      if (nextTouch && strokeRef.current?.active) {
+        const size = imageSizeRef.current
+        const strokeCellPx = size.width > 0
+          ? size.width / patternRef.current.width
+          : cellPx
+        const nextPoint = toLogicalPoint(nextTouch, strokeCellPx * STROKE_EDGE_SLACK_CELLS)
+        if (nextPoint) {
+          paintAtLogicalPoint(nextPoint.x, nextPoint.y, strokeRef.current.colorId)
+        }
+      }
+      if (endAfterCommit && strokeRef.current?.active) {
+        void endStroke()
+      }
+    }
+
+    const synced = toLogicalPoint(startTouch)
+    if (synced) {
+      finish(synced)
+      return true
+    }
+
+    void resolveLogicalPoint(startTouch).then((point) => {
+      if (!point) return
+      finish(point)
+    })
+    return true
+  }, [
+    cellPx,
+    endStroke,
+    paintAtLogicalPoint,
+    resolveLogicalPoint,
+    startPaintAtPoint,
+    toLogicalPoint,
+  ])
 
   /** 把图纸上所有 sourceColorId 批量换成当前画笔色 */
   const replaceSameColorWithBrush = useCallback((sourceColorId: string) => {
@@ -1292,7 +1488,14 @@ export default function PatternEditor({
     const preview = resolvePaintPreviewColor(nextColorId)
     edit.changes.forEach(({ index }) => {
       const { col, row } = cellIndexToCoord(nextPattern, index)
-      queueHighlight({ index, col, row, color: preview })
+      queueHighlight({
+        index,
+        col,
+        row,
+        color: preview,
+        label: !isEmptyCell(nextColorId) && paintOptions.showColorCode ? nextColorId : undefined,
+        labelColor: resolvePaintPreviewLabelColor(nextColorId),
+      })
     })
     flushPendingHighlights()
     paintDirtyCells(nextPattern, edit.changes.map((item) => item.index))
@@ -1309,9 +1512,49 @@ export default function PatternEditor({
     flushPendingHighlights,
     onPatternChange,
     paintDirtyCells,
+    paintOptions.showColorCode,
     queueHighlight,
     schedulePreviewRefresh,
   ])
+
+  const confirmReplaceSameColorWithBrush = useCallback((sourceColorId: string) => {
+    const nextColorId = brushColorRef.current
+    if (!nextColorId) {
+      Taro.showToast({ title: '请先取色或选色', icon: 'none' })
+      return
+    }
+    const sameColor = isEmptyCell(sourceColorId)
+      ? isEmptyCell(nextColorId)
+      : sourceColorId === nextColorId
+    if (sameColor) {
+      Taro.showToast({ title: '已是画笔颜色', icon: 'none' })
+      return
+    }
+
+    const replaceCount = patternRef.current.grid.reduce((count, colorId) => {
+      const matched = isEmptyCell(sourceColorId)
+        ? isEmptyCell(colorId)
+        : colorId === sourceColorId
+      return matched ? count + 1 : count
+    }, 0)
+    if (replaceCount === 0) {
+      Taro.showToast({ title: '没有可替换的格子', icon: 'none' })
+      return
+    }
+
+    const fromLabel = isEmptyCell(sourceColorId) ? '空白' : sourceColorId
+    Taro.showModal({
+      title: '批量换色',
+      content: `将全部 ${fromLabel} 替换为 ${nextColorId}，共 ${replaceCount} 格。确认继续？`,
+      confirmText: '确认换色',
+      cancelText: '取消',
+      confirmColor: '#7c20ff',
+      success: (res) => {
+        if (!res.confirm) return
+        replaceSameColorWithBrush(sourceColorId)
+      },
+    })
+  }, [replaceSameColorWithBrush])
 
   const resolveTouchCell = useCallback((touch: ScreenTouch) => {
     const point = toLogicalPoint(touch)
@@ -1349,7 +1592,8 @@ export default function PatternEditor({
 
     if (isDouble && last) {
       lastTapRef.current = null
-      replaceSameColorWithBrush(last.sourceColorId)
+      hideDoubleTapHint()
+      confirmReplaceSameColorWithBrush(last.sourceColorId)
       return true
     }
 
@@ -1362,22 +1606,29 @@ export default function PatternEditor({
       clientY: touch.clientY,
     }
     return false
-  }, [layerMode, replaceSameColorWithBrush, resolveTouchCell])
+  }, [confirmReplaceSameColorWithBrush, hideDoubleTapHint, layerMode, resolveTouchCell])
 
-  /** 第二根手指落下判定为缩放/拖动；刚落笔的误触回滚，已成形的笔画照常提交 */
+  /** 第二根手指落下判定为缩放/拖动；已有实际改色则提交，没有改色才取消 */
   const blockForMultiTouch = () => {
     multiTouchRef.current = true
     pendingTapRef.current = null
+    pendingDrawStartRef.current = null
     lastTapRef.current = null
     const stroke = strokeRef.current
     if (!stroke?.active) return
-    const worthKeeping = stroke.changes.length >= MULTI_TOUCH_KEEP_MIN_CELLS
-      && Date.now() - stroke.startedAt >= MULTI_TOUCH_KEEP_MIN_MS
-    if (worthKeeping) {
+    cancelPreviewRefresh({ keepMajorGridSuspended: true })
+    if (stroke.changes.length > 0) {
       void endStroke()
     } else {
       cancelStroke()
     }
+  }
+
+  const holdMultiTouchUntilPreviewReady = () => {
+    multiTouchRef.current = true
+    pendingTapRef.current = null
+    pendingDrawStartRef.current = null
+    lastTapRef.current = null
   }
 
   const handleLongPressPanChange = useCallback((active: boolean) => {
@@ -1385,6 +1636,7 @@ export default function PatternEditor({
     if (!active) return
     lastTapRef.current = null
     // 长按成立前可能已落下一格，撤销误触后再拖动画布
+    pendingDrawStartRef.current = null
     if (strokeRef.current?.active) {
       cancelStroke()
     }
@@ -1396,6 +1648,10 @@ export default function PatternEditor({
     if (pickerVisible) return
     const touches = event.touches ?? []
     if (touches.length > 1) {
+      if (previewPinchDisabled) {
+        holdMultiTouchUntilPreviewReady()
+        return
+      }
       blockForMultiTouch()
       return
     }
@@ -1431,17 +1687,8 @@ export default function PatternEditor({
       return
     }
 
-    const synced = toLogicalPoint(touch)
-    if (synced) {
-      startPaintAtPoint(synced)
-      return
-    }
-    void resolveLogicalPoint(touch).then((point) => {
-      if (!point || multiTouchRef.current || drawPanActiveRef.current || strokeRef.current?.active) {
-        return
-      }
-      startPaintAtPoint(point)
-    })
+    // 画笔/橡皮先挂起，等确认不是双指手势后再真正着色。
+    pendingDrawStartRef.current = touch
   }
 
   const handleWrapTouchMove = (event: {
@@ -1453,7 +1700,13 @@ export default function PatternEditor({
     if (drawPanActiveRef.current) return
     const touches = event.touches ?? []
     if (touches.length > 1) {
-      blockForMultiTouch()
+      if (previewPinchDisabled) {
+        holdMultiTouchUntilPreviewReady()
+        return
+      }
+      if (!multiTouchRef.current || strokeRef.current?.active) {
+        blockForMultiTouch()
+      }
       return
     }
     if (multiTouchRef.current) return
@@ -1468,6 +1721,26 @@ export default function PatternEditor({
         touch.clientY - pendingTap.clientY,
       )
       if (moved > TAP_MOVE_TOLERANCE) pendingTapRef.current = null
+      return
+    }
+
+    const pendingDrawStart = pendingDrawStartRef.current
+    if (pendingDrawStart) {
+      const moved = Math.hypot(
+        touch.clientX - pendingDrawStart.clientX,
+        touch.clientY - pendingDrawStart.clientY,
+      )
+      if (moved <= TAP_MOVE_TOLERANCE) return
+      if (toolRef.current !== 'brush' && toolRef.current !== 'eraser') {
+        pendingDrawStartRef.current = null
+        return
+      }
+      if (layerMode === 'source') {
+        pendingDrawStartRef.current = null
+        return
+      }
+      event.stopPropagation?.()
+      commitPendingDrawStart(touch)
       return
     }
 
@@ -1504,7 +1777,13 @@ export default function PatternEditor({
     const remaining = event.touches?.length ?? 0
     if (remaining > 0) {
       // 多指手势中途松开一根，仍不作绘制处理
-      blockForMultiTouch()
+      if (previewPinchDisabled) {
+        holdMultiTouchUntilPreviewReady()
+        return
+      }
+      if (!multiTouchRef.current || strokeRef.current?.active) {
+        blockForMultiTouch()
+      }
       return
     }
 
@@ -1514,9 +1793,11 @@ export default function PatternEditor({
     drawPanActiveRef.current = false
     const pendingTap = pendingTapRef.current
     pendingTapRef.current = null
+    const hasPendingDrawStart = Boolean(pendingDrawStartRef.current)
 
     if (wasMultiTouch) {
       lastTapRef.current = null
+      pendingDrawStartRef.current = null
       if (strokeRef.current?.active) cancelStroke()
       return
     }
@@ -1524,6 +1805,7 @@ export default function PatternEditor({
     // 长按拖结束：笔画应已在进入拖时取消
     if (wasDrawPan) {
       lastTapRef.current = null
+      pendingDrawStartRef.current = null
       if (strokeRef.current?.active) cancelStroke()
       return
     }
@@ -1532,6 +1814,11 @@ export default function PatternEditor({
       lastTapRef.current = null
       const point = toLogicalPoint(pendingTap)
       if (point) void pickColorAtPoint(point.x, point.y)
+      return
+    }
+
+    if (hasPendingDrawStart) {
+      commitPendingDrawStart(undefined, true)
       return
     }
 
@@ -1551,6 +1838,7 @@ export default function PatternEditor({
     multiTouchRef.current = false
     drawPanActiveRef.current = false
     pendingTapRef.current = null
+    pendingDrawStartRef.current = null
     lastTapRef.current = null
     if (strokeRef.current?.active) void endStroke()
   }
@@ -1739,7 +2027,6 @@ export default function PatternEditor({
             <Text>更新预览…</Text>
           </View>
         ) : null}
-
         <View id={SETTINGS_BAR_ID} className='pattern-editor__display-settings-bar'>
           <View
             className={`pattern-editor__display-setting${displaySettings.showGuideLines ? ' is-active' : ''}`}
@@ -1772,6 +2059,7 @@ export default function PatternEditor({
             gridRows={pattern.height}
             viewport={viewport}
             interactive={!pickerVisible}
+            pinchDisabled={previewPinchDisabled}
             highlights={paintOverlays}
             highlightCellPx={highlightCellPx}
             guideLines={guideLines}
@@ -1796,7 +2084,7 @@ export default function PatternEditor({
               if (canUndo) void handleUndo()
             }}
           >
-            <Image className='pattern-editor__rail-icon' src={undoIcon} mode='aspectFit' />
+            <Image className='pattern-editor__rail-icon' src={canUndo ? undoActiveIcon : undoIcon} mode='aspectFit' />
             <Text className='pattern-editor__rail-label'>撤销</Text>
           </View>
           <View className='pattern-editor__rail-divider' />
@@ -1806,7 +2094,7 @@ export default function PatternEditor({
               if (canRedo) void handleRedo()
             }}
           >
-            <Image className='pattern-editor__rail-icon' src={redoIcon} mode='aspectFit' />
+            <Image className='pattern-editor__rail-icon' src={canRedo ? redoActiveIcon : redoIcon} mode='aspectFit' />
             <Text className='pattern-editor__rail-label'>重做</Text>
           </View>
         </View>
@@ -1836,6 +2124,14 @@ export default function PatternEditor({
           })}
         </View>
       </View>
+
+      {shouldShowDoubleTapHint ? (
+        <View className='pattern-editor__double-tap-hint' onClick={dismissDoubleTapHint}>
+          <View className='pattern-editor__double-tap-hint-dot' />
+          <Text className='pattern-editor__double-tap-hint-title'>双击换同色</Text>
+          <Text className='pattern-editor__double-tap-hint-text'>连续点同一格两次，替换全部同色</Text>
+        </View>
+      ) : null}
 
       <View id={PALETTE_BAR_ID} className='pattern-editor__palette-bar'>
         <Text className='pattern-editor__palette-title'>当前颜色</Text>

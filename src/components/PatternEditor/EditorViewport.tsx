@@ -1,5 +1,5 @@
 import { useMemo, useRef, type CSSProperties } from 'react'
-import { View, Image } from '@tarojs/components'
+import { View, Image, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { PatternSourceCrop } from '@/types'
 import './index.scss'
@@ -9,6 +9,8 @@ export interface CellHighlight {
   col: number
   row: number
   color?: string
+  label?: string
+  labelColor?: string
 }
 
 export interface ViewportTransform {
@@ -55,6 +57,7 @@ interface EditorViewportProps {
   gridRows: number
   viewport: ViewportTransform
   interactive: boolean
+  pinchDisabled?: boolean
   highlights: CellHighlight[]
   highlightCellPx: number
   guideLines: EditorGuideLines
@@ -176,6 +179,7 @@ function EditorViewport({
   gridRows,
   viewport,
   interactive,
+  pinchDisabled = false,
   highlights,
   highlightCellPx,
   guideLines,
@@ -366,6 +370,10 @@ function EditorViewport({
     onTouchStart(event)
 
     if (touches.length >= 2) {
+      if (pinchDisabled) {
+        gestureRef.current.mode = 'none'
+        return
+      }
       const t0 = readTouch(touches[0])
       const t1 = readTouch(touches[1])
       if (!t0 || !t1) return
@@ -457,6 +465,10 @@ function EditorViewport({
       clearLongPressTimer()
       endLongPressPanIfNeeded()
       onTouchMove(event)
+      if (pinchDisabled) {
+        gestureRef.current.mode = 'none'
+        return
+      }
       const t0 = readTouch(touches[0])
       const t1 = readTouch(touches[1])
       if (!t0 || !t1) return
@@ -683,7 +695,7 @@ function EditorViewport({
           <View className='pattern-editor__major-grid-layer' style={majorGridLayerStyle} />
         ) : null}
         <View className='pattern-editor__highlights-layer'>
-          {highlights.map(({ index, col, row, color }) => (
+          {highlights.map(({ index, col, row, color, label, labelColor }) => (
             <View
               key={index}
               className={`pattern-editor__cell-highlight${color ? ' pattern-editor__cell-highlight--paint' : ''}`}
@@ -694,7 +706,19 @@ function EditorViewport({
                 height: `${highlightCellPx}px`,
                 ...(color ? { backgroundColor: color } : null),
               }}
-            />
+            >
+              {label ? (
+                <Text
+                  className='pattern-editor__cell-highlight-label'
+                  style={{
+                    color: labelColor || '#1a1a1a',
+                    fontSize: `${Math.max(8, Math.floor(highlightCellPx * 0.38))}px`,
+                  }}
+                >
+                  {label}
+                </Text>
+              ) : null}
+            </View>
           ))}
         </View>
         {showGuideLines ? (
